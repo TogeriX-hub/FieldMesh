@@ -32,4 +32,9 @@ struct NodePrefs {  // persisted to file
   uint8_t client_repeat;
   uint8_t path_hash_mode;    // which path mode to use when sending
   uint8_t autoadd_max_hops;  // 0 = no limit, 1 = direct (0 hops), N = up to N-1 hops (max 64)
+  // Off-Grid: gespeicherte Normal-Parameter (werden vor Off-Grid-Aktivierung gesichert)
+  float   normal_freq;
+  float   normal_bw;
+  uint8_t normal_sf;
+  uint8_t normal_cr;
 };

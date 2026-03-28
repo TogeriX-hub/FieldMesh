@@ -70,6 +70,10 @@
 #include <helpers/BaseChatMesh.h>
 #include <helpers/TransportKeyStore.h>
 
+// Auto-Advert Intervall: 5 Minuten in Millisekunden
+// Zum Ändern nur die 5 anpassen und neu kompilieren
+#define AUTO_ADVERT_INTERVAL_MS  (5UL * 60UL * 1000UL)
+
 /* -------------------------------------------------------------------------------------- */
 
 #define REQ_TYPE_GET_STATUS             0x01 // same as _GET_STATS
@@ -80,8 +84,10 @@ struct AdvertPath {
   uint8_t pubkey_prefix[7];
   uint8_t path_len;
   char    name[32];
-  uint32_t recv_timestamp;
+  uint32_t recv_timestamp;     // immer aktualisiert — fuer RECENT-Seite
   uint8_t path[MAX_PATH_SIZE];
+  bool has_gps;                // true wenn mind. ein Advert mit GPS empfangen wurde
+  uint32_t gps_timestamp;      // Zeitpunkt des letzten GPS-Adverts — fuer TRACKING-Seite
 };
 
 class MyMesh : public BaseChatMesh, public DataStoreHost {
@@ -233,6 +239,37 @@ private:
 
   #define ADVERT_PATH_TABLE_SIZE   16
   AdvertPath advert_paths[ADVERT_PATH_TABLE_SIZE]; // circular table
+
+  unsigned long next_auto_advert;  // millis() timestamp for next auto-advert (0=inactive)
+
+public:
+  // Auto-Advert ist aktiv wenn GPS-Sharing eingeschaltet ist
+  bool isAutoAdvertEnabled() const {
+    return _prefs.advert_loc_policy == ADVERT_LOC_SHARE;
+  }
+
+  // Off-Grid Mode: Radio-Parameter sichern/wiederherstellen + client_repeat setzen
+  bool isOffGridActive() const { return _prefs.client_repeat != 0; }
+  void toggleOffGrid();
+
+  // V3: SOS-Nachricht in den SOS-Channel senden
+  bool sendSOS();
+
+  // GPS-Sharing und Auto-Advert zusammen ein/ausschalten (von UI-Button)
+  void setGPSAdvertEnabled(bool enabled) {
+    _prefs.advert_loc_policy = enabled ? ADVERT_LOC_SHARE : ADVERT_LOC_NONE;
+    if (enabled) {
+      // V3.05: Timer nur starten wenn er noch nicht läuft (kein Reset bei erneutem Toggle)
+      // Beim ersten Einschalten: sofort einmal senden + Timer starten
+      if (next_auto_advert == 0) {
+        advert();
+        next_auto_advert = futureMillis(AUTO_ADVERT_INTERVAL_MS);
+      }
+    } else {
+      next_auto_advert = 0;
+    }
+    savePrefs();
+  }
 };
 
 extern MyMesh the_mesh;

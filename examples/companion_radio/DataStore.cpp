@@ -231,6 +231,11 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs, double& no
     file.read((uint8_t *)&_prefs.autoadd_config, sizeof(_prefs.autoadd_config));           // 87
     file.read((uint8_t *)&_prefs.autoadd_max_hops, sizeof(_prefs.autoadd_max_hops));       // 88
     file.read((uint8_t *)&_prefs.rx_boosted_gain, sizeof(_prefs.rx_boosted_gain)); // 89
+    // Off-Grid Normal-Parameter (neu — fehlen in alten Saves → bleiben 0, kein Problem)
+    file.read((uint8_t *)&_prefs.normal_freq, sizeof(_prefs.normal_freq));         // 90
+    file.read((uint8_t *)&_prefs.normal_bw,   sizeof(_prefs.normal_bw));           // 94
+    file.read((uint8_t *)&_prefs.normal_sf,   sizeof(_prefs.normal_sf));           // 98
+    file.read((uint8_t *)&_prefs.normal_cr,   sizeof(_prefs.normal_cr));           // 99
 
     file.close();
   }
@@ -269,6 +274,11 @@ void DataStore::savePrefs(const NodePrefs& _prefs, double node_lat, double node_
     file.write((uint8_t *)&_prefs.autoadd_config, sizeof(_prefs.autoadd_config));           // 87
     file.write((uint8_t *)&_prefs.autoadd_max_hops, sizeof(_prefs.autoadd_max_hops));       // 88
     file.write((uint8_t *)&_prefs.rx_boosted_gain, sizeof(_prefs.rx_boosted_gain)); // 89
+    // Off-Grid Normal-Parameter
+    file.write((uint8_t *)&_prefs.normal_freq, sizeof(_prefs.normal_freq));          // 90
+    file.write((uint8_t *)&_prefs.normal_bw,   sizeof(_prefs.normal_bw));            // 94
+    file.write((uint8_t *)&_prefs.normal_sf,   sizeof(_prefs.normal_sf));            // 98
+    file.write((uint8_t *)&_prefs.normal_cr,   sizeof(_prefs.normal_cr));            // 99
 
     file.close();
   }
@@ -315,7 +325,12 @@ void DataStore::saveContacts(DataStoreHost* host) {
     while (host->getContactForSave(idx, c)) {
       bool success = (file.write(c.id.pub_key, 32) == 32);
       success = success && (file.write((uint8_t *)&c.name, 32) == 32);
-      success = success && (file.write(&c.type, 1) == 1);
+      // V2.06: Bit 4 (ADV_LATLON_MASK=0x10) nicht persistieren — nur Bits 0-3 (Role) speichern.
+      // Bit 4 wird im RAM beim naechsten empfangenen Advert neu gesetzt.
+      // Ohne diese Maskierung bleibt type=0x11 dauerhaft auf Flash und bricht
+      // Contact-Type-Auswertung in der App (Messaging, Telemetry).
+      uint8_t clean_type = c.type & 0x0F;
+      success = success && (file.write(&clean_type, 1) == 1);
       success = success && (file.write(&c.flags, 1) == 1);
       success = success && (file.write(&unused, 1) == 1);
       success = success && (file.write((uint8_t *)&c.sync_since, 4) == 4);

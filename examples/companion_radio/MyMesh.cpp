@@ -160,7 +160,10 @@ void MyMesh::writeContactRespFrame(uint8_t code, const ContactInfo &contact) {
   out_frame[i++] = code;
   memcpy(&out_frame[i], contact.id.pub_key, PUB_KEY_SIZE);
   i += PUB_KEY_SIZE;
-  out_frame[i++] = contact.type;
+  // V2.07: Bit 4 (ADV_LATLON_MASK=0x10) nicht an App senden — nur Bits 0-3 (Role).
+  // Ohne Maskierung erkennt die App type=0x11 nicht als gueltigen Contact-Typ
+  // (Messaging, Telemetry nicht moeglich). Bit 4 ist nur intern fuer onDiscoveredContact().
+  out_frame[i++] = contact.type & 0x0F;
   out_frame[i++] = contact.flags;
   out_frame[i++] = contact.out_path_len;
   memcpy(&out_frame[i], contact.out_path, MAX_PATH_SIZE);
@@ -183,7 +186,7 @@ void MyMesh::updateContactFromFrame(ContactInfo &contact, uint32_t& last_mod, co
   uint8_t code = frame[i++]; // eg. CMD_ADD_UPDATE_CONTACT
   memcpy(contact.id.pub_key, &frame[i], PUB_KEY_SIZE);
   i += PUB_KEY_SIZE;
-  contact.type = frame[i++];
+  contact.type = frame[i++] & 0x0F;  // V2.07: Bit 4 von App nicht uebernehmen
   contact.flags = frame[i++];
   contact.out_path_len = frame[i++];
   memcpy(contact.out_path, &frame[i], MAX_PATH_SIZE);
@@ -355,23 +358,32 @@ void MyMesh::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
 
   // add inbound-path to mem cache
   if (path && mesh::Packet::isValidPathLen(path_len)) {  // check path is valid
-    AdvertPath* p = advert_paths;
-    uint32_t oldest = 0xFFFFFFFF;
-    for (int i = 0; i < ADVERT_PATH_TABLE_SIZE; i++) {   // check if already in table, otherwise evict oldest
-      if (memcmp(advert_paths[i].pubkey_prefix, contact.id.pub_key, sizeof(AdvertPath::pubkey_prefix)) == 0) {
-        p = &advert_paths[i];   // found
-        break;
+    // Immer in advert_paths schreiben (fuer RECENT-Seite)
+    // gps_timestamp + has_gps nur aktualisieren wenn GPS im Advert enthalten war
+    // Bit 4 in contact.type = ADV_LATLON_MASK (gesetzt in BaseChatMesh.cpp)
+    bool gps_in_this_advert = (contact.type & 0x10) != 0;
+    {
+      AdvertPath* p = advert_paths;
+      uint32_t oldest = 0xFFFFFFFF;
+      for (int i = 0; i < ADVERT_PATH_TABLE_SIZE; i++) {
+        if (memcmp(advert_paths[i].pubkey_prefix, contact.id.pub_key, sizeof(AdvertPath::pubkey_prefix)) == 0) {
+          p = &advert_paths[i];
+          break;
+        }
+        if (advert_paths[i].recv_timestamp < oldest) {
+          oldest = advert_paths[i].recv_timestamp;
+          p = &advert_paths[i];
+        }
       }
-      if (advert_paths[i].recv_timestamp < oldest) {
-        oldest = advert_paths[i].recv_timestamp;
-        p = &advert_paths[i];
+      memcpy(p->pubkey_prefix, contact.id.pub_key, sizeof(p->pubkey_prefix));
+      strcpy(p->name, contact.name);
+      p->recv_timestamp = getRTCClock()->getCurrentTime();  // immer aktualisieren
+      if (gps_in_this_advert) {
+        p->has_gps = true;
+        p->gps_timestamp = getRTCClock()->getCurrentTime(); // nur bei GPS
       }
+      p->path_len = mesh::Packet::copyPath(p->path, path, path_len);
     }
-
-    memcpy(p->pubkey_prefix, contact.id.pub_key, sizeof(p->pubkey_prefix));
-    strcpy(p->name, contact.name);
-    p->recv_timestamp = getRTCClock()->getCurrentTime();
-    p->path_len = mesh::Packet::copyPath(p->path, path, path_len);
   }
 
   if (!is_new) dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY); // only schedule lazy write for contacts that are in contacts[]
@@ -560,6 +572,13 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   if (getChannel(channel_idx, channel_details)) {
     channel_name = channel_details.name;
   }
+
+  // V3: SOS-Erkennung — "!SOS" irgendwo im Text (MeshCore stellt Node-Name voran)
+  if (strstr(text, "!SOS") != NULL) {
+    if (_ui) _ui->triggerSOS(channel_name, text);
+    return;  // newMsg() nicht aufrufen — SOSAlertScreen hat Vorrang
+  }
+
   if (_ui) _ui->newMsg(path_len, channel_name, text, offline_queue_len);
 #endif
 }
@@ -806,6 +825,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   next_ack_idx = 0;
   sign_data = NULL;
   dirty_contacts_expiry = 0;
+  next_auto_advert = 0;  // disabled until prefs loaded
   memset(advert_paths, 0, sizeof(advert_paths));
   memset(send_scope.key, 0, sizeof(send_scope.key));
 
@@ -867,6 +887,11 @@ void MyMesh::begin(bool has_display) {
   _prefs.gps_enabled = constrain(_prefs.gps_enabled, 0, 1);  // Ensure boolean 0 or 1
   _prefs.gps_interval = constrain(_prefs.gps_interval, 0, 86400);  // Max 24 hours
 
+  // Auto-Advert Timer wiederherstellen: läuft wenn GPS-Sharing aktiv war
+  if (_prefs.advert_loc_policy == ADVERT_LOC_SHARE) {
+    next_auto_advert = futureMillis(AUTO_ADVERT_INTERVAL_MS);
+  }
+
 #ifdef BLE_PIN_CODE // 123456 by default
   if (_prefs.ble_pin == 0) {
 #ifdef DISPLAY_CLASS
@@ -914,9 +939,9 @@ struct FreqRange {
 };
 
 static FreqRange repeat_freq_ranges[] = {
-  { 433000, 433000 },
-  { 869000, 869000 },
-  { 918000, 918000 }
+  { 433050, 434790 },  // EU 433 MHz ISM-Band (SRD, legal ab 433.050)
+  { 869400, 869650 },  // EU 869 MHz SRD sub-band g1 (25 mW, 10% duty cycle, kein LBT)
+  { 915000, 928000 }   // US/AU 915 MHz ISM-Band
 };
 
 bool MyMesh::isValidClientRepeatFreq(uint32_t f) const {
@@ -925,6 +950,71 @@ bool MyMesh::isValidClientRepeatFreq(uint32_t f) const {
     if (f >= r->lower_freq && f <= r->upper_freq) return true;
   }
   return false;
+}
+
+// Off-Grid Mode: Normal-Parameter sichern und auf Off-Grid-Einstellung wechseln (oder zurück)
+// Off-Grid Einstellung: 869.4625 MHz, BW 125, SF 11, CR 5 (EU Sub-Band g1, kein LBT)
+#define OFFGRID_FREQ  869.4625f
+#define OFFGRID_BW    125.0f
+#define OFFGRID_SF    11
+#define OFFGRID_CR    5
+
+void MyMesh::toggleOffGrid() {
+  if (_prefs.client_repeat == 0) {
+    // Off-Grid aktivieren: Normal-Parameter sichern
+    _prefs.normal_freq = _prefs.freq;
+    _prefs.normal_bw   = _prefs.bw;
+    _prefs.normal_sf   = _prefs.sf;
+    _prefs.normal_cr   = _prefs.cr;
+    // Off-Grid-Parameter setzen
+    _prefs.freq = OFFGRID_FREQ;
+    _prefs.bw   = OFFGRID_BW;
+    _prefs.sf   = OFFGRID_SF;
+    _prefs.cr   = OFFGRID_CR;
+    _prefs.client_repeat = 1;
+  } else {
+    // Off-Grid deaktivieren: Normal-Parameter wiederherstellen
+    // Fallback falls normal_freq nie gesetzt wurde (erstes Mal)
+    if (_prefs.normal_freq > 0.0f) {
+      _prefs.freq = _prefs.normal_freq;
+      _prefs.bw   = _prefs.normal_bw;
+      _prefs.sf   = _prefs.normal_sf;
+      _prefs.cr   = _prefs.normal_cr;
+    }
+    _prefs.client_repeat = 0;
+  }
+  radio_set_params(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
+  savePrefs();
+  advert();  // V4.07: RX-Neustart ueber normalen TX->RX-Zyklus des Wrappers
+}
+
+// V3: SOS-Nachricht in den SOS-Channel senden
+// Sucht nach einem Channel namens "SOS" und sendet "!SOS <pos>" oder "!SOS kein GPS"
+bool MyMesh::sendSOS() {
+  for (int i = 0; i < MAX_GROUP_CHANNELS; i++) {
+    ChannelDetails ch;
+    if (!getChannel(i, ch)) continue;
+    // Case-insensitive: "SOS", "sos", "#sos" etc. alle akzeptieren
+    char name_lower[33];
+    for (int j = 0; j < 32 && ch.name[j]; j++) name_lower[j] = tolower(ch.name[j]);
+    name_lower[32] = 0;
+    if (strstr(name_lower, "sos") == NULL) continue;
+
+    // Nachrichtentext zusammenbauen
+    char text[80];
+    LocationProvider* loc = sensors.getLocationProvider();
+    if (loc != NULL && loc->isEnabled() && loc->isValid()) {
+      snprintf(text, sizeof(text), "!SOS %.4f,%.4f",
+        loc->getLatitude()  / 1000000.0,
+        loc->getLongitude() / 1000000.0);
+    } else {
+      strncpy(text, "!SOS kein GPS", sizeof(text));
+    }
+
+    uint32_t ts = getRTCClock()->getCurrentTimeUnique();
+    return sendGroupMessage(ts, ch.channel, _prefs.node_name, text, strlen(text));
+  }
+  return false;  // kein SOS-Channel gefunden
 }
 
 void MyMesh::startInterface(BaseSerialInterface &serial) {
@@ -1320,6 +1410,17 @@ void MyMesh::handleCmdFrame(size_t len) {
 
       if (len >= 4) {
         _prefs.advert_loc_policy = cmd_frame[3];
+        // App-Schalter "GPS in Adverts": Timer sofort starten oder stoppen
+        if (_prefs.advert_loc_policy == ADVERT_LOC_SHARE) {
+          // V3.05: Timer nur starten wenn er noch nicht läuft (kein Reset bei Handy-Connect)
+          // Beim ersten Aktivieren: sofort senden + Timer starten
+          if (next_auto_advert == 0) {
+            advert();
+            next_auto_advert = futureMillis(AUTO_ADVERT_INTERVAL_MS);
+          }
+        } else {
+          next_auto_advert = 0;
+        }
         if (len >= 5) {
           _prefs.multi_acks = cmd_frame[4];
         }
@@ -2045,6 +2146,12 @@ void MyMesh::loop() {
     dirty_contacts_expiry = 0;
   }
 
+  // auto-advert timer: send 0-hop advert at configured interval
+  if (next_auto_advert && millisHasNowPassed(next_auto_advert)) {
+    advert();
+    next_auto_advert = futureMillis(AUTO_ADVERT_INTERVAL_MS);  // schedule next
+  }
+
 #ifdef DISPLAY_CLASS
   if (_ui) _ui->setHasConnection(_serial->isConnected());
 #endif
@@ -2052,13 +2159,27 @@ void MyMesh::loop() {
 
 bool MyMesh::advert() {
   mesh::Packet* pkt;
-  if (_prefs.advert_loc_policy == ADVERT_LOC_NONE) {
-    pkt = createSelfAdvert(_prefs.node_name);
-  } else {
+  bool send_gps = false;
+  if (_prefs.advert_loc_policy != ADVERT_LOC_NONE) {
+    // GPS nur mitsenden wenn GPS hardwareseitig aktiv UND aktueller Fix vorhanden
+    // Gespeicherte/alte Koordinaten werden bewusst ignoriert
+    LocationProvider* loc = sensors.getLocationProvider();
+    if (loc != NULL && loc->isEnabled() && loc->isValid()) {
+      send_gps = true;
+    }
+  }
+  if (send_gps) {
     pkt = createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon);
+  } else {
+    pkt = createSelfAdvert(_prefs.node_name);
   }
   if (pkt) {
-    sendZeroHop(pkt);
+    if (_prefs.client_repeat) {
+      // Off-Grid Modus: Flood-Advert damit andere M1s weiterleiten koennen
+      sendFlood(pkt, (uint32_t)0, _prefs.path_hash_mode + 1);
+    } else {
+      sendZeroHop(pkt);
+    }
     return true;
   } else {
     return false;
