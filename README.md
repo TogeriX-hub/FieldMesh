@@ -1,119 +1,126 @@
-## About MeshCore
+# FieldMesh
 
-MeshCore is a lightweight, portable C++ library that enables multi-hop packet routing for embedded projects using LoRa and other packet radios. It is designed for developers who want to create resilient, decentralized communication networks that work without the internet.
+**A MeshCore firmware fork optimized for outdoor use — festivals, hiking, off-grid events, and situations where you actually need your radio network to work without babysitting it.**
 
-## 🔍 What is MeshCore?
+Built on [MeshCore](https://github.com/ripplebiz/MeshCore) · Tested on: Elecrow ThinkNode M1 · Based on MeshCore v1.14.1
 
-MeshCore now supports a range of LoRa devices, allowing for easy flashing without the need to compile firmware manually. Users can flash a pre-built binary using tools like Adafruit ESPTool and interact with the network through a serial console.
-MeshCore provides the ability to create wireless mesh networks, similar to Meshtastic and Reticulum but with a focus on lightweight multi-hop packet routing for embedded projects. Unlike Meshtastic, which is tailored for casual LoRa communication, or Reticulum, which offers advanced networking, MeshCore balances simplicity with scalability, making it ideal for custom embedded solutions., where devices (nodes) can communicate over long distances by relaying messages through intermediate nodes. This is especially useful in off-grid, emergency, or tactical situations where traditional communication infrastructure is unavailable.
+---
 
-## ⚡ Key Features
+## Why FieldMesh?
 
-* Multi-Hop Packet Routing
-  * Devices can forward messages across multiple nodes, extending range beyond a single radio's reach.
-  * Supports up to a configurable number of hops to balance network efficiency and prevent excessive traffic.
-  * Nodes use fixed roles where "Companion" nodes are not repeating messages at all to prevent adverse routing paths from being used.
-* Supports LoRa Radios – Works with Heltec, RAK Wireless, and other LoRa-based hardware.
-* Decentralized & Resilient – No central server or internet required; the network is self-healing.
-* Low Power Consumption – Ideal for battery-powered or solar-powered devices.
-* Simple to Deploy – Pre-built example applications make it easy to get started.
+MeshCore is a great platform, but some things that matter in the field require manual workarounds or aren't there at all. FieldMesh adds:
 
-## 🎯 What Can You Use MeshCore For?
+- **Automatic GPS advertising** — your node announces itself every 5 minutes to nodes in direct range, zero-hop only — no extra network load
+- **A dedicated tracking page** — see your contacts' GPS positions and distances at a glance
+- **A real Off-Grid mode** — builds on MeshCore's Client Repeat feature, but with sensible frequency defaults (the upstream values were illegal or unusable in most regions) and a one-press toggle instead of manual parameter entry
+- **An SOS system** — send and receive emergency alerts with buzzer alarm, even if your phone isn't connected
 
-* Off-Grid Communication: Stay connected even in remote areas.
-* Emergency Response & Disaster Recovery: Set up instant networks where infrastructure is down.
-* Outdoor Activities: Hiking, camping, and adventure racing communication.
-* Tactical & Security Applications: Military, law enforcement, and private security use cases.
-* IoT & Sensor Networks: Collect data from remote sensors and relay it back to a central location.
+The goal is a node you can put in your backpack, forget about, and trust that it's doing its job.
 
-## 🚀 How to Get Started
+---
 
-- Watch the [MeshCore Intro Video](https://www.youtube.com/watch?v=t1qne8uJBAc) by Andy Kirby.
-- Read through our [Frequently Asked Questions](./docs/faq.md) section.
-- Flash the MeshCore firmware on a supported device.
-- Connect with a supported client.
+## Features
 
-For developers;
+### GPS Tracking & Auto-Advert
+FieldMesh separates two things that stock MeshCore conflates: *when did I last hear from this node* and *when did this node last have a GPS fix*. The RECENT page shows all recently heard nodes. The TRACKING page shows only nodes that have sent a GPS position — with distance calculated via Haversine formula — color-coded green (< 5 min) or yellow (older).
 
-- Install [PlatformIO](https://docs.platformio.org) in [Visual Studio Code](https://code.visualstudio.com).
-- Clone and open the MeshCore repository in Visual Studio Code.
-- See the example applications you can modify and run:
-  - [Companion Radio](./examples/companion_radio) - For use with an external chat app, over BLE, USB or WiFi.
-  - [KISS Modem](./examples/kiss_modem) - Serial KISS protocol bridge for host applications. ([protocol docs](./docs/kiss_modem_protocol.md))
-  - [Simple Repeater](./examples/simple_repeater) - Extends network coverage by relaying messages.
-  - [Simple Room Server](./examples/simple_room_server) - A simple BBS server for shared Posts.
-  - [Simple Secure Chat](./examples/simple_secure_chat) - Secure terminal based text communication between devices.
-  - [Simple Sensor](./examples/simple_sensor) - Remote sensor node with telemetry and alerting.
+Your own node advertises its position automatically every 5 minutes when GPS sharing is enabled — **zero-hop in normal mode**, so it only reaches nodes in direct range without adding load to the wider network. In Off-Grid mode, adverts are sent as flood packets instead, which is the right behaviour when you're actively trying to extend reach across a local group. Sending works correctly regardless of GPS hardware state (fixes a bug where `isValid()` returned stale data after GPS was powered off).
 
-The Simple Secure Chat example can be interacted with through the Serial Monitor in Visual Studio Code, or with a Serial USB Terminal on Android.
+### Off-Grid Mode
+MeshCore has a feature called **Client Repeat** where a node actively relays packets to extend network reach. FieldMesh builds on this — but the upstream frequency defaults for Client Repeat were problematic: the EU 433 MHz value was a single illegal point frequency, the 869 MHz value landed in a sub-band with 0.1% duty cycle (practically unusable), and the 915 MHz value was outside the legal band in some regions.
 
-## ⚡️ MeshCore Flasher
+FieldMesh corrects the frequency ranges to legal values and adds a **one-press Off-Grid toggle** accessible from the Tracking page menu. It switches to **869.4625 MHz / BW125 / SF11 / CR5** (EU Sub-Band g1, 10% duty cycle, no LBT required) and enables Client Repeat in one step — saving your normal parameters automatically so you can switch back without re-entering anything.
 
-We have prebuilt firmware ready to flash on supported devices.
+Switching modes triggers an immediate advert so the network knows you've changed frequency.
 
-- Launch https://flasher.meshcore.co.uk
-- Select a supported device
-- Flash one of the firmware types:
-  - Companion, Repeater or Room Server
-- Once flashing is complete, you can connect with one of the MeshCore clients below.
+Frequency ranges are set correctly for legal operation:
 
-## 📱 MeshCore Clients
+| Region | Range |
+|--------|-------|
+| EU 433 MHz | 433.050 – 434.790 MHz |
+| EU 869 MHz | 869.400 – 869.650 MHz (Sub-Band g1) |
+| US/AU 915 MHz | 915.000 – 928.000 MHz |
 
-**Companion Firmware**
+### SOS System
+Long-press the button on the SOS page to open a two-step confirmation screen (accidental trigger protection). FieldMesh looks for a channel whose name contains "sos" (case-insensitive) and sends `!SOS lat,lon` with your current GPS coordinates, or `!SOS no GPS` if no fix is available.
 
-The companion firmware can be connected to via BLE, USB or WiFi depending on the firmware type you flashed.
+On the receiving end: incoming SOS messages trigger a buzzer alarm that overrides quiet mode and loops until manually acknowledged. The alert screen shows the sending node's name. Normal messages are suppressed while an SOS alert is active.
 
-- Web: https://app.meshcore.nz
-- Android: https://play.google.com/store/apps/details?id=com.liamcottle.meshcore.android
-- iOS: https://apps.apple.com/us/app/meshcore/id6742354151?platform=iphone
-- NodeJS: https://github.com/liamcottle/meshcore.js
-- Python: https://github.com/fdlamotte/meshcore-cli
+### UI & Usability
+- Splash screen with version info and "FieldMesh" branding
+- Backlight control via upper button with 5-minute auto-off
 
-**Repeater and Room Server Firmware**
+---
 
-The repeater and room server firmwares can be setup via USB in the web config tool.
+## Hardware
 
-- https://config.meshcore.dev
+| | |
+|---|---|
+| **Tested on** | Elecrow ThinkNode M1 |
+| **Other hardware** | Untested — contributions welcome |
+| **Base firmware** | MeshCore v1.14.1 |
 
-They can also be managed via LoRa in the mobile app by using the Remote Management feature.
+FieldMesh has only been developed and tested on the ThinkNode M1. The code is written to be portable (all hardware-specific pins are in `variant.h`, layout uses runtime display size checks), but behavior on other devices is unknown. If you test it on another platform, please open an issue with your findings.
 
-## 🛠 Hardware Compatibility
+---
 
-MeshCore is designed for devices listed in the [MeshCore Flasher](https://flasher.meshcore.co.uk)
+## Changed Files
 
-## 📜 License
+These files differ from upstream MeshCore. Everything else is untouched.
 
-MeshCore is open-source software released under the MIT License. You are free to use, modify, and distribute it for personal and commercial projects.
+| File | What changed |
+|------|-------------|
+| `src/helpers/BaseChatMesh.cpp` | Stores GPS flag (Bit 4) in `contact.type` |
+| `examples/companion_radio/AbstractUITask.h` | Adds `triggerSOS()` virtual stub for compatibility |
+| `examples/companion_radio/MyMesh.h` | Auto-advert timer, AdvertPath struct, Off-Grid toggle declarations |
+| `examples/companion_radio/MyMesh.cpp` | Core logic: auto-advert, Off-Grid mode, SOS send/receive, frequency ranges |
+| `examples/companion_radio/NodePrefs.h` | Four new fields for saving normal radio parameters |
+| `examples/companion_radio/DataStore.cpp` | Saves/loads new fields; masks Bit 4 from contact persistence |
+| `examples/companion_radio/ui-new/UITask.h` | Outdoor menu, SOS screens, buzzer and backlight members |
+| `examples/companion_radio/ui-new/UITask.cpp` | All UI: tracking page, Haversine, outdoor menu, SOS screens, backlight logic |
+| `examples/companion_radio/ui-new/icons.h` | Adds 48×48px advert icon for large displays |
+| `variants/thinknode_m1/variant.h` | Corrects `PIN_BUTTON2` to GPIO 39 |
+| `variants/thinknode_m1/platformio.ini` | Sets `AUTO_OFF_MILLIS=0` to prevent E-Ink display timeout |
+
+---
+
+## Building
+
+FieldMesh builds the same way as MeshCore. Use PlatformIO and select the appropriate environment:
+
+- `companion_radio_ble` — BLE connection to companion app
+- `companion_radio_usb` — USB connection (GPS page not included in this build)
+
+No additional dependencies beyond what MeshCore already requires.
+
+---
+
+## Limitations & Known Issues
+
+- Only tested on ThinkNode M1
+- Off-Grid frequency is hardcoded for EU (869.4625 MHz) — other regions need a different default
+- SOS requires a channel named "sos" to exist in your MeshCore setup
+- Tracking page shows a maximum of 3 contacts (favourited in the companion app)
+
+---
 
 ## Contributing
 
-Please submit PR's using 'dev' as the base branch!
-For minor changes just submit your PR and we'll try to review it, but for anything more 'impactful' please open an Issue first and start a discussion. Is better to sound out what it is you want to achieve first, and try to come to a consensus on what the best approach is, especially when it impacts the structure or architecture of this codebase.
+This is a personal project that grew out of wanting a more field-ready node. If you:
 
-Here are some general principals you should try to adhere to:
-* Keep it simple. Please, don't think like a high-level lang programmer. Think embedded, and keep code concise, without any unnecessary layers.
-* No dynamic memory allocation, except during setup/begin functions.
-* Use the same brace and indenting style that's in the core source modules. (A .clang-format is prob going to be added soon, but please do NOT retroactively re-format existing code. This just creates unnecessary diffs that make finding problems harder)
+- test it on other hardware and want to share results
+- find a bug
+- have a feature idea that fits the outdoor/off-grid use case
+- want to adapt the Off-Grid defaults for another region
 
-Help us prioritize! Please react with thumbs-up to issues/PRs you care about most. We look at reaction counts when planning work.
+...feel free to open an issue or pull request. The more platforms this works on, the better.
 
-## Road-Map / To-Do
+---
 
-There are a number of fairly major features in the pipeline, with no particular time-frames attached yet. In very rough chronological order:
-- [X] Companion radio: UI redesign
-- [X] Repeater + Room Server: add ACL's (like Sensor Node has)
-- [X] Standardise Bridge mode for repeaters
-- [ ] Repeater/Bridge: Standardise the Transport Codes for zoning/filtering
-- [X] Core + Repeater: enhanced zero-hop neighbour discovery
-- [ ] Core: round-trip manual path support
-- [ ] Companion + Apps: support for multiple sub-meshes (and 'off-grid' client repeat mode)
-- [ ] Core + Apps: support for LZW message compression
-- [ ] Core: dynamic CR (Coding Rate) for weak vs strong hops
-- [ ] Core: new framework for hosting multiple virtual nodes on one physical device
-- [ ] V2 protocol spec: discussion and consensus around V2 packet protocol, including path hashes, new encryption specs, etc
+## Relationship to MeshCore
 
-## 📞 Get Support
+FieldMesh is a fork of [MeshCore](https://github.com/ripplebiz/MeshCore) by ripplebiz. It is not affiliated with or endorsed by the MeshCore project. The goal is to stay close to upstream and periodically rebase — but semantic compatibility after upstream changes requires manual review.
 
-- Report bugs and request features on the [GitHub Issues](https://github.com/ripplebiz/MeshCore/issues) page.
-- Find additional guides and components on [my site](https://buymeacoffee.com/ripplebiz).
-- Join [MeshCore Discord](https://discord.gg/BMwCtwHj5V) to chat with the developers and get help from the community.
+---
+
+*FieldMesh — MeshCore for the field.*
