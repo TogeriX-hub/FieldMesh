@@ -38,6 +38,14 @@ class UITask : public AbstractUITask {
   int _msgcount;
   unsigned long ui_started_at, next_batt_chck;
   int next_backlight_btn_check = 0;
+#ifdef DISP_BACKLIGHT
+  bool _backlight_on = false;             // aktueller Backlight-Zustand
+  unsigned long _backlight_off_at = 0;   // Auto-Off Zeitstempel (0=inaktiv)
+  bool _backlight_initialized = false;   // wird erst nach Boot auf true gesetzt
+  #ifdef PIN_BUTTON2
+  bool _btn2_was_pressed = false;        // Entprellungs-Flag Toggle-Knopf
+  #endif
+#endif
 #ifdef PIN_STATUS_LED
   int led_state = 0;
   int next_led_change = 0;
@@ -51,6 +59,9 @@ class UITask : public AbstractUITask {
   UIScreen* splash;
   UIScreen* home;
   UIScreen* msg_preview;
+  UIScreen* outdoor_menu;
+  UIScreen* sos_alert;   // V3: SOS Alarm-Screen (Empfang)
+  UIScreen* sos_send;    // V3: SOS Sende-Screen
   UIScreen* curr;
 
   void userLedHandler();
@@ -89,6 +100,11 @@ public:
   void toggleBuzzer();
   bool getGPSState();
   void toggleGPS();
+
+  void triggerSOS(const char* from, const char* text);  // V3
+  bool isBuzzerPlaying();                               // V3
+  void playSOSAlarm();                                  // V3
+  void stopBuzzer();                                    // V3
 
 
   // from AbstractUITask

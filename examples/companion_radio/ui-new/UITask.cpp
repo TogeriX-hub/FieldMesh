@@ -31,6 +31,20 @@
 
 #include "icons.h"
 
+// Haversine-Formel: Entfernung in Metern zwischen zwei GPS-Koordinaten
+static float calcDistance(double lat1, double lon1, double lat2, double lon2) {
+  if (lat1 == 0.0 && lon1 == 0.0) return -1.0f;  // eigene Position unbekannt
+  if (lat2 == 0.0 && lon2 == 0.0) return -1.0f;  // andere Position unbekannt
+  const float R = 6371000.0f;  // Erdradius in Metern
+  float dLat = (lat2 - lat1) * (M_PI / 180.0f);
+  float dLon = (lon2 - lon1) * (M_PI / 180.0f);
+  float a = sinf(dLat/2) * sinf(dLat/2) +
+            cosf(lat1 * (M_PI / 180.0f)) * cosf(lat2 * (M_PI / 180.0f)) *
+            sinf(dLon/2) * sinf(dLon/2);
+  float c = 2 * atan2f(sqrtf(a), sqrtf(1-a));
+  return R * c;
+}
+
 class SplashScreen : public UIScreen {
   UITask* _task;
   unsigned long dismiss_after;
@@ -52,18 +66,43 @@ public:
   }
 
   int render(DisplayDriver& display) override {
-    // meshcore logo
-    display.setColor(DisplayDriver::BLUE);
-    int logoWidth = 128;
-    display.drawXbm((display.width() - logoWidth) / 2, 3, meshcore_logo, logoWidth, 13);
+    if (display.height() >= 128) {
+      // ── Großes Display (M1/M5, 200px) — Zwei-Gruppen-Layout ──────────
+      // Gruppe oben: Logo + Version + Datum
+      int logoWidth = 128;
+      display.setColor(DisplayDriver::BLUE);
+      display.drawXbm((display.width() - logoWidth) / 2, 4, meshcore_logo, logoWidth, 13);
 
-    // version info
-    display.setColor(DisplayDriver::LIGHT);
-    display.setTextSize(2);
-    display.drawTextCentered(display.width()/2, 22, _version_info);
+      display.setColor(DisplayDriver::LIGHT);
+      display.setTextSize(2);
+      display.drawTextCentered(display.width() / 2, 22, _version_info);
 
-    display.setTextSize(1);
-    display.drawTextCentered(display.width()/2, 42, FIRMWARE_BUILD_DATE);
+      display.setTextSize(1);
+      display.drawTextCentered(display.width() / 2, 42, FIRMWARE_BUILD_DATE);
+
+      // Bewusste Lücke in der Mitte (42..110)
+
+      // Gruppe unten: "FieldMesh" dominant + "v3" direkt darunter
+      display.setTextSize(3);
+      display.setColor(DisplayDriver::YELLOW);
+      display.drawTextCentered(display.width() / 2, display.height() - 42, "FieldMesh");
+
+      display.setTextSize(2);
+      display.setColor(DisplayDriver::GREEN);
+      display.drawTextCentered(display.width() / 2, display.height() - 20, "v3");
+    } else {
+      // ── Kleines Display (Heltec V3/Techo, 64/80px) — kompaktes Layout ─
+      int logoWidth = 128;
+      display.setColor(DisplayDriver::BLUE);
+      display.drawXbm((display.width() - logoWidth) / 2, 3, meshcore_logo, logoWidth, 13);
+
+      display.setColor(DisplayDriver::LIGHT);
+      display.setTextSize(2);
+      display.drawTextCentered(display.width() / 2, 22, _version_info);
+
+      display.setTextSize(1);
+      display.drawTextCentered(display.width() / 2, 42, FIRMWARE_BUILD_DATE);
+    }
 
     return 1000;
   }
@@ -79,16 +118,15 @@ class HomeScreen : public UIScreen {
   enum HomePage {
     FIRST,
     RECENT,
+    TRACKING,
     RADIO,
-    BLUETOOTH,
-    ADVERT,
 #if ENV_INCLUDE_GPS == 1
     GPS,
 #endif
 #if UI_SENSORS_PAGE == 1
     SENSORS,
 #endif
-    SHUTDOWN,
+    SOS,     // V3: SOS-Seite (nach GPS, vor Count)
     Count    // keep as last
   };
 
@@ -251,10 +289,70 @@ public:
         display.setCursor(display.width() - timestamp_width - 1, y);
         display.print(tmp);
       }
-    } else if (_page == HomePage::RADIO) {
-      display.setColor(DisplayDriver::YELLOW);
+      display.setColor(DisplayDriver::GREEN);
+      display.drawTextCentered(display.width() / 2, display.height() - 13, "Advert: " PRESS_LABEL);
+    } else if (_page == HomePage::TRACKING) {
+      the_mesh.getRecentlyHeard(recent, UI_RECENT_LIST_SIZE);
+      display.setColor(DisplayDriver::GREEN);
       display.setTextSize(1);
-      // freq / sf
+      bool own_gps = (sensors.node_lat != 0.0 || sensors.node_lon != 0.0);
+#if ENV_INCLUDE_GPS == 1
+      LocationProvider* loc = sensors.getLocationProvider();
+      own_gps = own_gps && loc != NULL && loc->isValid();
+#endif
+      int y = 20;
+      // max 3 Nodes damit Statuszeile bei y=53 (64-11) nicht überlappt
+      // Alle Einträge durchsuchen, aber max 3 Favoriten anzeigen (y <= 42)
+      for (int i = 0; i < UI_RECENT_LIST_SIZE && y <= 42; i++) {
+        auto a = &recent[i];
+        if (a->name[0] == 0) continue;
+
+        // Nur Favoriten anzeigen (flags LSB = 1 -> Favorit)
+        ContactInfo* ci = the_mesh.lookupContactByPubKey(a->pubkey_prefix, sizeof(a->pubkey_prefix));
+        if (ci == NULL || !(ci->flags & 0x01)) continue;
+
+        // Nur anzeigen wenn mind. ein Advert mit GPS empfangen wurde
+        if (!a->has_gps) continue;
+
+        char time_buf[8];
+        int secs = _rtc->getCurrentTime() - a->gps_timestamp;  // Zeit seit letztem GPS-Advert
+        if (secs < 60)        sprintf(time_buf, "%ds", secs);
+        else if (secs < 3600) sprintf(time_buf, "%dm", secs / 60);
+        else                  sprintf(time_buf, "%dh", secs / 3600);
+
+        char dist_buf[10];
+        if (!own_gps) {
+          strcpy(dist_buf, "---");
+        } else if (ci == NULL || (ci->gps_lat == 0 && ci->gps_lon == 0)) {
+          strcpy(dist_buf, "?");
+        } else {
+          float dist = calcDistance(
+            sensors.node_lat, sensors.node_lon,
+            ci->gps_lat / 1000000.0, ci->gps_lon / 1000000.0
+          );
+          if (dist < 0)         strcpy(dist_buf, "?");
+          else if (dist < 1000) sprintf(dist_buf, "%dm", (int)dist);
+          else                  sprintf(dist_buf, "%.1fkm", dist / 1000.0f);
+        }
+
+        display.setColor(secs < 300 ? DisplayDriver::GREEN : DisplayDriver::YELLOW);
+
+        char right_buf[20];
+        sprintf(right_buf, "%s %s", time_buf, dist_buf);
+        int right_w = display.getTextWidth(right_buf);
+        int max_name_w = display.width() - right_w - 2;
+        char filtered_tname[sizeof(a->name)];
+        display.translateUTF8ToBlocks(filtered_tname, a->name, sizeof(filtered_tname));
+        display.drawTextEllipsized(0, y, max_name_w, filtered_tname);
+        display.setCursor(display.width() - right_w - 1, y);
+        display.print(right_buf);
+        y += 11;  // nur erhöhen wenn Node wirklich angezeigt wurde
+      }
+
+      display.setColor(DisplayDriver::GREEN);
+      display.drawTextCentered(display.width() / 2, display.height() - 13, "Settings: long press");
+
+    } else if (_page == HomePage::RADIO) {
       display.setCursor(0, 20);
       sprintf(tmp, "FQ: %06.3f   SF: %d", _node_prefs->freq, _node_prefs->sf);
       display.print(tmp);
@@ -270,17 +368,6 @@ public:
       display.setCursor(0, 53);
       sprintf(tmp, "Noise floor: %d", radio_driver.getNoiseFloor());
       display.print(tmp);
-    } else if (_page == HomePage::BLUETOOTH) {
-      display.setColor(DisplayDriver::GREEN);
-      display.drawXbm((display.width() - 32) / 2, 18,
-          _task->isSerialEnabled() ? bluetooth_on : bluetooth_off,
-          32, 32);
-      display.setTextSize(1);
-      display.drawTextCentered(display.width() / 2, 64 - 11, "toggle: " PRESS_LABEL);
-    } else if (_page == HomePage::ADVERT) {
-      display.setColor(DisplayDriver::GREEN);
-      display.drawXbm((display.width() - 32) / 2, 18, advert_icon, 32, 32);
-      display.drawTextCentered(display.width() / 2, 64 - 11, "advert: " PRESS_LABEL);
 #if ENV_INCLUDE_GPS == 1
     } else if (_page == HomePage::GPS) {
       LocationProvider* nmea = sensors.getLocationProvider();
@@ -302,20 +389,33 @@ public:
         y = y + 12;
         display.drawTextLeftAlign(0, y, "Can't access GPS");
       } else {
-        strcpy(buf, nmea->isValid()?"fix":"no fix");
+        bool gps_actually_valid = nmea->isEnabled() && nmea->isValid();
+        strcpy(buf, gps_actually_valid ? "fix" : "no fix");
         display.drawTextRightAlign(display.width()-1, y, buf);
         y = y + 12;
         display.drawTextLeftAlign(0, y, "sat");
-        sprintf(buf, "%d", nmea->satellitesCount());
+        if (gps_actually_valid) {
+          sprintf(buf, "%d", nmea->satellitesCount());
+        } else {
+          strcpy(buf, "---");
+        }
         display.drawTextRightAlign(display.width()-1, y, buf);
         y = y + 12;
         display.drawTextLeftAlign(0, y, "pos");
-        sprintf(buf, "%.4f %.4f", 
-          nmea->getLatitude()/1000000., nmea->getLongitude()/1000000.);
+        if (gps_actually_valid) {
+          sprintf(buf, "%.4f %.4f",
+            nmea->getLatitude()/1000000., nmea->getLongitude()/1000000.);
+        } else {
+          strcpy(buf, "---");
+        }
         display.drawTextRightAlign(display.width()-1, y, buf);
         y = y + 12;
         display.drawTextLeftAlign(0, y, "alt");
-        sprintf(buf, "%.2f", nmea->getAltitude()/1000.);
+        if (gps_actually_valid) {
+          sprintf(buf, "%.2f", nmea->getAltitude()/1000.);
+        } else {
+          strcpy(buf, "---");
+        }
         display.drawTextRightAlign(display.width()-1, y, buf);
         y = y + 12;
       }
@@ -392,15 +492,25 @@ public:
       if (sensors_scroll) sensors_scroll_offset = (sensors_scroll_offset+1)%sensors_nb;
       else sensors_scroll_offset = 0;
 #endif
-    } else if (_page == HomePage::SHUTDOWN) {
-      display.setColor(DisplayDriver::GREEN);
-      display.setTextSize(1);
-      if (_shutdown_init) {
-        display.drawTextCentered(display.width() / 2, 34, "hibernating...");
+    } else if (_page == HomePage::SOS) {
+      // V3: SOS-Seite — Icon + Hinweis auf langen Druck
+      if (display.height() >= 128) {
+        // Großes Display: "SOS" + Icon in oberer Hälfte
+        // Icon auf gleicher Höhe wie SOSSendScreen (display.height()/2 - 24)
+        display.setColor(DisplayDriver::RED);
+        display.setTextSize(3);
+        display.drawTextCentered(display.width() / 2, 30, "SOS");
+        display.setTextSize(1);
+        display.setColor(DisplayDriver::LIGHT);
+        display.drawXbm((display.width() - 48) / 2, display.height() / 2 - 24, advert_icon_large, 48, 48);
       } else {
-        display.drawXbm((display.width() - 32) / 2, 18, power_icon, 32, 32);
-        display.drawTextCentered(display.width() / 2, 64 - 11, "hibernate:" PRESS_LABEL);
+        // Kleines Display: Icon kompakt, bisherige Größe beibehalten
+        display.setColor(DisplayDriver::LIGHT);
+        display.drawXbm((display.width() - 32) / 2, 16, advert_icon, 32, 32);
       }
+      display.setColor(DisplayDriver::LIGHT);
+      display.setTextSize(1);
+      display.drawTextCentered(display.width() / 2, display.height() - 13, "SOS: " PRESS_LABEL);
     }
     return 5000;   // next render after 5000 ms
   }
@@ -415,22 +525,20 @@ public:
       if (_page == HomePage::RECENT) {
         _task->showAlert("Recent adverts", 800);
       }
-      return true;
-    }
-    if (c == KEY_ENTER && _page == HomePage::BLUETOOTH) {
-      if (_task->isSerialEnabled()) {  // toggle Bluetooth on/off
-        _task->disableSerial();
-      } else {
-        _task->enableSerial();
+      if (_page == HomePage::TRACKING) {
+        _task->showAlert("Tracking", 800);
       }
       return true;
     }
-    if (c == KEY_ENTER && _page == HomePage::ADVERT) {
-      _task->notify(UIEventType::ack);
-      if (the_mesh.advert()) {
-        _task->showAlert("Advert sent!", 1000);
+    if (c == KEY_ENTER && _page == HomePage::TRACKING) {
+      if (the_mesh.isAutoAdvertEnabled()) {
+        the_mesh.setGPSAdvertEnabled(false);
+        _task->notify(UIEventType::ack);
+        _task->showAlert("GPS-Share: OFF", 1000);
       } else {
-        _task->showAlert("Advert failed..", 1000);
+        the_mesh.setGPSAdvertEnabled(true);
+        _task->notify(UIEventType::ack);
+        _task->showAlert("GPS-Share: ON", 1000);
       }
       return true;
     }
@@ -447,12 +555,12 @@ public:
       return true;
     }
 #endif
-    if (c == KEY_ENTER && _page == HomePage::SHUTDOWN) {
-      _shutdown_init = true;  // need to wait for button to be released
-      return true;
-    }
     return false;
   }
+
+  bool isOnRecentPage()   const { return _page == HomePage::RECENT; }
+  bool isOnTrackingPage() const { return _page == HomePage::TRACKING; }
+  bool isOnSOSPage()      const { return _page == HomePage::SOS; }       // V3
 };
 
 class MsgPreviewScreen : public UIScreen {
@@ -546,6 +654,312 @@ public:
   }
 };
 
+// ── Outdoor Settings Menu ──────────────────────────────────────────────────
+// Geöffnet durch langen Druck auf der Tracking-Seite.
+// Kurzer Druck (KEY_NEXT) = nächster Eintrag, Langer Druck (KEY_ENTER) = Auswahl ausführen
+class OutdoorMenuScreen : public UIScreen {
+  UITask*    _task;
+  NodePrefs* _node_prefs;
+
+  enum MenuItem { TRACKING = 0, OFFGRID, BACK, COUNT };
+  uint8_t _cursor = 0;
+
+  const char* label(MenuItem item) {
+    switch (item) {
+      case TRACKING: return "GPS-Share";
+      case OFFGRID:  return "Off-Grid";
+      case BACK:     return "Back";
+      default:       return "";
+    }
+  }
+
+  // Gibt "[ON ]" / "[OFF]" zurück, oder "" für BACK
+  const char* badge(MenuItem item) {
+    switch (item) {
+      case TRACKING: return the_mesh.isAutoAdvertEnabled() ? "[ON ]" : "[OFF]";
+      case OFFGRID:  return the_mesh.isOffGridActive()     ? "[ON ]" : "[OFF]";
+      default:       return "";
+    }
+  }
+
+public:
+  OutdoorMenuScreen(UITask* task, NodePrefs* node_prefs)
+    : _task(task), _node_prefs(node_prefs), _cursor(0) {}
+
+  int render(DisplayDriver& display) override {
+    display.setTextSize(1);
+
+    // Titelzeile
+    display.setColor(DisplayDriver::LIGHT);
+    display.fillRect(0, 0, display.width(), 11);
+    display.setColor(DisplayDriver::DARK);
+    display.drawTextCentered(display.width() / 2, 1, "Outdoor Settings");
+    display.setColor(DisplayDriver::LIGHT);
+
+    // Menü-Einträge
+    for (uint8_t i = 0; i < (uint8_t)COUNT; i++) {
+      int y = 15 + i * 14;
+      bool selected = (i == _cursor);
+
+      if (selected) {
+        display.fillRect(0, y - 1, display.width(), 12);
+        display.setColor(DisplayDriver::DARK);
+      } else {
+        display.setColor(DisplayDriver::LIGHT);
+      }
+
+      // Pfeil-Cursor
+      display.setCursor(0, y);
+      display.print(selected ? ">" : " ");
+
+      // Label
+      display.setCursor(8, y);
+      display.print(label((MenuItem)i));
+
+      // Badge rechtsbündig
+      const char* b = badge((MenuItem)i);
+      if (b[0]) {
+        int bw = display.getTextWidth(b);
+        display.setCursor(display.width() - bw - 1, y);
+        display.print(b);
+      }
+
+      display.setColor(DisplayDriver::LIGHT);
+    }
+
+    // Fußzeile
+    display.setCursor(0, display.height() - 13);
+    display.print("short=next  long=select");
+
+    return 200;  // alle 200ms neu rendern damit Badges aktuell sind
+  }
+
+  bool handleInput(char c) override {
+    // Kurzer Druck = nächster Eintrag
+    if (c == KEY_NEXT || c == KEY_RIGHT) {
+      _cursor = (_cursor + 1) % COUNT;
+      return true;
+    }
+    if (c == KEY_PREV || c == KEY_LEFT) {
+      _cursor = (_cursor + COUNT - 1) % COUNT;
+      return true;
+    }
+    // Langer Druck = Auswahl ausführen
+    if (c == KEY_ENTER) {
+      switch ((MenuItem)_cursor) {
+        case TRACKING:
+          if (the_mesh.isAutoAdvertEnabled()) {
+            the_mesh.setGPSAdvertEnabled(false);
+            _task->notify(UIEventType::ack);
+            _task->showAlert("GPS-Share: OFF", 1000);
+          } else {
+            the_mesh.setGPSAdvertEnabled(true);
+            _task->notify(UIEventType::ack);
+            _task->showAlert("GPS-Share: ON", 1000);
+          }
+          break;
+        case OFFGRID:
+          the_mesh.toggleOffGrid();
+          _task->notify(UIEventType::ack);
+          _task->showAlert(the_mesh.isOffGridActive() ? "Off-Grid: ON" : "Off-Grid: OFF", 1000);
+          break;
+        case BACK:
+          _task->gotoHomeScreen();
+          break;
+        default:
+          break;
+      }
+      return true;
+    }
+    return false;
+  }
+};
+
+// ── SOS Alert Screen ──────────────────────────────────────────────────────
+// Wird angezeigt wenn eine !SOS Nachricht empfangen wird.
+// Buzzer läuft in Dauerschleife bis langer Druck quittiert.
+class SOSAlertScreen : public UIScreen {
+  UITask*    _task;
+  NodePrefs* _node_prefs;
+  char _from[32];
+  char _text[80];
+  char _node_name[32];  // V3.05: extrahierter Node-Name aus text
+
+public:
+  SOSAlertScreen(UITask* task, NodePrefs* node_prefs)
+    : _task(task), _node_prefs(node_prefs) {
+    _from[0] = 0;
+    _text[0] = 0;
+    _node_name[0] = 0;  // V3.05
+  }
+
+  void setAlert(const char* from, const char* text) {
+    strncpy(_from, from, sizeof(_from) - 1);
+    _from[sizeof(_from) - 1] = 0;
+    strncpy(_text, text, sizeof(_text) - 1);
+    _text[sizeof(_text) - 1] = 0;
+
+    // V3.05: Node-Namen aus text extrahieren — Format: "NodeName: !SOS ..."
+    // Alles vor dem ersten ':' ist der Node-Name
+    _node_name[0] = 0;
+    const char* colon = strchr(text, ':');
+    if (colon && colon > text) {
+      int len = colon - text;
+      if (len > 31) len = 31;
+      strncpy(_node_name, text, len);
+      _node_name[len] = 0;
+      // Leerzeichen am Ende trimmen
+      for (int i = len - 1; i >= 0 && _node_name[i] == ' '; i--)
+        _node_name[i] = 0;
+    } else {
+      // Fallback: channel_name (#sos) wenn kein ':' gefunden
+      strncpy(_node_name, from, sizeof(_node_name) - 1);
+      _node_name[sizeof(_node_name) - 1] = 0;
+    }
+  }
+
+  void poll() override {
+#ifdef PIN_BUZZER
+    if (!_task->isBuzzerPlaying()) {
+      _task->playSOSAlarm();  // Siren neu starten wenn fertig
+    }
+#endif
+  }
+
+  int render(DisplayDriver& display) override {
+    display.setTextSize(1);
+
+    // Titelzeile invertiert
+    display.setColor(DisplayDriver::LIGHT);
+    display.fillRect(0, 0, display.width(), 11);
+    display.setColor(DisplayDriver::DARK);
+    display.drawTextCentered(display.width() / 2, 1, "!! SOS ALARM !!");
+    display.setColor(DisplayDriver::LIGHT);
+
+    if (display.height() >= 128) {
+      // Großes Display: großes Icon (48×48), Node-Name Size 2 (Fallback Size 1 ab 15 Zeichen)
+      display.drawXbm((display.width() - 48) / 2, 16, advert_icon_large, 48, 48);
+
+      display.setTextSize(strlen(_node_name) >= 15 ? 1 : 2);
+      display.setColor(DisplayDriver::YELLOW);
+      display.drawTextCentered(display.width() / 2, 72, _node_name);
+      display.setTextSize(1);
+    } else {
+      // Kleines Display: kompaktes Layout wie bisher
+      display.drawXbm((display.width() - 32) / 2, 13, advert_icon, 32, 32);
+
+      display.setCursor(0, 47);
+      display.setTextSize(1);
+      display.setColor(DisplayDriver::YELLOW);
+      display.print(_node_name);  // V3.05: Node-Name statt Channel-Name
+    }
+
+    // Hinweis ganz unten — auf allen Displays relativ
+    display.setColor(DisplayDriver::LIGHT);
+    display.drawTextCentered(display.width() / 2, display.height() - 13, "long press = OK");
+
+    return 500;
+  }
+
+  bool handleInput(char c) override {
+    if (c == KEY_ENTER) {
+      // Quittieren: Buzzer stopp, zurück zu Home
+      _task->stopBuzzer();
+      _task->gotoHomeScreen();
+      return true;
+    }
+    return false;
+  }
+};
+
+// ── SOS Send Screen ───────────────────────────────────────────────────────
+// Wird durch langen Druck auf der SOS-Seite geöffnet.
+// Zwei Zustände: Idle → Bestätigung → Senden
+class SOSSendScreen : public UIScreen {
+  UITask*    _task;
+  NodePrefs* _node_prefs;
+  bool _confirm;  // false = Idle, true = Bestätigung
+
+public:
+  SOSSendScreen(UITask* task, NodePrefs* node_prefs)
+    : _task(task), _node_prefs(node_prefs), _confirm(false) {}
+
+  void resetState() { _confirm = false; }
+
+  int render(DisplayDriver& display) override {
+    display.setTextSize(1);
+
+    // Titelzeile
+    display.setColor(DisplayDriver::LIGHT);
+    display.fillRect(0, 0, display.width(), 11);
+    display.setColor(DisplayDriver::DARK);
+    display.drawTextCentered(display.width() / 2, 1, "SOS SENDEN");
+    display.setColor(DisplayDriver::LIGHT);
+
+    // Icon: vertikal zentriert im freien Bereich zwischen Titel und Hinweiszeile
+    // Großes Display: 48×48, kleines Display: 32×32
+    bool large_display = display.height() >= 128;
+    int icon_size = large_display ? 48 : 32;
+    int icon_y = display.height() / 2 - icon_size / 2;
+
+    if (!_confirm) {
+      // Zustand 1: Idle
+      if (large_display)
+        display.drawXbm((display.width() - 48) / 2, icon_y, advert_icon_large, 48, 48);
+      else
+        display.drawXbm((display.width() - 32) / 2, icon_y, advert_icon, 32, 32);
+      display.drawTextCentered(display.width() / 2, display.height() - 13, "lang = SENDEN");
+    } else {
+      // Zustand 2: Bestätigung
+      if (large_display)
+        display.drawXbm((display.width() - 48) / 2, icon_y, advert_icon_large, 48, 48);
+      else
+        display.drawXbm((display.width() - 32) / 2, icon_y, advert_icon, 32, 32);
+      display.setTextSize(1);
+      display.drawTextCentered(display.width() / 2, display.height() - 24, "SICHER?");
+      display.drawTextCentered(display.width() / 2, display.height() - 13, "lang=JA  kurz=NEIN");
+    }
+
+    return 500;
+  }
+
+  bool handleInput(char c) override {
+    if (!_confirm) {
+      // Zustand 1: langer Druck → Bestätigung anzeigen
+      if (c == KEY_ENTER) {
+        _confirm = true;
+        return true;
+      }
+      // Kurzer Druck → zurück zu Home
+      if (c == KEY_NEXT || c == KEY_PREV) {
+        _confirm = false;
+        _task->gotoHomeScreen();
+        return true;
+      }
+    } else {
+      // Zustand 2: Bestätigung
+      if (c == KEY_ENTER) {
+        // Langer Druck → SOS senden
+        _confirm = false;
+        if (the_mesh.sendSOS()) {
+          _task->notify(UIEventType::ack);
+          _task->showAlert("SOS sent!", 2000);
+        } else {
+          _task->showAlert("No SOS channel!", 2000);
+        }
+        _task->gotoHomeScreen();
+        return true;
+      }
+      if (c == KEY_NEXT || c == KEY_PREV) {
+        // Kurzer Druck → Abbruch, zurück zu Zustand 1
+        _confirm = false;
+        return true;
+      }
+    }
+    return false;
+  }
+};
+
 void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs) {
   _display = display;
   _sensors = sensors;
@@ -581,6 +995,22 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   buzzer.quiet(_node_prefs->buzzer_quiet);
 #endif
 
+#ifdef DISP_BACKLIGHT
+  // Backlight beim Boot aus. PIN_BUTTON2 als Toggle-Knopf initialisieren.
+  // Der korrekte Pin-Wert kommt aus variant.h des jeweiligen Geraets.
+  #ifdef PIN_BUTTON2
+  pinMode(PIN_BUTTON2, INPUT_PULLUP);
+  #endif
+  pinMode(DISP_BACKLIGHT, OUTPUT);
+  digitalWrite(DISP_BACKLIGHT, LOW);
+  _backlight_on = false;
+  _backlight_off_at = 0;
+  #ifdef PIN_BUTTON2
+  _btn2_was_pressed = false;
+  #endif
+  _backlight_initialized = false;
+#endif
+
 #ifdef PIN_VIBRATION
   vibration.begin();
 #endif
@@ -591,6 +1021,9 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   splash = new SplashScreen(this);
   home = new HomeScreen(this, &rtc_clock, sensors, node_prefs);
   msg_preview = new MsgPreviewScreen(this, &rtc_clock);
+  outdoor_menu = new OutdoorMenuScreen(this, node_prefs);
+  sos_alert = new SOSAlertScreen(this, node_prefs);   // V3
+  sos_send  = new SOSSendScreen(this, node_prefs);    // V3
   setCurrScreen(splash);
 }
 
@@ -638,6 +1071,9 @@ void UITask::msgRead(int msgcount) {
 
 void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount) {
   _msgcount = msgcount;
+
+  // V3: SOS-Alarm nicht durch normale Nachrichten unterbrechen
+  if (curr == sos_alert) return;
 
   ((MsgPreviewScreen *) msg_preview)->addPreview(path_len, from_name, text);
   setCurrScreen(msg_preview);
@@ -778,9 +1214,44 @@ void UITask::loop() {
   }
 #endif
 
+#if defined(DISP_BACKLIGHT) && !defined(BACKLIGHT_BTN)
+  // Beim ersten loop()-Aufruf sicherstellen dass Backlight wirklich aus ist.
+  // (GxEPD turnOn() koennte es beim Boot eingeschaltet haben)
+  // Dieser Block ist nur aktiv wenn BACKLIGHT_BTN nicht definiert ist —
+  // Geraete mit BACKLIGHT_BTN nutzen den Block weiter oben.
+  if (!_backlight_initialized) {
+    digitalWrite(DISP_BACKLIGHT, LOW);
+    _backlight_initialized = true;
+  }
+
+  // PIN_BUTTON2 als Backlight-Toggle — nur wenn der Button am Geraet vorhanden ist.
+  // INPUT_PULLUP: LOW = gedrueckt, HIGH = losgelassen
+  #ifdef PIN_BUTTON2
+  bool btn2_state = (digitalRead(PIN_BUTTON2) == LOW);
+  if (btn2_state && !_btn2_was_pressed) {
+    _backlight_on = !_backlight_on;
+    digitalWrite(DISP_BACKLIGHT, _backlight_on ? HIGH : LOW);
+    _backlight_off_at = _backlight_on ? millis() + (5UL * 60UL * 1000UL) : 0;
+  }
+  _btn2_was_pressed = btn2_state;
+  #endif
+
+  // Auto-Off nach 5 Minuten
+  if (_backlight_on && _backlight_off_at && millis() > _backlight_off_at) {
+    _backlight_on = false;
+    _backlight_off_at = 0;
+    digitalWrite(DISP_BACKLIGHT, LOW);
+  }
+#endif
+
   if (c != 0 && curr) {
     curr->handleInput(c);
     _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer
+#ifdef DISP_BACKLIGHT
+    // V4: Backlight-Timer zurücksetzen bei unterem Knopf-Event
+    if (_backlight_on)
+      _backlight_off_at = millis() + (5UL * 60UL * 1000UL);
+#endif
     _next_refresh = 100;  // trigger refresh
   }
 
@@ -855,6 +1326,11 @@ char UITask::checkDisplayOn(char c) {
       c = 0;
     }
     _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer
+#ifdef DISP_BACKLIGHT
+    // V4: Backlight-Timer zurücksetzen bei jedem Knopfdruck
+    if (_backlight_on)
+      _backlight_off_at = millis() + (5UL * 60UL * 1000UL);
+#endif
     _next_refresh = 0;  // trigger refresh
   }
   return c;
@@ -864,6 +1340,35 @@ char UITask::handleLongPress(char c) {
   if (millis() - ui_started_at < 8000) {   // long press in first 8 seconds since startup -> CLI/rescue
     the_mesh.enterCLIRescue();
     c = 0;   // consume event
+  } else if (curr == outdoor_menu) {
+    // Langer Druck im Menü = Auswahl ausführen
+    curr->handleInput(KEY_ENTER);
+    c = 0;
+  } else if (curr == sos_alert) {
+    // Langer Druck auf SOS-Alarm = quittieren
+    curr->handleInput(KEY_ENTER);
+    c = 0;
+  } else if (curr == sos_send) {
+    // Langer Druck im SOS-Sende-Screen = Zustand wechseln / senden
+    curr->handleInput(KEY_ENTER);
+    c = 0;
+  } else if (curr == home && ((HomeScreen*)home)->isOnTrackingPage()) {
+    // Langer Druck auf Tracking-Seite = Outdoor-Menü öffnen
+    setCurrScreen(outdoor_menu);
+    c = 0;
+  } else if (curr == home && ((HomeScreen*)home)->isOnRecentPage()) {
+    // Langer Druck auf Recent-Seite = Advert senden
+    // advert() entscheidet automatisch: ZeroHop (normal) oder Flood (Off-Grid)
+    the_mesh.advert();
+    notify(UIEventType::ack);
+    showAlert("Advert sent!", 1500);
+    _next_refresh = 0;  // sofortiger Refresh damit Alert gleich erscheint
+    c = 0;
+  } else if (curr == home && ((HomeScreen*)home)->isOnSOSPage()) {
+    // V3: Langer Druck auf SOS-Seite = SOS-Sende-Screen öffnen
+    ((SOSSendScreen*)sos_send)->resetState();
+    setCurrScreen(sos_send);
+    c = 0;
   }
   return c;
 }
@@ -932,4 +1437,48 @@ void UITask::toggleBuzzer() {
     showAlert(buzzer.isQuiet() ? "Buzzer: OFF" : "Buzzer: ON", 800);
     _next_refresh = 0;  // trigger refresh
   #endif
+}
+
+// V3: SOS-Alarm auslösen — wird von MyMesh::onChannelMessageRecv() aufgerufen
+void UITask::triggerSOS(const char* from, const char* text) {
+  ((SOSAlertScreen*)sos_alert)->setAlert(from, text);
+
+  // Display einschalten — immer, auch wenn Handy verbunden
+  if (_display != NULL && !_display->isOn()) {
+    _display->turnOn();
+  }
+  _auto_off = millis() + AUTO_OFF_MILLIS;
+
+  // Buzzer einschalten (überschreibt quiet-Mode — SOS ist Notfall)
+#ifdef PIN_BUZZER
+  buzzer.quiet(false);
+  _node_prefs->buzzer_quiet = 0;
+  // Prefs NICHT speichern — buzzer_quiet bleibt nach Quittierung auf ON
+  // Wer es nicht will stellt es manuell per 3x Klick ab
+  buzzer.play("siren:d=8,o=5,b=100:d,e,d,e,d,e,d,e");
+#endif
+
+  setCurrScreen(sos_alert);
+  _next_refresh = 0;
+}
+
+// V3: Buzzer-Hilfsfunktionen für SOSAlertScreen::poll()
+bool UITask::isBuzzerPlaying() {
+#ifdef PIN_BUZZER
+  return buzzer.isPlaying();
+#else
+  return false;
+#endif
+}
+
+void UITask::playSOSAlarm() {
+#ifdef PIN_BUZZER
+  buzzer.play("siren:d=8,o=5,b=100:d,e,d,e,d,e,d,e");
+#endif
+}
+
+void UITask::stopBuzzer() {
+#ifdef PIN_BUZZER
+  buzzer.shutdown();
+#endif
 }
