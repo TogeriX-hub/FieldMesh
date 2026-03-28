@@ -1,6 +1,6 @@
 # FieldMesh
 
-**A MeshCore firmware fork optimized for outdoor use — festivals, hiking, off-grid events, and situations where you actually need your radio network to work without babysitting it.**
+**A MeshCore firmware fork with features built for outdoor use — things stock MeshCore doesn't do out of the box.**
 
 Built on [MeshCore](https://github.com/ripplebiz/MeshCore) · Tested on: Elecrow ThinkNode M1 · Based on MeshCore v1.14.1
 
