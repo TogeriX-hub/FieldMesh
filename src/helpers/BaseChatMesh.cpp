@@ -94,7 +94,9 @@ void BaseChatMesh::populateContactFromAdvert(ContactInfo& ci, const mesh::Identi
   ci.id = id;
   ci.out_path_len = OUT_PATH_UNKNOWN;
   StrHelper::strncpy(ci.name, parser.getName(), sizeof(ci.name));
-  ci.type = parser.getType();
+  // Bit 4 (ADV_LATLON_MASK=0x10) wird in type mitgespeichert damit
+  // onDiscoveredContact erkennen kann ob GPS in diesem Advert enthalten war
+  ci.type = parser.getType() | (parser.hasLatLon() ? 0x10 : 0x00);
   if (parser.hasLatLon()) {
     ci.gps_lat = parser.getIntLat();
     ci.gps_lon = parser.getIntLon();
@@ -167,7 +169,9 @@ void BaseChatMesh::onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, 
   // update
     putBlobByKey(id.pub_key, PUB_KEY_SIZE, temp_buf, plen);
     StrHelper::strncpy(from->name, parser.getName(), sizeof(from->name));
-    from->type = parser.getType();
+    // Bit 4 (ADV_LATLON_MASK=0x10) wird in type mitgespeichert damit
+    // onDiscoveredContact erkennen kann ob GPS in diesem Advert enthalten war
+    from->type = parser.getType() | (parser.hasLatLon() ? 0x10 : 0x00);
     if (parser.hasLatLon()) {
       from->gps_lat = parser.getIntLat();
       from->gps_lon = parser.getIntLon();
