@@ -89,7 +89,7 @@ public:
 
       display.setTextSize(2);
       display.setColor(DisplayDriver::GREEN);
-      display.drawTextCentered(display.width() / 2, display.height() - 20, "v3");
+      display.drawTextCentered(display.width() / 2, display.height() - 20, "v4");
     } else {
       // ── Kleines Display (Heltec V3/Techo, 64/80px) — kompaktes Layout ─
       int logoWidth = 128;
