@@ -44,4 +44,6 @@ public:
   virtual void notify(UIEventType t = UIEventType::none) = 0;
   virtual void loop() = 0;
   virtual void triggerSOS(const char* from, const char* text) {}  // V3: default leer (kein Display)
+  virtual void refreshDisplay() {}                                 // Advert-Refresh ohne Backlight-Änderung
+  virtual bool isOnRecentOrTrackingPage() const { return false; } // Für Advert-Refresh-Check
 };

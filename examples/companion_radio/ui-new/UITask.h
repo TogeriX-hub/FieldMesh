@@ -40,7 +40,6 @@ class UITask : public AbstractUITask {
   int next_backlight_btn_check = 0;
 #ifdef DISP_BACKLIGHT
   bool _backlight_on = false;             // aktueller Backlight-Zustand
-  unsigned long _backlight_off_at = 0;   // Auto-Off Zeitstempel (0=inaktiv)
   bool _backlight_initialized = false;   // wird erst nach Boot auf true gesetzt
   #ifdef PIN_BUTTON2
   bool _btn2_was_pressed = false;        // Entprellungs-Flag Toggle-Knopf
@@ -114,4 +113,6 @@ public:
   void loop() override;
 
   void shutdown(bool restart = false);
+  void refreshDisplay() override;
+  bool isOnRecentOrTrackingPage() const override;
 };

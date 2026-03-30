@@ -356,6 +356,14 @@ void MyMesh::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
 #endif
   }
 
+#ifdef DISPLAY_CLASS
+  // Advert empfangen: Display kurz aufwecken wenn auf Recent oder Tracking
+  // Kein hasConnection()-Check — auch bei verbundenem Handy refreshen
+  if (_ui && _ui->isOnRecentOrTrackingPage()) {
+    _ui->refreshDisplay();
+  }
+#endif
+
   // add inbound-path to mem cache
   if (path && mesh::Packet::isValidPathLen(path_len)) {  // check path is valid
     // Immer in advert_paths schreiben (fuer RECENT-Seite)

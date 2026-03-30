@@ -1004,7 +1004,6 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   pinMode(DISP_BACKLIGHT, OUTPUT);
   digitalWrite(DISP_BACKLIGHT, LOW);
   _backlight_on = false;
-  _backlight_off_at = 0;
   #ifdef PIN_BUTTON2
   _btn2_was_pressed = false;
   #endif
@@ -1081,6 +1080,7 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
   if (_display != NULL) {
     if (!_display->isOn() && !hasConnection()) {
       _display->turnOn();
+      // Backlight absichtlich nicht anfassen — bleibt im gesetzten Zustand
     }
     if (_display->isOn()) {
     _auto_off = millis() + AUTO_OFF_MILLIS;  // extend the auto-off timer
@@ -1231,27 +1231,15 @@ void UITask::loop() {
   if (btn2_state && !_btn2_was_pressed) {
     _backlight_on = !_backlight_on;
     digitalWrite(DISP_BACKLIGHT, _backlight_on ? HIGH : LOW);
-    _backlight_off_at = _backlight_on ? millis() + (5UL * 60UL * 1000UL) : 0;
   }
   _btn2_was_pressed = btn2_state;
   #endif
 
-  // Auto-Off nach 5 Minuten
-  if (_backlight_on && _backlight_off_at && millis() > _backlight_off_at) {
-    _backlight_on = false;
-    _backlight_off_at = 0;
-    digitalWrite(DISP_BACKLIGHT, LOW);
-  }
 #endif
 
   if (c != 0 && curr) {
     curr->handleInput(c);
     _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer
-#ifdef DISP_BACKLIGHT
-    // V4: Backlight-Timer zurücksetzen bei unterem Knopf-Event
-    if (_backlight_on)
-      _backlight_off_at = millis() + (5UL * 60UL * 1000UL);
-#endif
     _next_refresh = 100;  // trigger refresh
   }
 
@@ -1319,18 +1307,35 @@ void UITask::loop() {
 #endif
 }
 
+void UITask::refreshDisplay() {
+  if (_display != NULL) {
+    if (!_display->isOn()) {
+      _display->turnOn();
+      // Backlight absichtlich nicht anfassen — bleibt im gesetzten Zustand
+    }
+    _auto_off = millis() + AUTO_OFF_MILLIS;
+    _next_refresh = 100;
+  }
+}
+
+bool UITask::isOnRecentOrTrackingPage() const {
+  if (curr == home && home != NULL) {
+    HomeScreen* h = (HomeScreen*)home;
+    return h->isOnRecentPage() || h->isOnTrackingPage();
+  }
+  return false;
+}
+
 char UITask::checkDisplayOn(char c) {
   if (_display != NULL) {
     if (!_display->isOn()) {
-      _display->turnOn();   // turn display on and consume event
+      _display->turnOn();
+#ifdef DISP_BACKLIGHT
+      digitalWrite(DISP_BACKLIGHT, _backlight_on ? HIGH : LOW);
+#endif
       c = 0;
     }
     _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer
-#ifdef DISP_BACKLIGHT
-    // V4: Backlight-Timer zurücksetzen bei jedem Knopfdruck
-    if (_backlight_on)
-      _backlight_off_at = millis() + (5UL * 60UL * 1000UL);
-#endif
     _next_refresh = 0;  // trigger refresh
   }
   return c;
