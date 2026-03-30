@@ -350,7 +350,11 @@ public:
       }
 
       display.setColor(DisplayDriver::GREEN);
+#if UI_HAS_JOYSTICK
+      display.drawTextCentered(display.width() / 2, display.height() - 13, "Settings: press Enter");
+#else
       display.drawTextCentered(display.width() / 2, display.height() - 13, "Settings: long press");
+#endif
 
     } else if (_page == HomePage::RADIO) {
       display.setCursor(0, 20);
@@ -527,18 +531,6 @@ public:
       }
       if (_page == HomePage::TRACKING) {
         _task->showAlert("Tracking", 800);
-      }
-      return true;
-    }
-    if (c == KEY_ENTER && _page == HomePage::TRACKING) {
-      if (the_mesh.isAutoAdvertEnabled()) {
-        the_mesh.setGPSAdvertEnabled(false);
-        _task->notify(UIEventType::ack);
-        _task->showAlert("GPS-Share: OFF", 1000);
-      } else {
-        the_mesh.setGPSAdvertEnabled(true);
-        _task->notify(UIEventType::ack);
-        _task->showAlert("GPS-Share: ON", 1000);
       }
       return true;
     }
@@ -727,15 +719,28 @@ public:
       display.setColor(DisplayDriver::LIGHT);
     }
 
-    // Fußzeile
+    // Fußzeile — nur auf Geräten ohne Joystick (beim Joystick selbsterklärend)
+#if !UI_HAS_JOYSTICK
     display.setCursor(0, display.height() - 13);
     display.print("short=next  long=select");
+#endif
 
     return 200;  // alle 200ms neu rendern damit Badges aktuell sind
   }
 
   bool handleInput(char c) override {
     // Kurzer Druck = nächster Eintrag
+#if UI_HAS_JOYSTICK
+    // Joystick: Up/Down navigiert, Links/Rechts sind Seitenwechsel (nicht hier)
+    if (c == KEY_PREV) {
+      _cursor = (_cursor + COUNT - 1) % COUNT;
+      return true;
+    }
+    if (c == KEY_NEXT) {
+      _cursor = (_cursor + 1) % COUNT;
+      return true;
+    }
+#else
     if (c == KEY_NEXT || c == KEY_RIGHT) {
       _cursor = (_cursor + 1) % COUNT;
       return true;
@@ -744,6 +749,7 @@ public:
       _cursor = (_cursor + COUNT - 1) % COUNT;
       return true;
     }
+#endif
     // Langer Druck = Auswahl ausführen
     if (c == KEY_ENTER) {
       switch ((MenuItem)_cursor) {
@@ -908,7 +914,11 @@ public:
         display.drawXbm((display.width() - 48) / 2, icon_y, advert_icon_large, 48, 48);
       else
         display.drawXbm((display.width() - 32) / 2, icon_y, advert_icon, 32, 32);
+#if UI_HAS_JOYSTICK
       display.drawTextCentered(display.width() / 2, display.height() - 13, "lang = SENDEN");
+#else
+      display.drawTextCentered(display.width() / 2, display.height() - 13, "lang = SENDEN");
+#endif
     } else {
       // Zustand 2: Bestätigung
       if (large_display)
@@ -917,7 +927,11 @@ public:
         display.drawXbm((display.width() - 32) / 2, icon_y, advert_icon, 32, 32);
       display.setTextSize(1);
       display.drawTextCentered(display.width() / 2, display.height() - 24, "SICHER?");
+#if UI_HAS_JOYSTICK
+      display.drawTextCentered(display.width() / 2, display.height() - 13, "lang = SENDEN");
+#else
       display.drawTextCentered(display.width() / 2, display.height() - 13, "lang=JA  kurz=NEIN");
+#endif
     }
 
     return 500;
@@ -925,21 +939,21 @@ public:
 
   bool handleInput(char c) override {
     if (!_confirm) {
-      // Zustand 1: langer Druck → Bestätigung anzeigen
-      if (c == KEY_ENTER) {
+      // KEY_SELECT (lang) → Bestätigung anzeigen
+      if (c == KEY_SELECT) {
         _confirm = true;
         return true;
       }
-      // Kurzer Druck → zurück zu Home
-      if (c == KEY_NEXT || c == KEY_PREV) {
+      // KEY_ENTER (kurz Joystick) oder KEY_NEXT/PREV (Up/Down, M1 kurz) → zurück zu Home
+      if (c == KEY_ENTER || c == KEY_NEXT || c == KEY_PREV) {
         _confirm = false;
         _task->gotoHomeScreen();
         return true;
       }
     } else {
       // Zustand 2: Bestätigung
-      if (c == KEY_ENTER) {
-        // Langer Druck → SOS senden
+      // KEY_SELECT (lang) → SOS senden
+      if (c == KEY_SELECT) {
         _confirm = false;
         if (the_mesh.sendSOS()) {
           _task->notify(UIEventType::ack);
@@ -950,8 +964,8 @@ public:
         _task->gotoHomeScreen();
         return true;
       }
-      if (c == KEY_NEXT || c == KEY_PREV) {
-        // Kurzer Druck → Abbruch, zurück zu Zustand 1
+      // KEY_ENTER (kurz Joystick) oder KEY_NEXT/PREV → Abbruch, zurück zu Zustand 1
+      if (c == KEY_ENTER || c == KEY_NEXT || c == KEY_PREV) {
         _confirm = false;
         return true;
       }
@@ -1155,25 +1169,33 @@ void UITask::loop() {
 #if UI_HAS_JOYSTICK
   int ev = user_btn.check();
   if (ev == BUTTON_EVENT_CLICK) {
-    c = checkDisplayOn(KEY_ENTER);
+    c = checkDisplayOn(KEY_ENTER);       // kurz = Auswahl bestätigen (in Menüs)
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
-    c = handleLongPress(KEY_ENTER);  // REVISIT: could be mapped to different key code
+    c = handleLongPress(KEY_ENTER);      // lang = Kontextaktion (Menü öffnen, SOS etc.)
+  }
+  ev = joystick_up.check();
+  if (ev == BUTTON_EVENT_CLICK) {
+    c = checkDisplayOn(KEY_PREV);        // hoch = vorheriger Eintrag im Menü
+  }
+  ev = joystick_down.check();
+  if (ev == BUTTON_EVENT_CLICK) {
+    c = checkDisplayOn(KEY_NEXT);        // runter = nächster Eintrag im Menü
   }
   ev = joystick_left.check();
   if (ev == BUTTON_EVENT_CLICK) {
-    c = checkDisplayOn(KEY_LEFT);
+    c = checkDisplayOn(KEY_LEFT);        // links = vorherige Seite
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
     c = handleLongPress(KEY_LEFT);
   }
   ev = joystick_right.check();
   if (ev == BUTTON_EVENT_CLICK) {
-    c = checkDisplayOn(KEY_RIGHT);
+    c = checkDisplayOn(KEY_RIGHT);       // rechts = nächste Seite
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
     c = handleLongPress(KEY_RIGHT);
   }
   ev = back_btn.check();
   if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
-    c = handleTripleClick(KEY_SELECT);
+    c = handleTripleClick(KEY_SELECT);   // 3x Menu-Knopf = Buzzer toggle
   }
 #elif defined(PIN_USER_BTN)
   int ev = user_btn.check();
@@ -1354,8 +1376,9 @@ char UITask::handleLongPress(char c) {
     curr->handleInput(KEY_ENTER);
     c = 0;
   } else if (curr == sos_send) {
-    // Langer Druck im SOS-Sende-Screen = Zustand wechseln / senden
-    curr->handleInput(KEY_ENTER);
+    // Langer Druck im SOS-Sende-Screen:
+    // KEY_SELECT = explizit "lang" damit handleInput kurz/lang unterscheiden kann
+    curr->handleInput(KEY_SELECT);
     c = 0;
   } else if (curr == home && ((HomeScreen*)home)->isOnTrackingPage()) {
     // Langer Druck auf Tracking-Seite = Outdoor-Menü öffnen
