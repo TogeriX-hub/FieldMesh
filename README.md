@@ -2,7 +2,7 @@
 
 **A MeshCore firmware fork optimized for outdoor use — festivals, hiking, off-grid events, and situations where you need your radio network to do more than stock MeshCore offers.**
 
-Built on [MeshCore](https://github.com/ripplebiz/MeshCore) · Tested on: Elecrow ThinkNode M1 · Based on MeshCore v1.14.1
+Built on [MeshCore](https://github.com/ripplebiz/MeshCore) · Tested on: Elecrow ThinkNode M1, Seeed Wio Tracker L1 · Based on MeshCore v1.14.1
 
 -----
 
@@ -62,11 +62,11 @@ On the receiving end: incoming SOS messages trigger a buzzer alarm that override
 
 |                  |                                |
 |------------------|--------------------------------|
-|**Tested on**     |Elecrow ThinkNode M1            |
+|**Tested on**     |Elecrow ThinkNode M1 (E-Ink), Seeed Wio Tracker L1 (OLED)|
 |**Other hardware**|Untested — contributions welcome|
 |**Base firmware** |MeshCore v1.14.1                |
 
-FieldMesh has only been developed and tested on the ThinkNode M1. The code is written to be portable (all hardware-specific pins are in `variant.h`, layout uses runtime display size checks), but behavior on other devices is unknown. If you test it on another platform, please open an issue with your findings.
+FieldMesh has been developed and tested on the ThinkNode M1 (E-Ink, single button) and the Wio Tracker L1 (OLED, joystick). The code is written to be portable — all hardware-specific pins are in `variant.h`, layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test it on another platform, please open an issue with your findings.
 
 -----
 
@@ -87,6 +87,8 @@ These files differ from upstream MeshCore. Everything else is untouched.
 |`examples/companion_radio/ui-new/icons.h`   |Adds 48×48px advert icon for large displays                                 |
 |`variants/thinknode_m1/variant.h`           |Corrects `PIN_BUTTON2` to GPIO 39                                           |
 |`variants/thinknode_m1/platformio.ini`      |Sets `AUTO_OFF_MILLIS=0` to prevent E-Ink display timeout                   |
+|`variants/wio-tracker-l1/target.cpp`        |Adds `joystick_up` / `joystick_down` MomentaryButton instances              |
+|`variants/wio-tracker-l1/target.h`          |Adds `extern` declarations for `joystick_up` / `joystick_down`              |
 
 -----
 
@@ -103,7 +105,7 @@ No additional dependencies beyond what MeshCore already requires.
 
 ## Limitations & Known Issues
 
-- Only tested on ThinkNode M1
+- Tested on ThinkNode M1 and Wio Tracker L1 — other hardware untested
 - Off-Grid frequency is hardcoded for EU (869.4625 MHz) — other regions need a different default
 - SOS requires a channel named “sos” to exist in your MeshCore setup
 - Tracking page shows a maximum of 3 contacts (favourited in the companion app)
