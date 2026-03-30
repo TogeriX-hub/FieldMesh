@@ -1335,7 +1335,9 @@ void UITask::refreshDisplay() {
   if (_display != NULL) {
     if (!_display->isOn()) {
       _display->turnOn();
-      // Backlight absichtlich nicht anfassen — bleibt im gesetzten Zustand
+#ifdef DISP_BACKLIGHT
+      digitalWrite(DISP_BACKLIGHT, _backlight_on ? HIGH : LOW);
+#endif
     }
     _auto_off = millis() + AUTO_OFF_MILLIS;
     _next_refresh = 100;
@@ -1476,6 +1478,9 @@ void UITask::triggerSOS(const char* from, const char* text) {
   // Display einschalten — immer, auch wenn Handy verbunden
   if (_display != NULL && !_display->isOn()) {
     _display->turnOn();
+#ifdef DISP_BACKLIGHT
+    digitalWrite(DISP_BACKLIGHT, _backlight_on ? HIGH : LOW);
+#endif
   }
   _auto_off = millis() + AUTO_OFF_MILLIS;
 
