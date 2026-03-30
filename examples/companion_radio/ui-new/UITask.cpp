@@ -1094,7 +1094,9 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
   if (_display != NULL) {
     if (!_display->isOn() && !hasConnection()) {
       _display->turnOn();
-      // Backlight absichtlich nicht anfassen — bleibt im gesetzten Zustand
+#ifdef DISP_BACKLIGHT
+      digitalWrite(DISP_BACKLIGHT, _backlight_on ? HIGH : LOW);
+#endif
     }
     if (_display->isOn()) {
     _auto_off = millis() + AUTO_OFF_MILLIS;  // extend the auto-off timer
