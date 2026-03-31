@@ -144,7 +144,7 @@ Without a GPS fix, no position can be sent or displayed.
 
 
 <details>
-<summary><strong>How often is my position sent?</strong>strong></summary>
+<summary><strong>How often is my position sent?</strong></summary>
 
 
 If GPS sharing is enabled, your position is automatically sent every 5 minutes.
