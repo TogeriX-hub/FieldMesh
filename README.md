@@ -54,7 +54,7 @@ On the receiving end: incoming SOS messages trigger a buzzer alarm that override
 ### UI & Usability
 
 - Splash screen with version info and “FieldMesh” branding
-- Backlight control via upper button with 5-minute auto-off
+- Backlight Fix vor Elecrow M1
 
 -----
 
