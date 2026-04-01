@@ -17,7 +17,7 @@ MeshCore is a great platform, but some things that matter in the field require m
 
 The goal is a node you can put in your backpack, forget about, and trust that it’s doing its job.
 
-More about my motivation is readable in my [blog post](www.tobiasguertler.de/blog/en/fieldmesh).  
+More about my motivation is readable in my [blog post](https://www.tobiasguertler.de/blog/en/fieldmesh).  
 
 -----
 
