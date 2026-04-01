@@ -899,7 +899,7 @@ public:
     display.setColor(DisplayDriver::LIGHT);
     display.fillRect(0, 0, display.width(), 11);
     display.setColor(DisplayDriver::DARK);
-    display.drawTextCentered(display.width() / 2, 1, "SOS SENDEN");
+    display.drawTextCentered(display.width() / 2, 1, "SEND SOS");
     display.setColor(DisplayDriver::LIGHT);
 
     // Icon: vertikal zentriert im freien Bereich zwischen Titel und Hinweiszeile
@@ -915,9 +915,9 @@ public:
       else
         display.drawXbm((display.width() - 32) / 2, icon_y, advert_icon, 32, 32);
 #if UI_HAS_JOYSTICK
-      display.drawTextCentered(display.width() / 2, display.height() - 13, "lang = SENDEN");
+      display.drawTextCentered(display.width() / 2, display.height() - 13, "longpress: SEND");
 #else
-      display.drawTextCentered(display.width() / 2, display.height() - 13, "lang = SENDEN");
+      display.drawTextCentered(display.width() / 2, display.height() - 13, "longpress: SEND");
 #endif
     } else {
       // Zustand 2: Bestätigung
@@ -926,11 +926,11 @@ public:
       else
         display.drawXbm((display.width() - 32) / 2, icon_y, advert_icon, 32, 32);
       display.setTextSize(1);
-      display.drawTextCentered(display.width() / 2, display.height() - 24, "SICHER?");
+      display.drawTextCentered(display.width() / 2, display.height() - 24, "SURE?");
 #if UI_HAS_JOYSTICK
-      display.drawTextCentered(display.width() / 2, display.height() - 13, "lang = SENDEN");
+      display.drawTextCentered(display.width() / 2, display.height() - 13, "longpress: SEND");
 #else
-      display.drawTextCentered(display.width() / 2, display.height() - 13, "lang=JA  kurz=NEIN");
+      display.drawTextCentered(display.width() / 2, display.height() - 13, "longpress:ok  short:cancel");
 #endif
     }
 
