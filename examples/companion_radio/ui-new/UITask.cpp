@@ -930,7 +930,7 @@ public:
 #if UI_HAS_JOYSTICK
       display.drawTextCentered(display.width() / 2, display.height() - 13, "longpress: SEND");
 #else
-      display.drawTextCentered(display.width() / 2, display.height() - 13, "longpress:ok  short:cancel");
+      display.drawTextCentered(display.width() / 2, display.height() - 13, "long:ok  short:cancel");
 #endif
     }
 
