@@ -40,7 +40,9 @@ public:
   void enableSerial() { _serial->enable(); }
   void disableSerial() { _serial->disable(); }
   virtual void msgRead(int msgcount) = 0;
-  virtual void newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount) = 0;
+  // V5: is_favorite = true wenn Absender zum Zeitpunkt des Empfangs ein Favorit war.
+  // Default false fuer Rueckwaertskompatibilitaet falls andere UITask-Implementierungen existieren.
+  virtual void newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount, bool is_favorite = false) = 0;
   virtual void notify(UIEventType t = UIEventType::none) = 0;
   virtual void loop() = 0;
   virtual void triggerSOS(const char* from, const char* text) {}  // V3: default leer (kein Display)

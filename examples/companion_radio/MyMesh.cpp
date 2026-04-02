@@ -476,7 +476,9 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
   // we only want to show text messages on display, not cli data
   bool should_display = txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_SIGNED_PLAIN;
   if (should_display && _ui) {
-    _ui->newMsg(path_len, from.name, text, offline_queue_len);
+    // V5: Favoriten-Info direkt aus ContactInfo (Bit 0 = Favorit)
+    bool is_fav = (from.flags & 0x01) != 0;
+    _ui->newMsg(path_len, from.name, text, offline_queue_len, is_fav);
     if (!_serial->isConnected()) {
       _ui->notify(UIEventType::contactMessage);
     }
@@ -537,6 +539,64 @@ void MyMesh::onSignedMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uin
   queueMessage(from, TXT_TYPE_SIGNED_PLAIN, pkt, sender_timestamp, sender_prefix, 4, text);
 }
 
+// ── V5: Hilfsfunktion — Absendernamen aus Channel-Text extrahieren ─────────
+// MeshCore-Format: "NodeName | Region: text" oder "NodeName: text"
+// Gibt true zurueck wenn Name gefunden, out_name wird befuellt.
+static bool extractSenderName(const char* text, char* out_name, int max_len) {
+  // Bevorzugt: " | " (mit Leerzeichen) — Standard-Format
+  const char* pipe = strstr(text, " | ");
+  if (pipe != NULL) {
+    int len = (int)(pipe - text);
+    if (len > 0 && len < max_len) {
+      strncpy(out_name, text, len);
+      out_name[len] = 0;
+      return true;
+    }
+  }
+  // Fallback: ": " ohne Pipe
+  const char* colon = strstr(text, ": ");
+  if (colon != NULL) {
+    int len = (int)(colon - text);
+    if (len > 0 && len < max_len) {
+      strncpy(out_name, text, len);
+      out_name[len] = 0;
+      return true;
+    }
+  }
+  return false;  // Format nicht erkannt
+}
+
+// V5: Favoriten-Check fuer Channel-Nachrichten.
+// Name wird aus dem Text extrahiert, dann wird die Kontaktliste nach Namen durchsucht.
+// Namens-Kollision (zwei Kontakte gleicher Name): erster Treffer gewinnt — akzeptiertes Risiko.
+bool MyMesh::isSenderFavorite(const char* text) {
+  char sender_name[33];
+  if (!extractSenderName(text, sender_name, sizeof(sender_name))) {
+    return false;  // Name nicht erkennbar
+  }
+  ContactInfo contact;
+  for (uint32_t i = 0; i < MAX_CONTACTS; i++) {
+    if (!getContactByIdx(i, contact)) break;  // Ende der Kontaktliste
+    if (contact.name[0] == 0) continue;       // leerer Slot
+    if (strcmp(contact.name, sender_name) == 0) {
+      return (contact.flags & 0x01) != 0;     // Bit 0 = Favorit
+    }
+  }
+  return false;  // Kontakt nicht gefunden → kein Favorit
+}
+
+// V5: Channel-Nachricht von der UI senden (ohne Smartphone).
+// Analog zu sendSOS() — Wrapper damit UITask frei von getRTCClock()-Logik bleibt.
+bool MyMesh::sendChannelMessage(uint8_t channel_idx, const char* text) {
+  if (text == nullptr || text[0] == 0) return false;
+  ChannelDetails ch;
+  if (!getChannel(channel_idx, ch)) return false;
+  // getCurrentTimeUnique() statt getCurrentTime() — verhindert Replay-Schutz-Probleme
+  // bei schnell aufeinanderfolgenden Nachrichten innerhalb derselben Sekunde
+  uint32_t ts = getRTCClock()->getCurrentTimeUnique();
+  return sendGroupMessage(ts, ch.channel, _prefs.node_name, text, strlen(text));
+}
+
 void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packet *pkt, uint32_t timestamp,
                                   const char *text) {
   int i = 0;
@@ -587,7 +647,7 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
     return;  // newMsg() nicht aufrufen — SOSAlertScreen hat Vorrang
   }
 
-  if (_ui) _ui->newMsg(path_len, channel_name, text, offline_queue_len);
+  if (_ui) _ui->newMsg(path_len, channel_name, text, offline_queue_len, isSenderFavorite(text));
 #endif
 }
 
@@ -902,16 +962,9 @@ void MyMesh::begin(bool has_display) {
 
 #ifdef BLE_PIN_CODE // 123456 by default
   if (_prefs.ble_pin == 0) {
-#ifdef DISPLAY_CLASS
-    if (has_display && BLE_PIN_CODE == 123456) {
-      StdRNG rng;
-      _active_ble_pin = rng.nextInt(100000, 999999); // random pin each session
-    } else {
-      _active_ble_pin = BLE_PIN_CODE; // otherwise static pin
-    }
-#else
-    _active_ble_pin = BLE_PIN_CODE; // otherwise static pin
-#endif
+    // V5: immer statischer PIN — konsistent mit Geraeten ohne Display.
+    // Der Zufalls-PIN auf kleinen Displays bringt Layoutprobleme (Platz fuer MSG-Zaehler benoetigt).
+    _active_ble_pin = BLE_PIN_CODE;
   } else {
     _active_ble_pin = _prefs.ble_pin;
   }

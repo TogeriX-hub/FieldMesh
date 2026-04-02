@@ -169,6 +169,12 @@ protected:
 public:
   void savePrefs() { _store->savePrefs(_prefs, sensors.node_lat, sensors.node_lon); }
 
+  // V5: Channel-Nachricht von der UI senden (Wrapper fuer sendGroupMessage, analog sendSOS)
+  bool sendChannelMessage(uint8_t channel_idx, const char* text);
+
+  // V5: Favoriten-Check fuer Channel-Nachrichten (Absendername im text suchen)
+  bool isSenderFavorite(const char* text);
+
 private:
   void writeOKFrame();
   void writeErrFrame(uint8_t err_code);
