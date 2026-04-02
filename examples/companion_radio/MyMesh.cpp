@@ -473,15 +473,13 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
   }
 
 #ifdef DISPLAY_CLASS
-  // we only want to show text messages on display, not cli data
+  // V5: newMsg() nur wenn App NICHT connected.
+  // Bei connected App liegen Nachrichten auf dem Smartphone — nicht in die Display-History.
   bool should_display = txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_SIGNED_PLAIN;
-  if (should_display && _ui) {
-    // V5: Favoriten-Info direkt aus ContactInfo (Bit 0 = Favorit)
+  if (should_display && _ui && !_serial->isConnected()) {
     bool is_fav = (from.flags & 0x01) != 0;
     _ui->newMsg(path_len, from.name, text, offline_queue_len, is_fav);
-    if (!_serial->isConnected()) {
-      _ui->notify(UIEventType::contactMessage);
-    }
+    _ui->notify(UIEventType::contactMessage);
   }
 #endif
 }
@@ -569,20 +567,23 @@ static bool extractSenderName(const char* text, char* out_name, int max_len) {
 // V5: Favoriten-Check fuer Channel-Nachrichten.
 // Name wird aus dem Text extrahiert, dann wird die Kontaktliste nach Namen durchsucht.
 // Namens-Kollision (zwei Kontakte gleicher Name): erster Treffer gewinnt — akzeptiertes Risiko.
+// WICHTIG: ContactInfo als static deklariert um Stack-Overflow zu vermeiden.
+// Bei MAX_CONTACTS=350 und tiefer Call-Stack (BaseChatMesh::loop) wuerde eine lokale
+// ContactInfo den Stack des nRF52840 ueberlaufen und den BLE-Stack killen.
 bool MyMesh::isSenderFavorite(const char* text) {
   char sender_name[33];
   if (!extractSenderName(text, sender_name, sizeof(sender_name))) {
-    return false;  // Name nicht erkennbar
+    return false;
   }
-  ContactInfo contact;
+  static ContactInfo contact;  // static: BSS-Segment, nicht auf dem Stack
   for (uint32_t i = 0; i < MAX_CONTACTS; i++) {
-    if (!getContactByIdx(i, contact)) break;  // Ende der Kontaktliste
-    if (contact.name[0] == 0) continue;       // leerer Slot
+    if (!getContactByIdx(i, contact)) break;
+    if (contact.name[0] == 0) continue;
     if (strcmp(contact.name, sender_name) == 0) {
-      return (contact.flags & 0x01) != 0;     // Bit 0 = Favorit
+      return (contact.flags & 0x01) != 0;
     }
   }
-  return false;  // Kontakt nicht gefunden → kein Favorit
+  return false;
 }
 
 // V5: Channel-Nachricht von der UI senden (ohne Smartphone).
@@ -647,7 +648,11 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
     return;  // newMsg() nicht aufrufen — SOSAlertScreen hat Vorrang
   }
 
-  if (_ui) _ui->newMsg(path_len, channel_name, text, offline_queue_len, isSenderFavorite(text));
+  // V5: newMsg() nur wenn App NICHT connected.
+  // Bei connected App liegen Nachrichten auf dem Smartphone — nicht in die Display-History.
+  if (_ui && !_serial->isConnected()) {
+    _ui->newMsg(path_len, channel_name, text, offline_queue_len, isSenderFavorite(text));
+  }
 #endif
 }
 

@@ -19,6 +19,10 @@
 
 #define LONG_PRESS_MILLIS   1200
 
+// V5.03: KEY_BACK — physischer Back-Knopf am L1 (back_btn, einfacher Druck).
+// Wert '\x10' kollidiert mit keinem bekannten MeshCore KEY_*-Wert.
+#define KEY_BACK  '\x10'
+
 #ifndef UI_RECENT_LIST_SIZE
   #define UI_RECENT_LIST_SIZE 4
 #endif
@@ -31,7 +35,15 @@
 
 #include "icons.h"
 
-// Haversine-Formel: Entfernung in Metern zwischen zwei GPS-Koordinaten
+// Formatiert vergangene Zeit als relativen String: "5s", "3m", "2h"
+// Identisch mit dem V4-Muster (MsgPreviewScreen, RECENT, TRACKING).
+static void formatRelTime(char* buf, size_t buf_size, uint32_t now, uint32_t then) {
+  int secs = (int)(now - then);
+  if (secs < 0) secs = 0;
+  if (secs < 60)        snprintf(buf, buf_size, "%ds", secs);
+  else if (secs < 3600) snprintf(buf, buf_size, "%dm", secs / 60);
+  else                  snprintf(buf, buf_size, "%dh", secs / 3600);
+}
 static float calcDistance(double lat1, double lon1, double lat2, double lon2) {
   if (lat1 == 0.0 && lon1 == 0.0) return -1.0f;  // eigene Position unbekannt
   if (lat2 == 0.0 && lon2 == 0.0) return -1.0f;  // andere Position unbekannt
@@ -266,12 +278,12 @@ public:
       const char* fav_name = _task->getLatestFavoriteName();
       if (fav_name != nullptr && fav_name[0] != 0) {
         uint32_t fav_time = _task->getLatestFavoriteTime();
-        uint8_t fh = (fav_time / 3600) % 24;
-        uint8_t fm = (fav_time / 60) % 60;
+        char rel_time[8];
+        formatRelTime(rel_time, sizeof(rel_time), _rtc->getCurrentTime(), fav_time);
         char fav_line[48];
         char filtered_fav[33];
         display.translateUTF8ToBlocks(filtered_fav, fav_name, sizeof(filtered_fav));
-        snprintf(fav_line, sizeof(fav_line), "* %s  %02d:%02d", filtered_fav, fh, fm);
+        snprintf(fav_line, sizeof(fav_line), "* %s  %s", filtered_fav, rel_time);
         display.setTextSize(1);
         display.setColor(DisplayDriver::GREEN);
         // Nur anzeigen wenn nicht mit Connected-Zeile kollidiert
@@ -285,9 +297,9 @@ public:
       display.setColor(DisplayDriver::LIGHT);
       display.setTextSize(1);
 #if UI_HAS_JOYSTICK
-      display.print("press: messages");
+      display.print("Messages: press enter");
 #else
-      display.print("long: messages");
+      display.print("Messages: longpress");
 #endif
     } else if (_page == HomePage::RECENT) {
       the_mesh.getRecentlyHeard(recent, UI_RECENT_LIST_SIZE);
@@ -597,140 +609,202 @@ class MsgHistoryScreen : public UIScreen {
 
   struct MsgEntry {
     uint32_t timestamp;
-    char from_name[33];   // Absendername
-    char channel_tag[8];  // "[CH1]", "[DM]" etc.
-    char msg[80];         // Nachrichtentext (80 Zeichen Limit)
-    bool is_favorite;     // war Absender zum Zeitpunkt des Empfangs ein Favorit?
+    char from_name[33];
+    char channel_tag[8];
+    char msg[80];
+    bool is_favorite;
+    bool valid;           // true = Eintrag belegt, false = geloescht/leer
   };
   #define MAX_HISTORY_MSGS 32
-  int num_unread;   // interner Zaehler — synchron mit UITask::_num_unread halten (N6)
-  int num_total;
-  int head;         // Index der neuesten Nachricht
-  int display_idx;  // aktuell angezeigte Nachricht
+  int num_total;            // Anzahl gueltiger Eintraege im RAM = MSG-Zaehler auf HomeScreen
+  int head;                 // zuletzt hinzugefuegter Index
+  int display_idx;          // aktuell angezeigte Nachricht
+  bool _show_favorites_only;
   MsgEntry history[MAX_HISTORY_MSGS];
+
+  // Ersten gueltigen (und sichtbaren) Index von start_idx rueckwaerts suchen
+  int firstValidFrom(int start_idx) const {
+    for (int i = 0; i < MAX_HISTORY_MSGS; i++) {
+      int idx = (start_idx + MAX_HISTORY_MSGS - i) % MAX_HISTORY_MSGS;
+      if (history[idx].valid) {
+        if (!_show_favorites_only || history[idx].is_favorite) return idx;
+      }
+    }
+    return -1; // kein gueltiger Eintrag
+  }
+
+  // Naechsten aelteren gueltigen und sichtbaren Index von current_idx
+  int nextValidFrom(int current_idx) const {
+    for (int i = 1; i < MAX_HISTORY_MSGS; i++) {
+      int idx = (current_idx + MAX_HISTORY_MSGS - i) % MAX_HISTORY_MSGS;
+      if (history[idx].valid) {
+        if (!_show_favorites_only || history[idx].is_favorite) return idx;
+      }
+    }
+    return -1;
+  }
+
+  // Eintrag aus RAM loeschen und HomeScreen-Zaehler aktualisieren
+  void deleteEntry(int idx) {
+    if (!history[idx].valid) return;
+    memset(&history[idx], 0, sizeof(MsgEntry)); // valid=false durch memset
+    if (num_total > 0) num_total--;
+    _task->setUnreadCount(num_total);
+  }
 
 public:
   MsgHistoryScreen(UITask* task, mesh::RTCClock* rtc)
-    : _task(task), _rtc(rtc), num_unread(0), num_total(0), head(MAX_HISTORY_MSGS - 1), display_idx(0) {}
+    : _task(task), _rtc(rtc), num_total(0),
+      head(MAX_HISTORY_MSGS - 1), display_idx(0), _show_favorites_only(false) {
+    memset(history, 0, sizeof(history));
+  }
 
+  // Wird von MsgFilterScreen vor setCurrScreen() aufgerufen
+  void setFilter(bool favorites_only) {
+    _show_favorites_only = favorites_only;
+    int v = firstValidFrom(head);
+    display_idx = (v >= 0) ? v : head;
+  }
+
+  // Neue Nachricht hinzufuegen — nur wenn App NICHT connected (wird von UITask::newMsg gerufen)
   void addMessage(uint8_t path_len, const char* from_name, const char* msg_text, bool is_favorite = false) {
     head = (head + 1) % MAX_HISTORY_MSGS;
-    if (num_total < MAX_HISTORY_MSGS) num_total++;
-    num_unread++;
-    display_idx = head;  // neueste Nachricht anzeigen
+
+    // Falls der neue head-Slot noch belegt war (Ringbuffer voll): Zaehler korrigieren
+    if (history[head].valid) {
+      if (num_total > 0) num_total--;
+    }
 
     auto p = &history[head];
-    p->timestamp = _rtc->getCurrentTime();
+    memset(p, 0, sizeof(MsgEntry));
+    p->valid       = true;
+    p->timestamp   = _rtc->getCurrentTime();
     p->is_favorite = is_favorite;
 
-    // from_name sicher kopieren
     strncpy(p->from_name, from_name ? from_name : "", sizeof(p->from_name) - 1);
-    p->from_name[sizeof(p->from_name) - 1] = 0;
 
-    // Channel-Tag generieren
     if (path_len == 0xFF) {
       strcpy(p->channel_tag, "[DM]");
     } else {
-      // Vereinfacht: ersten 4 Zeichen des from_name als Tag (from_name ist hier channel_name)
-      snprintf(p->channel_tag, sizeof(p->channel_tag), "[CH]");
+      strcpy(p->channel_tag, "[CH]");
     }
 
-    // Nachrichtentext sicher kopieren
     strncpy(p->msg, msg_text ? msg_text : "", sizeof(p->msg) - 1);
-    p->msg[sizeof(p->msg) - 1] = 0;
+
+    num_total++;
+    display_idx = head;
+    _task->setUnreadCount(num_total); // HomeScreen-Zaehler aktualisieren
   }
 
+  // Alle Eintraege loeschen — bei App-Connect-Sync und bei Longpress
+  void clearAll() {
+    memset(history, 0, sizeof(history));
+    num_total  = 0;
+    head       = MAX_HISTORY_MSGS - 1;
+    display_idx = 0;
+    _task->setUnreadCount(0);
+  }
+
+  int getNumTotal() const { return num_total; }
+
   int render(DisplayDriver& display) override {
-    if (num_total == 0) {
-      // Keine Nachrichten
-      display.setTextSize(1);
+    display.setTextSize(1);
+
+    // Sicherstellen dass display_idx gueltig und sichtbar ist
+    if (!history[display_idx].valid ||
+        (_show_favorites_only && !history[display_idx].is_favorite)) {
+      int v = firstValidFrom(head);
+      display_idx = (v >= 0) ? v : head;
+    }
+
+    // Zaehle sichtbare Eintraege
+    int visible = 0;
+    for (int i = 0; i < MAX_HISTORY_MSGS; i++) {
+      if (history[i].valid && (!_show_favorites_only || history[i].is_favorite)) visible++;
+    }
+
+    if (visible == 0) {
       display.setColor(DisplayDriver::LIGHT);
       display.fillRect(0, 0, display.width(), 11);
       display.setColor(DisplayDriver::DARK);
       display.drawTextCentered(display.width() / 2, 1, "Messages");
       display.setColor(DisplayDriver::LIGHT);
-      display.drawTextCentered(display.width() / 2, display.height() / 2 - 4, "No messages");
+      const char* msg = _show_favorites_only ? "No favorites" : "No messages";
+      display.drawTextCentered(display.width() / 2, display.height() / 2 - 4, msg);
 #if !UI_HAS_JOYSTICK
       display.setCursor(0, display.height() - 13);
-      display.print("long=clear");
+      display.print("dbl=back  long=clear");
 #endif
       return 5000;
     }
 
     auto p = &history[display_idx];
-    display.setTextSize(1);
 
-    // Titelzeile: Channel-Tag + Absendername
+    // Titelzeile: Channel-Tag + Name linksbündig, Zeit rechtsbündig (M1)
+    // Auf L1: zentriert (wenig Platz)
     display.setColor(DisplayDriver::LIGHT);
     display.fillRect(0, 0, display.width(), 11);
     display.setColor(DisplayDriver::DARK);
-    char title[48];
+
     char filtered_name[33];
     display.translateUTF8ToBlocks(filtered_name, p->from_name, sizeof(filtered_name));
-    snprintf(title, sizeof(title), "%s %s", p->channel_tag, filtered_name);
-    if (p->is_favorite) {
-      // Stern-Markierung fuer Favoriten — nur wenn Platz (letztes Zeichen kuerzen wenn noetig)
-      int tlen = strlen(title);
-      if (tlen < (int)sizeof(title) - 3) strcat(title, " *");
-    }
-    display.drawTextCentered(display.width() / 2, 1, title);
-    display.setColor(DisplayDriver::LIGHT);
 
-    // Zeitstempel
-    char time_buf[16];
+    // Zeitstempel vorbereiten (wird fuer beide Layouts benoetigt)
+    char time_buf[8];
     uint32_t ts = p->timestamp;
-    uint8_t h_val = (ts / 3600) % 24;
-    uint8_t m_val = (ts / 60) % 60;
-    snprintf(time_buf, sizeof(time_buf), "%02d:%02d", h_val, m_val);
+    formatRelTime(time_buf, sizeof(time_buf), _rtc->getCurrentTime(), ts);
 
     if (display.height() >= 128) {
-      // M1 (200x200 E-Ink): Zeit rechtsbündig in Zeile 1 (y=1), Linie, dann Text
+      // M1: Channel-Tag + Name linksbündig, * direkt dahinter, Zeit rechtsbündig
+      // Zeit zuerst rechts setzen damit klar ist wie viel Platz links bleibt
       int tw = display.getTextWidth(time_buf);
       display.setCursor(display.width() - tw - 2, 1);
-      display.setColor(DisplayDriver::DARK);
       display.print(time_buf);
-      display.setColor(DisplayDriver::LIGHT);
-      display.drawRect(0, 12, display.width(), 1);  // Trennlinie
 
-      // Nachrichtentext — gewrapped
+      // Name linksbündig: "[CH1] NodeName *" oder "[DM] NodeName *"
+      char left_part[48];
+      if (p->is_favorite) {
+        snprintf(left_part, sizeof(left_part), "%s %s *", p->channel_tag, filtered_name);
+      } else {
+        snprintf(left_part, sizeof(left_part), "%s %s", p->channel_tag, filtered_name);
+      }
+      display.setCursor(0, 1);
+      display.print(left_part);
+    } else {
+      // L1: Platz knapp — zentriert wie bisher
+      char title[48];
+      snprintf(title, sizeof(title), "%s %s", p->channel_tag, filtered_name);
+      if (p->is_favorite) {
+        if (strlen(title) < sizeof(title) - 3) strcat(title, " *");
+      }
+      display.drawTextCentered(display.width() / 2, 1, title);
+    }
+    display.setColor(DisplayDriver::LIGHT);
+
+    if (display.height() >= 128) {
+      // M1: Trennlinie + Nachrichtentext + Fusszeile
+      display.setColor(DisplayDriver::LIGHT);
+      display.drawRect(0, 12, display.width(), 1);
+
       char filtered_msg[sizeof(p->msg)];
       display.translateUTF8ToBlocks(filtered_msg, p->msg, sizeof(filtered_msg));
       display.setCursor(0, 15);
       display.printWordWrap(filtered_msg, display.width());
 
-      // Fußzeile
-      char footer[48];
-      if (num_unread > 0) {
-        snprintf(footer, sizeof(footer), "%d unread  short=next  long=clear", num_unread);
-      } else {
-        snprintf(footer, sizeof(footer), "short=next  long=clear");
-      }
       display.setCursor(0, display.height() - 13);
-      display.setColor(DisplayDriver::LIGHT);
-      display.print(footer);
+      display.print("short=next  dbl=back");
     } else {
-      // L1 (128x64 OLED): kompaktes Layout
+      // L1: Zeit in gelb, dann Text
       display.setCursor(0, 13);
       display.setColor(DisplayDriver::YELLOW);
       display.print(time_buf);
 
-      // Nachrichtentext — max 2 Zeilen
       char filtered_msg[sizeof(p->msg)];
       display.translateUTF8ToBlocks(filtered_msg, p->msg, sizeof(filtered_msg));
       display.setCursor(0, 24);
       display.setColor(DisplayDriver::LIGHT);
       display.printWordWrap(filtered_msg, display.width());
-
-      // Fußzeile y=53
-      display.setCursor(0, 53);
-      display.setColor(DisplayDriver::GREEN);
-      if (num_unread > 0) {
-        char footer[24];
-        snprintf(footer, sizeof(footer), "%d left  B=back", num_unread);
-        display.print(footer);
-      } else {
-        display.print("B=back");
-      }
+      // Keine Fusszeile auf L1 — Back-Key ist physisch vorhanden
     }
 
 #if AUTO_OFF_MILLIS == 0
@@ -741,41 +815,40 @@ public:
   }
 
   bool handleInput(char c) override {
-    // Nächste (ältere) Nachricht anzeigen
 #if UI_HAS_JOYSTICK
     if (c == KEY_NEXT) {
 #else
     if (c == KEY_NEXT || c == KEY_RIGHT) {
 #endif
-      if (num_total > 1) {
-        display_idx = (display_idx + MAX_HISTORY_MSGS - 1) % MAX_HISTORY_MSGS;
-        // Wenn eine neue Nachricht sichtbar wird, als gelesen markieren
-        if (num_unread > 0) {
-          num_unread--;
-          _task->decrementUnread();  // N6: UITask-Zaehler synchron halten
-        }
+      // Aktuelle Nachricht loeschen, zur naechsten navigieren
+      int next = nextValidFrom(display_idx);
+      deleteEntry(display_idx);
+      if (next >= 0 && history[next].valid) {
+        display_idx = next;
+      } else {
+        // Keine weitere Nachricht — zurueck zum HomeScreen
+        _task->gotoHomeScreen();
       }
-      // M1: automatisch zurueck wenn alle gelesen
-#if !UI_HAS_JOYSTICK
-      if (num_unread == 0 && num_total > 0) {
-        // Nicht automatisch zurueck — User entscheidet per langem Druck (laut UIGuidelines)
-      }
-#endif
       return true;
     }
-    // Alle loeschen (M1: langer Druck = KEY_ENTER | L1: langer Joystick-Druck = KEY_SELECT)
-    if (c == KEY_ENTER || c == KEY_SELECT) {
-      num_unread = 0;
-      num_total = 0;
-      head = MAX_HISTORY_MSGS - 1;
-      display_idx = 0;
-      _task->resetUnread();  // N6: UITask-Zaehler ebenfalls auf 0
+
+    // Alle loeschen: nur langer Druck (KEY_SELECT via handleLongPress) — M1 und L1 identisch.
+    // KEY_ENTER (kurzer Joystick-Druck am L1) wird bewusst ignoriert.
+    if (c == KEY_SELECT) {
+      clearAll();
       _task->gotoHomeScreen();
       return true;
     }
+
 #if UI_HAS_JOYSTICK
-    // L1: Back-Knopf → zurueck zu MsgFilterScreen
-    if (c == KEY_PREV || c == KEY_LEFT) {
+    // L1: Back-Key → zurueck zu MsgFilterScreen (ohne loeschen)
+    if (c == KEY_BACK) {
+      _task->gotoMsgFilter();
+      return true;
+    }
+#else
+    // M1: Double-Click (KEY_PREV) = zurueck zu MsgFilterScreen (ohne loeschen)
+    if (c == KEY_PREV) {
       _task->gotoMsgFilter();
       return true;
     }
@@ -783,6 +856,7 @@ public:
     return false;
   }
 };
+
 
 // ── Message Filter Screen ──────────────────────────────────────────────────
 // Menü: Filter-Wahl (All / Favorites) + auf L1 auch Send-Einstieg und Back.
@@ -795,7 +869,7 @@ class MsgFilterScreen : public UIScreen {
 #if UI_HAS_JOYSTICK
   enum Row { ROW_SHOW = 0, ROW_SEND, ROW_BACK, ROW_COUNT } _cursor;
 #else
-  enum Row { ROW_ALL = 0, ROW_FAVORITES, ROW_COUNT } _cursor;
+  enum Row { ROW_ALL = 0, ROW_FAVORITES, ROW_BACK, ROW_COUNT } _cursor;
 #endif
 
 public:
@@ -846,10 +920,10 @@ public:
       display.setColor(DisplayDriver::LIGHT);
     }
 #else
-    // M1: 2-Zeilen-Menü (All / Favorites)
-    const char* labels[] = { "[ All ]", "[ Favorites ]" };
+    // M1: 3-Zeilen-Menü (All / Favorites / Back) — analog OutdoorMenuScreen
+    const char* labels[] = { "[ All ]", "[ Favorites ]", "Back" };
     for (uint8_t i = 0; i < ROW_COUNT; i++) {
-      int y = 20 + i * 18;
+      int y = 16 + i * 16;
       bool sel = (i == (uint8_t)_cursor);
       display.setCursor(0, y);
       display.setColor(sel ? DisplayDriver::YELLOW : DisplayDriver::LIGHT);
@@ -882,6 +956,7 @@ public:
     if (c == KEY_ENTER) {
       switch (_cursor) {
         case ROW_SHOW:
+          ((MsgHistoryScreen*)_history)->setFilter(_filter == FAVORITES);
           _task->setCurrScreen(_history);
           break;
         case ROW_SEND:
@@ -894,8 +969,8 @@ public:
       }
       return true;
     }
-    // Back-Knopf
-    if (c == KEY_SELECT) {
+    // Back-Knopf oder KEY_SELECT → zurueck zum HomeScreen
+    if (c == KEY_SELECT || c == KEY_BACK) {
       _task->gotoHomeScreen();
       return true;
     }
@@ -911,7 +986,12 @@ public:
     }
     if (c == KEY_ENTER) {
       // Auswahl ausführen
-      _task->setCurrScreen(_history);
+      if (_cursor == ROW_BACK) {
+        _task->gotoHomeScreen();
+      } else {
+        ((MsgHistoryScreen*)_history)->setFilter(_cursor == ROW_FAVORITES);
+        _task->setCurrScreen(_history);
+      }
       return true;
     }
 #endif
@@ -919,16 +999,131 @@ public:
   }
 };
 
-#if UI_HAS_JOYSTICK
+// ── Favoriten-Popup Screen ─────────────────────────────────────────────────
+// Oeffnet sich automatisch wenn eine Nachricht von einem Favoriten eintrifft.
+// Zeigt immer nur die LETZTE Favoriten-Nachricht (ein Slot, kein Buffer).
+// Wegdruecken loescht nichts — Nachricht bleibt in MsgHistoryScreen erhalten.
+// M1: kurzer Druck = weg (longpress tut nichts)
+// L1: back-Knopf = weg, kurzer Joystick-Druck = weg (longpress tut nichts)
+class FavPreviewScreen : public UIScreen {
+  UITask*         _task;
+  mesh::RTCClock* _rtc;
+
+  struct {
+    uint32_t timestamp;
+    char     from_name[33];
+    char     channel_tag[8];
+    char     msg[80];
+  } _entry;
+  bool _has_entry = false;
+
+public:
+  FavPreviewScreen(UITask* task, mesh::RTCClock* rtc) : _task(task), _rtc(rtc) {}
+
+  // Wird von UITask::newMsg() aufgerufen — ueberschreibt immer den letzten Eintrag.
+  void setMessage(uint8_t path_len, const char* from_name, const char* text) {
+    _entry.timestamp = _rtc->getCurrentTime();
+    strncpy(_entry.from_name, from_name, sizeof(_entry.from_name) - 1);
+    _entry.from_name[sizeof(_entry.from_name) - 1] = 0;
+    if (path_len == 0xFF) {
+      strncpy(_entry.channel_tag, "[DM]", sizeof(_entry.channel_tag));
+    } else {
+      strncpy(_entry.channel_tag, "[CH]", sizeof(_entry.channel_tag));
+    }
+    strncpy(_entry.msg, text, sizeof(_entry.msg) - 1);
+    _entry.msg[sizeof(_entry.msg) - 1] = 0;
+    _has_entry = true;
+  }
+
+  int render(DisplayDriver& display) override {
+    display.setTextSize(1);
+
+    if (!_has_entry) {
+      // Sollte nie passieren — sicherheitshalber
+      _task->gotoHomeScreen();
+      return 100;
+    }
+
+    // Titelzeile: Channel-Tag + Name + * (invertiert wie ueberall)
+    display.setColor(DisplayDriver::LIGHT);
+    display.fillRect(0, 0, display.width(), 11);
+    display.setColor(DisplayDriver::DARK);
+    char filtered_name[33];
+    display.translateUTF8ToBlocks(filtered_name, _entry.from_name, sizeof(filtered_name));
+
+    // Zeitstempel
+    char time_buf[8];
+    uint32_t ts = _entry.timestamp;
+    formatRelTime(time_buf, sizeof(time_buf), _rtc->getCurrentTime(), ts);
+
+    if (display.height() >= 128) {
+      // M1: Zeit rechtsbündig, Name + Channel-Tag + * linksbündig (analog MsgHistoryScreen)
+      int tw = display.getTextWidth(time_buf);
+      display.setCursor(display.width() - tw - 2, 1);
+      display.print(time_buf);
+
+      char left_part[48];
+      snprintf(left_part, sizeof(left_part), "%s %s *", _entry.channel_tag, filtered_name);
+      display.setCursor(0, 1);
+      display.print(left_part);
+    } else {
+      // L1: zentriert
+      char title[48];
+      snprintf(title, sizeof(title), "%s %s *", _entry.channel_tag, filtered_name);
+      display.drawTextCentered(display.width() / 2, 1, title);
+    }
+    display.setColor(DisplayDriver::LIGHT);
+
+    if (display.height() >= 128) {
+      // M1: Trennlinie + Nachrichtentext
+      display.drawRect(0, 12, display.width(), 1);
+      char filtered_msg[sizeof(_entry.msg)];
+      display.translateUTF8ToBlocks(filtered_msg, _entry.msg, sizeof(filtered_msg));
+      display.setCursor(0, 15);
+      display.printWordWrap(filtered_msg, display.width());
+      // Keine Fusszeile — ist ein Popup, Bedienung ist selbsterklaerend
+    } else {
+      // L1: Zeit in gelb, dann Text
+      display.setCursor(0, 13);
+      display.setColor(DisplayDriver::YELLOW);
+      display.print(time_buf);
+
+      char filtered_msg[sizeof(_entry.msg)];
+      display.translateUTF8ToBlocks(filtered_msg, _entry.msg, sizeof(filtered_msg));
+      display.setCursor(0, 24);
+      display.setColor(DisplayDriver::LIGHT);
+      display.printWordWrap(filtered_msg, display.width());
+    }
+
+#if AUTO_OFF_MILLIS == 0
+    return 10000;
+#else
+    return 1000;
+#endif
+  }
+
+  bool handleInput(char c) override {
+    // M1: kurzer Druck (KEY_NEXT) = weg
+    // L1: back-Knopf (KEY_BACK) oder kurzer Joystick-Druck (KEY_ENTER) = weg
+    // longpress tut in diesem Screen bewusst nichts
+    if (c == KEY_NEXT || c == KEY_BACK || c == KEY_ENTER) {
+      _task->gotoHomeScreen();
+      return true;
+    }
+    return false;
+  }
+};
+
 // ── Message Compose Screen (L1 only) ───────────────────────────────────────
 // Tastatur-Screen zum Tippen einer Nachricht. 4-Zeilen-QWERTY-Grid.
-// MUSS vor ChannelSelectScreen stehen, da ChannelSelectScreen per Cast darauf zugreift.
+// Muss VOR ChannelSelectScreen definiert sein (Cast in ChannelSelectScreen::handleInput).
+#if UI_HAS_JOYSTICK
 class MsgComposeScreen : public UIScreen {
   UITask*   _task;
-  UIScreen* _channel_select;  // Rueckreferenz fuer Back-Navigation
+  UIScreen* _channel_select;  // public zugänglich fuer ChannelSelectScreen::setCompose() (nicht noetig da im Konstruktor gesetzt)
   uint8_t   _channel_idx;
 
-  char    _text[81];
+  char    _text[21];   // max 20 Zeichen + Nullterminator
   uint8_t _text_len;
   uint8_t _row;
   uint8_t _col;
@@ -997,7 +1192,7 @@ public:
 
     // Zeichenzaehler rechts oben (ueberlagert Titelzeile nicht)
     char cnt[8];
-    snprintf(cnt, sizeof(cnt), "%d/80", _text_len);
+    snprintf(cnt, sizeof(cnt), "%d/20", _text_len);
     int cw = display.getTextWidth(cnt);
     display.setCursor(display.width() - cw - 1, 1);
     display.setColor(DisplayDriver::DARK);  // im invertierten Titelbereich
@@ -1059,21 +1254,27 @@ public:
       return true;
     }
     if (c == KEY_ENTER) {
+      // Zeichen einfuegen
       char ch_char = ROWS[_row][_col];
       if (ch_char == '_') {
-        if (_text_len < 80) { _text[_text_len++] = ' '; _text[_text_len] = 0; }
+        if (_text_len < 20) { _text[_text_len++] = ' '; _text[_text_len] = 0; }
       } else if (ch_char == '<') {
         if (_text_len > 0) { _text[--_text_len] = 0; }
       } else if (ch_char == '~') {
         _doSend();
       } else {
-        if (_text_len < 80) { _text[_text_len++] = ch_char; _text[_text_len] = 0; }
+        if (_text_len < 20) { _text[_text_len++] = ch_char; _text[_text_len] = 0; }
       }
       return true;
     }
     if (c == KEY_SELECT) {
       // Langer Joystick-Druck = Senden
       _doSend();
+      return true;
+    }
+    // Back-Key = Abbruch, zurueck zu ChannelSelectScreen
+    if (c == KEY_BACK) {
+      _task->gotoChannelSelect();
       return true;
     }
     return false;
@@ -1091,7 +1292,7 @@ const uint8_t MsgComposeScreen::ROW_LENS[4] = { 11, 10, 10, 10 };
 
 // ── Channel Select Screen (L1 only) ────────────────────────────────────────
 // Zeigt verfuegbare Channels, User waehlt einen aus bevor Nachricht getippt wird.
-// MUSS nach MsgComposeScreen stehen (Cast auf MsgComposeScreen in handleInput).
+// MsgComposeScreen muss bereits definiert sein (Cast in handleInput).
 class ChannelSelectScreen : public UIScreen {
   UITask*   _task;
   UIScreen* _compose;
@@ -1173,7 +1374,7 @@ public:
       }
       return true;
     }
-    if (c == KEY_SELECT || c == KEY_LEFT) {
+    if (c == KEY_SELECT || c == KEY_BACK || c == KEY_LEFT) {
       _task->gotoMsgFilter();
       return true;
     }
@@ -1319,6 +1520,11 @@ public:
       }
       return true;
     }
+    // Back-Key immer zurueck zum HomeScreen
+    if (c == KEY_BACK) {
+      _task->gotoHomeScreen();
+      return true;
+    }
     return false;
   }
 };
@@ -1410,7 +1616,7 @@ public:
   }
 
   bool handleInput(char c) override {
-    if (c == KEY_ENTER) {
+    if (c == KEY_ENTER || c == KEY_BACK) {
       // Quittieren: Buzzer stopp, zurück zu Home
       _task->stopBuzzer();
       _task->gotoHomeScreen();
@@ -1480,21 +1686,23 @@ public:
   }
 
   bool handleInput(char c) override {
+    // Back-Key: immer zurueck zum HomeScreen (ohne Senden)
+    if (c == KEY_BACK) {
+      _confirm = false;
+      _task->gotoHomeScreen();
+      return true;
+    }
     if (!_confirm) {
-      // KEY_SELECT (lang) → Bestätigung anzeigen
       if (c == KEY_SELECT) {
         _confirm = true;
         return true;
       }
-      // KEY_ENTER (kurz Joystick) oder KEY_NEXT/PREV (Up/Down, M1 kurz) → zurück zu Home
       if (c == KEY_ENTER || c == KEY_NEXT || c == KEY_PREV) {
         _confirm = false;
         _task->gotoHomeScreen();
         return true;
       }
     } else {
-      // Zustand 2: Bestätigung
-      // KEY_SELECT (lang) → SOS senden
       if (c == KEY_SELECT) {
         _confirm = false;
         if (the_mesh.sendSOS()) {
@@ -1506,7 +1714,6 @@ public:
         _task->gotoHomeScreen();
         return true;
       }
-      // KEY_ENTER (kurz Joystick) oder KEY_NEXT/PREV → Abbruch, zurück zu Zustand 1
       if (c == KEY_ENTER || c == KEY_NEXT || c == KEY_PREV) {
         _confirm = false;
         return true;
@@ -1577,6 +1784,7 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   home = new HomeScreen(this, &rtc_clock, sensors, node_prefs);
   msg_history = new MsgHistoryScreen(this, &rtc_clock);
   msg_filter  = new MsgFilterScreen(this, msg_history);
+  fav_preview = new FavPreviewScreen(this, &rtc_clock);
   outdoor_menu = new OutdoorMenuScreen(this, node_prefs);
   sos_alert = new SOSAlertScreen(this, node_prefs);   // V3
   sos_send  = new SOSSendScreen(this, node_prefs);    // V3
@@ -1628,7 +1836,9 @@ switch(t){
 void UITask::msgRead(int msgcount) {
   _msgcount = msgcount;
   if (msgcount == 0) {
-    _num_unread = 0;   // V5: UI-Zaehler synchronisieren (E1)
+    // App hat die Sync-Queue vollstaendig geleert — History im RAM ebenfalls loeschen.
+    // Nachrichten die per App gelesen wurden sollen nicht auf dem Display verbleiben.
+    ((MsgHistoryScreen*) msg_history)->clearAll();  // setzt auch _num_unread via setUnreadCount(0)
     gotoHomeScreen();
   }
 }
@@ -1639,23 +1849,36 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
   // V3: SOS-Alarm nicht durch normale Nachrichten unterbrechen
   if (curr == sos_alert) return;
 
-  // V5: kein automatischer Screen-Wechsel mehr — Nachricht in History speichern
-  _num_unread++;
+  // V5: Nachricht in History speichern.
+  // addMessage() ruft setUnreadCount(num_total) auf — _num_unread wird dort gesetzt.
+  // newMsg() wird von MyMesh nur aufgerufen wenn App NICHT connected (seit V5.03).
   ((MsgHistoryScreen*) msg_history)->addMessage(path_len, from_name, text, is_favorite);
 
-  // V5: Favoriten-Cache fuer HomeScreen FIRST-Page aktualisieren
+  // Favoriten-Cache fuer HomeScreen FIRST-Page aktualisieren
   if (is_favorite) {
     strncpy(_latest_fav_name, from_name, sizeof(_latest_fav_name) - 1);
     _latest_fav_name[sizeof(_latest_fav_name) - 1] = 0;
     _latest_fav_time = rtc_clock.getCurrentTime();
   }
 
-  // Wenn History-Screen gerade aktiv: kurzen Alert anzeigen (E4: immer ueberschreiben)
-  if (curr == msg_history) {
+  // V5.05: Favoriten-Popup — bei Favoriten-Nachricht immer oeffnen.
+  // Auch bei verbundenem Handy (Benutzer schaut vielleicht nicht aufs Handy).
+  // FavPreviewScreen ueberschreibt immer den letzten Eintrag (kein Buffer).
+  // Wegdruecken loescht nichts — Nachricht bleibt in History erhalten.
+  // Ausnahme: wenn History oder FilterScreen schon aktiv → nur Alert, kein Popup-Wechsel.
+  if (is_favorite) {
+    ((FavPreviewScreen*) fav_preview)->setMessage(path_len, from_name, text);
+    if (curr != msg_history && curr != msg_filter) {
+      setCurrScreen(fav_preview);
+    } else {
+      showAlert("+1 fav", 1500);
+    }
+  } else if (curr == msg_history) {
+    // Nicht-Favorit, aber History-Screen offen: kurzen Alert anzeigen
     showAlert("+1 new", 1500);
   }
 
-  // Display-Refresh-Logik: identisch mit V4 — alle vier Invarianten erhalten (Abschnitt 17)
+  // Display-Refresh-Logik: identisch mit V4
   if (_display != NULL) {
     if (!_display->isOn() && !hasConnection()) {
       _display->turnOn();
@@ -1664,8 +1887,8 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
 #endif
     }
     if (_display->isOn()) {
-      _auto_off = millis() + AUTO_OFF_MILLIS;  // Auto-Off-Timer verlaengern
-      _next_refresh = 100;  // Refresh triggern — E5: NICHT auf 0 (kein E-Ink-Flackern)
+      _auto_off = millis() + AUTO_OFF_MILLIS;
+      _next_refresh = 100;
     }
   }
 }
@@ -1761,8 +1984,10 @@ void UITask::loop() {
     c = handleLongPress(KEY_RIGHT);
   }
   ev = back_btn.check();
-  if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
-    c = handleTripleClick(KEY_SELECT);   // 3x Menu-Knopf = Buzzer toggle
+  if (ev == BUTTON_EVENT_CLICK) {
+    c = checkDisplayOn(KEY_BACK);       // einfacher Druck = Zurueck-Navigation
+  } else if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
+    c = handleTripleClick(KEY_SELECT);  // 3x = Buzzer toggle (unveraendert)
   }
 #elif defined(PIN_USER_BTN)
   int ev = user_btn.check();
@@ -1955,7 +2180,11 @@ char UITask::handleLongPress(char c) {
     c = 0;
   } else if (curr == msg_history) {
     // V5: Langer Druck in History = alle Nachrichten loeschen
-    curr->handleInput(KEY_ENTER);
+    // KEY_SELECT = explizit "lang" — kurzer Druck (KEY_ENTER) tut in History nichts
+    curr->handleInput(KEY_SELECT);
+    c = 0;
+  } else if (curr == fav_preview) {
+    // V5.05: Langer Druck im Favoriten-Popup tut bewusst nichts
     c = 0;
   } else if (curr == sos_alert) {
     // Langer Druck auf SOS-Alarm = quittieren

@@ -64,6 +64,7 @@ class UITask : public AbstractUITask {
   UIScreen* home;
   UIScreen* msg_history;    // V5: ersetzt msg_preview
   UIScreen* msg_filter;     // V5: Filter/Navigation-Screen
+  UIScreen* fav_preview;    // V5.05: Favoriten-Popup (letztes Msg von Favorit)
   UIScreen* outdoor_menu;
   UIScreen* sos_alert;      // V3: SOS Alarm-Screen (Empfang)
   UIScreen* sos_send;       // V3: SOS Sende-Screen
@@ -115,9 +116,10 @@ public:
   bool hasDisplay() const { return _display != NULL; }
   bool isButtonPressed() const;
 
-  // V5: Synchronisation des _num_unread-Zaehlers durch MsgHistoryScreen (N6)
-  void decrementUnread() { if (_num_unread > 0) _num_unread--; }
-  void resetUnread()     { _num_unread = 0; }
+  // V5: Synchronisation des _num_unread-Zaehlers durch MsgHistoryScreen
+  void decrementUnread()        { if (_num_unread > 0) _num_unread--; }
+  void resetUnread()            { _num_unread = 0; }
+  void setUnreadCount(int n)    { _num_unread = (n >= 0) ? n : 0; }  // V5.03: direkt setzen
 
   bool isBuzzerQuiet() {
 #ifdef PIN_BUZZER
