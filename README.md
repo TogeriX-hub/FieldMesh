@@ -8,16 +8,18 @@ Built on [MeshCore](https://github.com/ripplebiz/MeshCore) · Tested on: Elecrow
 
 ## Why FieldMesh?
 
-MeshCore is a great platform, but some things that matter in the field require manual workarounds or aren’t there at all. FieldMesh adds:
+MeshCore is a great platform, but some things that matter in the field require manual workarounds or aren't there at all. FieldMesh adds:
 
 - **Automatic GPS advertising** — your node announces itself every 5 minutes to nodes in direct range, zero-hop only — no extra network load
-- **A dedicated tracking page** — see your contacts’ GPS positions and distances at a glance
-- **A real Off-Grid mode** — builds on MeshCore’s Client Repeat feature, but with sensible frequency defaults (the upstream values were illegal or unusable in most regions) and a one-press toggle instead of manual parameter entry
-- **An SOS system** — send and receive emergency alerts with buzzer alarm, even if your phone isn’t connected
+- **A dedicated tracking page** — see your contacts' GPS positions and distances at a glance
+- **A real Off-Grid mode** — builds on MeshCore's Client Repeat feature, but with sensible frequency defaults (the upstream values were illegal or unusable in most regions) and a one-press toggle instead of manual parameter entry
+- **An SOS system** — send and receive emergency alerts with buzzer alarm, even if your phone isn't connected
+- **Message history** — browse received messages directly on the device, no phone required
+- **Text input & send** — compose and send channel messages via joystick on supported devices (Wio Tracker L1)
 
-The goal is a node you can put in your backpack, forget about, and trust that it’s doing its job.
+The goal is a node you can put in your backpack, forget about, and trust that it's doing its job.
 
-More about my motivation is readable in my [blog post](https://www.tobiasguertler.de/blog/en/fieldmesh).  
+More about my motivation is readable in my [blog post](https://www.tobiasguertler.de/blog/en/fieldmesh).
 
 -----
 
@@ -27,7 +29,7 @@ More about my motivation is readable in my [blog post](https://www.tobiasguertle
 
 FieldMesh separates two things that stock MeshCore conflates: *when did I last hear from this node* and *when did this node last have a GPS fix*. The RECENT page shows all recently heard nodes. The TRACKING page shows only nodes that have sent a GPS position — with distance calculated via Haversine formula — color-coded green (< 5 min) or yellow (older). Only contacts marked as favourites in the companion app appear on the Tracking page (max. 3).
 
-Your own node advertises its position automatically every 5 minutes when GPS sharing is enabled — **zero-hop in normal mode**, so it only reaches nodes in direct range without adding load to the wider network. In Off-Grid mode, adverts are sent as flood packets instead, which is the right behaviour when you’re actively trying to extend reach across a local group. Sending works correctly regardless of GPS hardware state (fixes a bug where `isValid()` returned stale data after GPS was powered off).
+Your own node advertises its position automatically every 5 minutes when GPS sharing is enabled — **zero-hop in normal mode**, so it only reaches nodes in direct range without adding load to the wider network. In Off-Grid mode, adverts are sent as flood packets instead, which is the right behaviour when you're actively trying to extend reach across a local group. Sending works correctly regardless of GPS hardware state (fixes a bug where `isValid()` returned stale data after GPS was powered off).
 
 ### Off-Grid Mode
 
@@ -35,9 +37,9 @@ MeshCore has a feature called **Client Repeat** where a node actively relays pac
 
 FieldMesh corrects the frequency ranges to legal values and adds a **one-press Off-Grid toggle** accessible from the Tracking page menu. It switches to a dedicated off-grid frequency — **869.4625 MHz / BW125 / SF11 / CR5** (EU Sub-Band g1, 10% duty cycle, no LBT required) — and enables Client Repeat in one step, saving your normal parameters automatically so you can switch back without re-entering anything.
 
-**Off-Grid uses a completely separate frequency from your normal MeshCore network.** For example, the EU/UK Narrow preset runs on 869.618 MHz / BW62.5. Off-Grid runs on 869.4625 MHz / BW125. The two signals don’t overlap — there is a ~62 kHz gap between them. You can run Off-Grid mode at a festival or in the field without interfering with the wider MeshCore network around you.
+**Off-Grid uses a completely separate frequency from your normal MeshCore network.** For example, the EU/UK Narrow preset runs on 869.618 MHz / BW62.5. Off-Grid runs on 869.4625 MHz / BW125. The two signals don't overlap — there is a ~62 kHz gap between them. You can run Off-Grid mode at a festival or in the field without interfering with the wider MeshCore network around you.
 
-Switching modes triggers an immediate advert so nearby nodes know you’ve changed frequency.
+Switching modes triggers an immediate advert so nearby nodes know you've changed frequency.
 
 Frequency ranges are set correctly for legal operation:
 
@@ -49,14 +51,36 @@ Frequency ranges are set correctly for legal operation:
 
 ### SOS System
 
-Long-press the button on the SOS page to open a two-step confirmation screen (accidental trigger protection). FieldMesh looks for a channel whose name contains “sos” (case-insensitive) and sends `!SOS lat,lon` with your current GPS coordinates, or `!SOS no GPS` if no fix is available.
+Long-press the button on the SOS page to open a two-step confirmation screen (accidental trigger protection). FieldMesh looks for a channel whose name contains "sos" (case-insensitive) and sends `!SOS lat,lon` with your current GPS coordinates, or `!SOS no GPS` if no fix is available.
 
-On the receiving end: incoming SOS messages trigger a buzzer alarm that overrides quiet mode and loops until manually acknowledged. The alert screen shows the sending node’s name. Normal messages are suppressed while an SOS alert is active.
+On the receiving end: incoming SOS messages trigger a buzzer alarm that overrides quiet mode and loops until manually acknowledged. The alert screen shows the sending node's name. Normal messages are suppressed while an SOS alert is active.
+
+### Message History & Text Input (V5)
+
+V5 adds standalone messaging — no phone required.
+
+**Message History (all devices)**
+
+Received messages are stored in a RAM ring buffer (up to 32 entries) and browsable directly on the device. The home screen shows an unread counter and the name and timestamp of the most recent message from a favourite contact. Long-pressing on the home screen opens a filter menu where you can choose to view all messages or messages from favourites only.
+
+The history view shows one message at a time — newest first — with sender name, channel tag (`[CH1]`, `[DM]`, etc.), timestamp, and message text. Short press advances to the next message; long press clears all remaining messages at once. When you've stepped through all unread messages, the display returns to the home screen automatically.
+
+The unread counter in the UI is independent from MeshCore's internal sync queue — browsing or clearing messages on the device never affects smartphone sync.
+
+**Text Input & Send (Wio Tracker L1 only)**
+
+On the Wio Tracker L1 (joystick input), you can compose and send messages directly from the device. From the message filter menu, select "Send Message" to start the flow:
+
+1. **Channel selection** — choose from your configured channels using the joystick
+2. **Text composition** — select characters one by one using left/right on the joystick, confirm each with a short press; long press sends the message
+3. After sending, a brief "Sent!" confirmation is shown before returning to the message history
+
+Message length is limited to 20 characters. This feature is not available on the ThinkNode M1 (single-button input only).
 
 ### UI & Usability
 
-- Splash screen with version info and “FieldMesh” branding
-- Backlight Fix vor Elecrow M1
+- Splash screen with version info and "FieldMesh" branding
+- Backlight fix for Elecrow M1
 
 -----
 
@@ -79,13 +103,13 @@ These files differ from upstream MeshCore. Everything else is untouched.
 |File                                        |What changed                                                                |
 |--------------------------------------------|----------------------------------------------------------------------------|
 |`src/helpers/BaseChatMesh.cpp`              |Stores GPS flag (Bit 4) in `contact.type`                                   |
-|`examples/companion_radio/AbstractUITask.h` |Adds `triggerSOS()` virtual stub for compatibility                          |
-|`examples/companion_radio/MyMesh.h`         |Auto-advert timer, AdvertPath struct, Off-Grid toggle declarations          |
-|`examples/companion_radio/MyMesh.cpp`       |Core logic: auto-advert, Off-Grid mode, SOS send/receive, frequency ranges  |
+|`examples/companion_radio/AbstractUITask.h` |Adds `triggerSOS()` virtual stub; adds `newMsg()` signature with `is_favorite` param (V5)|
+|`examples/companion_radio/MyMesh.h`         |Auto-advert timer, AdvertPath struct, Off-Grid toggle declarations; `sendChannelMessage()` wrapper (V5)|
+|`examples/companion_radio/MyMesh.cpp`       |Core logic: auto-advert, Off-Grid mode, SOS send/receive, frequency ranges; channel message send (V5)|
 |`examples/companion_radio/NodePrefs.h`      |Four new fields for saving normal radio parameters                          |
 |`examples/companion_radio/DataStore.cpp`    |Saves/loads new fields; masks Bit 4 from contact persistence                |
-|`examples/companion_radio/ui-new/UITask.h`  |Outdoor menu, SOS screens, buzzer and backlight members                     |
-|`examples/companion_radio/ui-new/UITask.cpp`|All UI: tracking page, Haversine, outdoor menu, SOS screens, backlight logic|
+|`examples/companion_radio/ui-new/UITask.h`  |Outdoor menu, SOS screens, buzzer and backlight members; message history and compose screens (V5)|
+|`examples/companion_radio/ui-new/UITask.cpp`|All UI: tracking page, Haversine, outdoor menu, SOS screens, backlight logic; message history, filter, compose, channel select (V5)|
 |`examples/companion_radio/ui-new/icons.h`   |Adds 48×48px advert icon for large displays                                 |
 |`variants/thinknode_m1/variant.h`           |Corrects `PIN_BUTTON2` to GPIO 39                                           |
 |`variants/thinknode_m1/platformio.ini`      |Sets `AUTO_OFF_MILLIS=0` to prevent E-Ink display timeout                   |
@@ -109,8 +133,11 @@ No additional dependencies beyond what MeshCore already requires.
 
 - Tested on ThinkNode M1 and Wio Tracker L1 — other hardware untested
 - Off-Grid frequency is hardcoded for EU (869.4625 MHz) — other regions need a different default
-- SOS requires a channel named “sos” to exist in your MeshCore setup
+- SOS requires a channel named "sos" to exist in your MeshCore setup
 - Tracking page shows a maximum of 3 contacts (favourited in the companion app)
+- Message history is RAM-only — stored messages are lost on reboot (intentional)
+- Text input and send is available on Wio Tracker L1 only — the ThinkNode M1 single button does not support text composition
+- Message send supports channels only — no direct message (DM) sending via device UI
 
 -----
 
@@ -118,7 +145,6 @@ No additional dependencies beyond what MeshCore already requires.
 
 <details>
 <summary><strong>Why do I not see some nodes in the TRACKING view?</strong></summary>
-
 
 Only nodes that have recently sent a GPS position are shown in TRACKING.
 Additionally, the node must be marked as a favorite in the MeshCore app.
@@ -132,7 +158,6 @@ If a node appears in RECENT but not in TRACKING, it most likely:
 
 <details>
 <summary><strong>Why is my own position not shown?</strong></summary>
-
 
 Your position is only available if your device has a valid GPS fix.
 
@@ -148,7 +173,6 @@ Without a GPS fix, no position can be sent or displayed.
 <details>
 <summary><strong>How often is my position sent?</strong></summary>
 
-
 If GPS sharing is enabled, your position is automatically sent every 5 minutes.
 In normal mode, this is done with hop limit = 0 (local only).
 
@@ -157,7 +181,6 @@ In normal mode, this is done with hop limit = 0 (local only).
 
 <details>
 <summary><strong>Why is the distance to other nodes inaccurate?</strong></summary>
-
 
 The distance is only a rough estimate.
 It is calculated once when a GPS advert is received and is not continuously updated to save energy.
@@ -170,7 +193,6 @@ Additionally, GPS accuracy itself can vary depending on the environment.
 <details>
 <summary><strong>Why are only a few nodes shown in TRACKING?</strong></summary>
 
-  
 TRACKING is limited to a maximum of 3 favorite nodes.
 This is intentional to keep the display clean and usable in the field.
 
@@ -182,7 +204,6 @@ New incoming adverts may replace older entries.
 <details>
 <summary><strong>What happens if a node has no GPS?</strong></summary>
 
-
 Nodes can still send adverts without GPS.
 This allows you to see that a node is nearby even if no position is available.
 To calculate distances, your own device should have GPS enabled.
@@ -192,7 +213,6 @@ To calculate distances, your own device should have GPS enabled.
 
 <details>
 <summary><strong>Why are my GPS adverts not forwarded through the mesh?</strong></summary>
-
 
 In normal mode, GPS auto-adverts are sent with hop limit = 0.
 This is intentional to reduce network load and avoid unnecessary traffic.
@@ -204,7 +224,6 @@ Only in Off-Grid mode, adverts are flooded.
 <details>
 <summary><strong>Why am I not seeing nodes from the wider network?</strong></summary>
 
-
 Check if Off-Grid mode is enabled.
 In Off-Grid mode, your device operates on a different frequency and is isolated from the normal mesh.
 Disable Off-Grid mode to reconnect to the main network.
@@ -214,7 +233,6 @@ Disable Off-Grid mode to reconnect to the main network.
 
 <details>
 <summary><strong>What does Off-Grid mode do?</strong></summary>
-
 
 Off-Grid mode enables Client Repeat functionality.
 Your node behaves similar to a repeater and forwards messages.
@@ -226,7 +244,6 @@ This happens on a separate frequency to avoid interfering with the main MeshCore
 <details>
 <summary><strong>Can I change the Off-Grid frequency?</strong></summary>
 
-
 Currently, the Off-Grid frequency can only be changed in the code.
 You need to clone the repository and adjust the configuration manually.
 
@@ -236,7 +253,6 @@ You need to clone the repository and adjust the configuration manually.
 <details>
 <summary><strong>Why do I see fewer nodes in Off-Grid mode?</strong></summary>
 
-
 Off-Grid mode uses a separate frequency.
 You will only see nodes that are also in Off-Grid mode.
 
@@ -245,7 +261,6 @@ You will only see nodes that are also in Off-Grid mode.
 
 <details>
 <summary><strong>When should I use Off-Grid mode?</strong></summary>
-
 
 Off-Grid mode is useful when:
 
@@ -261,7 +276,6 @@ Note that you will not receive messages from the main mesh while in Off-Grid mod
 <details>
 <summary><strong>What happens to my settings when switching Off-Grid mode?</strong></summary>
 
-
 Your normal radio settings are stored and restored automatically.
 Switching between modes does not require manual reconfiguration.
 
@@ -270,7 +284,6 @@ Switching between modes does not require manual reconfiguration.
 
 <details>
 <summary><strong>How does the SOS feature work?</strong></summary>
-
 
 The SOS function is protected by a two-step confirmation to prevent accidental triggering.
 
@@ -284,7 +297,6 @@ When activated:
 <details>
 <summary><strong>What happens when an SOS is received?</strong></summary>
 
-
 When an SOS message is received:
 
 - a dedicated screen opens
@@ -293,7 +305,54 @@ When an SOS message is received:
 
 The alarm will continue until manually confirmed.
 
-</details> 
+</details>
+
+
+<details>
+<summary><strong>Where are received messages stored?</strong></summary>
+
+Messages are stored in RAM only — up to 32 entries in a ring buffer.
+They are lost when the device reboots. This is intentional: the device is not a permanent message store, and smartphone sync via the MeshCore companion app is unaffected by what the device UI shows or clears.
+
+</details>
+
+
+<details>
+<summary><strong>Does clearing messages on the device affect smartphone sync?</strong></summary>
+
+No. The message history shown on the device is a display copy only.
+Clearing it — either one by one or all at once — never touches MeshCore's internal sync queue.
+Your companion app will still receive all messages that arrived while it was connected or reconnects.
+
+</details>
+
+
+<details>
+<summary><strong>Can I send messages without the companion app?</strong></summary>
+
+Yes, on the Wio Tracker L1. Long-press on the home screen to open the message menu, then select "Send Message". You will be prompted to choose a channel, then compose your text using the joystick. Messages can be up to 80 characters long.
+
+This feature is not available on the ThinkNode M1 — single-button input does not support text composition.
+
+</details>
+
+
+<details>
+<summary><strong>Can I send direct messages (DMs) from the device?</strong></summary>
+
+No. The text send feature supports channel messages only.
+Direct messages require the companion app.
+
+</details>
+
+
+<details>
+<summary><strong>What does the unread counter on the home screen show?</strong></summary>
+
+The counter shows how many received messages you have not yet stepped through in the message history view.
+It is independent from MeshCore's internal message queue and is not affected by smartphone sync state.
+
+</details>
 
 -----
 
