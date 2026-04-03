@@ -81,7 +81,7 @@ Message length is limited to 20 characters. This feature is not available on the
 
 - Splash screen with version info and "FieldMesh" branding
 - Backlight fix for Elecrow M1
-→ [UI Screenshots](docs/FieldMesh/images/)
+- → [UI images](docs/FieldMesh/images/)
 
 -----
 
