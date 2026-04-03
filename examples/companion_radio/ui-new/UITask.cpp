@@ -297,7 +297,7 @@ public:
       display.setColor(DisplayDriver::LIGHT);
       display.setTextSize(1);
 #if UI_HAS_JOYSTICK
-      display.print("Messages: press enter");
+      display.print("Messages: press Enter");
 #else
       display.print("Messages: longpress");
 #endif
