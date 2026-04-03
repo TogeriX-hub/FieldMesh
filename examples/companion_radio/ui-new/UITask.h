@@ -37,14 +37,14 @@ class UITask : public AbstractUITask {
   char _alert[80];
   unsigned long _alert_expiry;
   int _msgcount;
-  int _num_unread;               // V5: UI-interner Unread-Zaehler (unabhaengig von _msgcount)
-  char _latest_fav_name[33];     // V5: Name des juengsten Favoriten mit Nachricht
+  int _num_unread;               // V5: internal unread counter (independent of _msgcount)
+  char _latest_fav_name[33];     // V5: name of the most recent favourite with a message
   uint32_t _latest_fav_time;     // V5: Zeitstempel seiner letzten Nachricht
   unsigned long ui_started_at, next_batt_chck;
   int next_backlight_btn_check = 0;
 #ifdef DISP_BACKLIGHT
   bool _backlight_on = false;           // aktueller Backlight-Zustand
-  bool _backlight_initialized = false;  // wird erst nach Boot auf true gesetzt
+  bool _backlight_initialized = false;  // set to true only after boot
   #ifdef PIN_BUTTON2
   bool _btn2_was_pressed = false;       // Entprellungs-Flag Toggle-Knopf
   #endif
@@ -64,7 +64,7 @@ class UITask : public AbstractUITask {
   UIScreen* home;
   UIScreen* msg_history;    // V5: ersetzt msg_preview
   UIScreen* msg_filter;     // V5: Filter/Navigation-Screen
-  UIScreen* fav_preview;    // V5.05: Favoriten-Popup (letztes Msg von Favorit)
+  UIScreen* fav_preview;    // V5.05: favourite popup (most recent message from a favourite)
   UIScreen* outdoor_menu;
   UIScreen* sos_alert;      // V3: SOS Alarm-Screen (Empfang)
   UIScreen* sos_send;       // V3: SOS Sende-Screen
@@ -96,14 +96,14 @@ public:
 
   void begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs);
 
-  // V5: setCurrScreen public — Screen-Klassen koennen direkt navigieren (E3)
+  // V5: setCurrScreen public — screen classes can navigate directly (E3)
   void setCurrScreen(UIScreen* c);
 
   // Navigation helpers
   void gotoHomeScreen()    { setCurrScreen(home); }
-  void gotoMsgFilter()     { setCurrScreen(msg_filter); }  // V5: fuer MsgComposeScreen::_doSend()
+  void gotoMsgFilter()     { setCurrScreen(msg_filter); }  // V5: used by MsgComposeScreen::_doSend()
 #if UI_HAS_JOYSTICK
-  void gotoChannelSelect();  // V5: laedt Channels und wechselt zu channel_select (impl. in .cpp)
+  void gotoChannelSelect();  // V5: loads channels and switches to channel_select (impl. in .cpp)
 #endif
 
   void showAlert(const char* text, int duration_millis);

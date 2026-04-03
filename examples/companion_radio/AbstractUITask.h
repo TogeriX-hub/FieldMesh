@@ -40,12 +40,12 @@ public:
   void enableSerial() { _serial->enable(); }
   void disableSerial() { _serial->disable(); }
   virtual void msgRead(int msgcount) = 0;
-  // V5: is_favorite = true wenn Absender zum Zeitpunkt des Empfangs ein Favorit war.
-  // Default false fuer Rueckwaertskompatibilitaet falls andere UITask-Implementierungen existieren.
+  // V5: is_favorite = true if the sender was a favourite at the time of receipt.
+  // Default false for backward compatibility with other UITask implementations.
   virtual void newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount, bool is_favorite = false) = 0;
   virtual void notify(UIEventType t = UIEventType::none) = 0;
   virtual void loop() = 0;
-  virtual void triggerSOS(const char* from, const char* text) {}  // V3: default leer (kein Display)
-  virtual void refreshDisplay() {}                                 // Advert-Refresh ohne Backlight-Änderung
-  virtual bool isOnRecentOrTrackingPage() const { return false; } // Für Advert-Refresh-Check
+  virtual void triggerSOS(const char* from, const char* text) {}  // V3: default no-op (no display)
+  virtual void refreshDisplay() {}                                 // Advert refresh without backlight change
+  virtual bool isOnRecentOrTrackingPage() const { return false; } // Used for advert refresh check
 };

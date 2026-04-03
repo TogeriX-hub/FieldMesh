@@ -160,9 +160,9 @@ void MyMesh::writeContactRespFrame(uint8_t code, const ContactInfo &contact) {
   out_frame[i++] = code;
   memcpy(&out_frame[i], contact.id.pub_key, PUB_KEY_SIZE);
   i += PUB_KEY_SIZE;
-  // V2.07: Bit 4 (ADV_LATLON_MASK=0x10) nicht an App senden — nur Bits 0-3 (Role).
-  // Ohne Maskierung erkennt die App type=0x11 nicht als gueltigen Contact-Typ
-  // (Messaging, Telemetry nicht moeglich). Bit 4 ist nur intern fuer onDiscoveredContact().
+  // V2.07: Do not send bit 4 (ADV_LATLON_MASK=0x10) to app — only bits 0-3 (role).
+  // Without masking the app does not recognise type=0x11 as a valid contact type
+  // (messaging and telemetry would break). Bit 4 is internal only for onDiscoveredContact().
   out_frame[i++] = contact.type & 0x0F;
   out_frame[i++] = contact.flags;
   out_frame[i++] = contact.out_path_len;
@@ -186,7 +186,7 @@ void MyMesh::updateContactFromFrame(ContactInfo &contact, uint32_t& last_mod, co
   uint8_t code = frame[i++]; // eg. CMD_ADD_UPDATE_CONTACT
   memcpy(contact.id.pub_key, &frame[i], PUB_KEY_SIZE);
   i += PUB_KEY_SIZE;
-  contact.type = frame[i++] & 0x0F;  // V2.07: Bit 4 von App nicht uebernehmen
+  contact.type = frame[i++] & 0x0F;  // V2.07: do not accept bit 4 from app
   contact.flags = frame[i++];
   contact.out_path_len = frame[i++];
   memcpy(contact.out_path, &frame[i], MAX_PATH_SIZE);
@@ -357,8 +357,8 @@ void MyMesh::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
   }
 
 #ifdef DISPLAY_CLASS
-  // Advert empfangen: Display kurz aufwecken wenn auf Recent oder Tracking
-  // Kein hasConnection()-Check — auch bei verbundenem Handy refreshen
+  // Advert received: briefly wake display if on Recent or Tracking page
+  // No hasConnection() check — refresh even when phone is connected
   if (_ui && _ui->isOnRecentOrTrackingPage()) {
     _ui->refreshDisplay();
   }
@@ -366,8 +366,8 @@ void MyMesh::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
 
   // add inbound-path to mem cache
   if (path && mesh::Packet::isValidPathLen(path_len)) {  // check path is valid
-    // Immer in advert_paths schreiben (fuer RECENT-Seite)
-    // gps_timestamp + has_gps nur aktualisieren wenn GPS im Advert enthalten war
+    // Always write to advert_paths (for RECENT page)
+    // gps_timestamp + has_gps only updated when GPS was included in the advert
     // Bit 4 in contact.type = ADV_LATLON_MASK (gesetzt in BaseChatMesh.cpp)
     bool gps_in_this_advert = (contact.type & 0x10) != 0;
     {
@@ -385,10 +385,10 @@ void MyMesh::onDiscoveredContact(ContactInfo &contact, bool is_new, uint8_t path
       }
       memcpy(p->pubkey_prefix, contact.id.pub_key, sizeof(p->pubkey_prefix));
       strcpy(p->name, contact.name);
-      p->recv_timestamp = getRTCClock()->getCurrentTime();  // immer aktualisieren
+      p->recv_timestamp = getRTCClock()->getCurrentTime();  // always update
       if (gps_in_this_advert) {
         p->has_gps = true;
-        p->gps_timestamp = getRTCClock()->getCurrentTime(); // nur bei GPS
+        p->gps_timestamp = getRTCClock()->getCurrentTime(); // only when GPS present
       }
       p->path_len = mesh::Packet::copyPath(p->path, path, path_len);
     }
@@ -473,8 +473,8 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
   }
 
 #ifdef DISPLAY_CLASS
-  // V5: newMsg() nur wenn App NICHT connected.
-  // Bei connected App liegen Nachrichten auf dem Smartphone — nicht in die Display-History.
+  // V5: call newMsg() only when app is NOT connected.
+  // When connected, messages are handled on the phone — do not add to display history.
   bool should_display = txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_SIGNED_PLAIN;
   if (should_display && _ui && !_serial->isConnected()) {
     bool is_fav = (from.flags & 0x01) != 0;
@@ -537,11 +537,11 @@ void MyMesh::onSignedMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uin
   queueMessage(from, TXT_TYPE_SIGNED_PLAIN, pkt, sender_timestamp, sender_prefix, 4, text);
 }
 
-// ── V5: Hilfsfunktion — Absendernamen aus Channel-Text extrahieren ─────────
+// ── V5: Helper — extract sender name from channel message text ─────────────
 // MeshCore-Format: "NodeName | Region: text" oder "NodeName: text"
-// Gibt true zurueck wenn Name gefunden, out_name wird befuellt.
+// Returns true if a name was found; out_name is filled in.
 static bool extractSenderName(const char* text, char* out_name, int max_len) {
-  // Bevorzugt: " | " (mit Leerzeichen) — Standard-Format
+  // Preferred: " | " (with spaces) — standard format
   const char* pipe = strstr(text, " | ");
   if (pipe != NULL) {
     int len = (int)(pipe - text);
@@ -561,21 +561,21 @@ static bool extractSenderName(const char* text, char* out_name, int max_len) {
       return true;
     }
   }
-  return false;  // Format nicht erkannt
+  return false;  // format not recognised
 }
 
-// V5: Favoriten-Check fuer Channel-Nachrichten.
-// Name wird aus dem Text extrahiert, dann wird die Kontaktliste nach Namen durchsucht.
+// V5: Favourite check for channel messages.
+// Extracts the sender name from the text and searches the contact list by name.
 // Namens-Kollision (zwei Kontakte gleicher Name): erster Treffer gewinnt — akzeptiertes Risiko.
-// WICHTIG: ContactInfo als static deklariert um Stack-Overflow zu vermeiden.
-// Bei MAX_CONTACTS=350 und tiefer Call-Stack (BaseChatMesh::loop) wuerde eine lokale
-// ContactInfo den Stack des nRF52840 ueberlaufen und den BLE-Stack killen.
+// IMPORTANT: ContactInfo declared static to avoid stack overflow.
+// With MAX_CONTACTS=350 and a deep call stack (BaseChatMesh::loop), a local
+// ContactInfo would overflow the nRF52840 stack and crash the BLE stack.
 bool MyMesh::isSenderFavorite(const char* text) {
   char sender_name[33];
   if (!extractSenderName(text, sender_name, sizeof(sender_name))) {
     return false;
   }
-  static ContactInfo contact;  // static: BSS-Segment, nicht auf dem Stack
+  static ContactInfo contact;  // static: BSS segment, not on the stack
   for (uint32_t i = 0; i < MAX_CONTACTS; i++) {
     if (!getContactByIdx(i, contact)) break;
     if (contact.name[0] == 0) continue;
@@ -586,14 +586,14 @@ bool MyMesh::isSenderFavorite(const char* text) {
   return false;
 }
 
-// V5: Channel-Nachricht von der UI senden (ohne Smartphone).
-// Analog zu sendSOS() — Wrapper damit UITask frei von getRTCClock()-Logik bleibt.
+// V5: Send channel message from UI (without smartphone).
+// Analogous to sendSOS() — wrapper so UITask stays free of getRTCClock() logic.
 bool MyMesh::sendChannelMessage(uint8_t channel_idx, const char* text) {
   if (text == nullptr || text[0] == 0) return false;
   ChannelDetails ch;
   if (!getChannel(channel_idx, ch)) return false;
   // getCurrentTimeUnique() statt getCurrentTime() — verhindert Replay-Schutz-Probleme
-  // bei schnell aufeinanderfolgenden Nachrichten innerhalb derselben Sekunde
+  // for rapidly successive messages within the same second
   uint32_t ts = getRTCClock()->getCurrentTimeUnique();
   return sendGroupMessage(ts, ch.channel, _prefs.node_name, text, strlen(text));
 }
@@ -645,11 +645,11 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   // V3: SOS-Erkennung — "!SOS" irgendwo im Text (MeshCore stellt Node-Name voran)
   if (strstr(text, "!SOS") != NULL) {
     if (_ui) _ui->triggerSOS(channel_name, text);
-    return;  // newMsg() nicht aufrufen — SOSAlertScreen hat Vorrang
+    return;  // do not call newMsg() — SOSAlertScreen takes priority
   }
 
-  // V5: newMsg() nur wenn App NICHT connected.
-  // Bei connected App liegen Nachrichten auf dem Smartphone — nicht in die Display-History.
+  // V5: call newMsg() only when app is NOT connected.
+  // When connected, messages are handled on the phone — do not add to display history.
   if (_ui && !_serial->isConnected()) {
     _ui->newMsg(path_len, channel_name, text, offline_queue_len, isSenderFavorite(text));
   }
@@ -960,15 +960,15 @@ void MyMesh::begin(bool has_display) {
   _prefs.gps_enabled = constrain(_prefs.gps_enabled, 0, 1);  // Ensure boolean 0 or 1
   _prefs.gps_interval = constrain(_prefs.gps_interval, 0, 86400);  // Max 24 hours
 
-  // Auto-Advert Timer wiederherstellen: läuft wenn GPS-Sharing aktiv war
+  // Restore auto-advert timer: active when GPS sharing was enabled
   if (_prefs.advert_loc_policy == ADVERT_LOC_SHARE) {
     next_auto_advert = futureMillis(AUTO_ADVERT_INTERVAL_MS);
   }
 
 #ifdef BLE_PIN_CODE // 123456 by default
   if (_prefs.ble_pin == 0) {
-    // V5: immer statischer PIN — konsistent mit Geraeten ohne Display.
-    // Der Zufalls-PIN auf kleinen Displays bringt Layoutprobleme (Platz fuer MSG-Zaehler benoetigt).
+    // V5: always use static PIN — consistent with devices without a display.
+    // A random PIN on small displays causes layout issues (space needed for message counter).
     _active_ble_pin = BLE_PIN_CODE;
   } else {
     _active_ble_pin = _prefs.ble_pin;
@@ -1006,7 +1006,7 @@ struct FreqRange {
 
 static FreqRange repeat_freq_ranges[] = {
   { 433050, 434790 },  // EU 433 MHz ISM-Band (SRD, legal ab 433.050)
-  { 869400, 869650 },  // EU 869 MHz SRD sub-band g1 (25 mW, 10% duty cycle, kein LBT)
+  { 869400, 869650 },  // EU 869 MHz SRD sub-band g1 (25 mW, 10% duty cycle, no LBT)
   { 915000, 928000 }   // US/AU 915 MHz ISM-Band
 };
 
@@ -1018,8 +1018,8 @@ bool MyMesh::isValidClientRepeatFreq(uint32_t f) const {
   return false;
 }
 
-// Off-Grid Mode: Normal-Parameter sichern und auf Off-Grid-Einstellung wechseln (oder zurück)
-// Off-Grid Einstellung: 869.4625 MHz, BW 125, SF 11, CR 5 (EU Sub-Band g1, kein LBT)
+// Off-grid mode: save normal parameters and switch to off-grid settings (or back)
+// Off-grid settings: 869.4625 MHz, BW 125, SF 11, CR 5 (EU sub-band g1, no LBT)
 #define OFFGRID_FREQ  869.4625f
 #define OFFGRID_BW    125.0f
 #define OFFGRID_SF    11
@@ -1040,7 +1040,7 @@ void MyMesh::toggleOffGrid() {
     _prefs.client_repeat = 1;
   } else {
     // Off-Grid deaktivieren: Normal-Parameter wiederherstellen
-    // Fallback falls normal_freq nie gesetzt wurde (erstes Mal)
+    // Fallback if normal_freq was never set (first use)
     if (_prefs.normal_freq > 0.0f) {
       _prefs.freq = _prefs.normal_freq;
       _prefs.bw   = _prefs.normal_bw;
@@ -1051,16 +1051,16 @@ void MyMesh::toggleOffGrid() {
   }
   radio_set_params(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
   savePrefs();
-  advert();  // V4.07: RX-Neustart ueber normalen TX->RX-Zyklus des Wrappers
+  advert();  // V4.07: RX restart via normal TX->RX cycle of the wrapper
 }
 
 // V3: SOS-Nachricht in den SOS-Channel senden
-// Sucht nach einem Channel namens "SOS" und sendet "!SOS <pos>" oder "!SOS kein GPS"
+// Searches for a channel named "SOS" and sends "!SOS <pos>" or "!SOS no GPS"
 bool MyMesh::sendSOS() {
   for (int i = 0; i < MAX_GROUP_CHANNELS; i++) {
     ChannelDetails ch;
     if (!getChannel(i, ch)) continue;
-    // Case-insensitive: "SOS", "sos", "#sos" etc. alle akzeptieren
+    // Case-insensitive: accept "SOS", "sos", "#sos" etc.
     char name_lower[33];
     for (int j = 0; j < 32 && ch.name[j]; j++) name_lower[j] = tolower(ch.name[j]);
     name_lower[32] = 0;
@@ -1080,7 +1080,7 @@ bool MyMesh::sendSOS() {
     uint32_t ts = getRTCClock()->getCurrentTimeUnique();
     return sendGroupMessage(ts, ch.channel, _prefs.node_name, text, strlen(text));
   }
-  return false;  // kein SOS-Channel gefunden
+  return false;  // no SOS channel found
 }
 
 void MyMesh::startInterface(BaseSerialInterface &serial) {
@@ -1478,7 +1478,7 @@ void MyMesh::handleCmdFrame(size_t len) {
         _prefs.advert_loc_policy = cmd_frame[3];
         // App-Schalter "GPS in Adverts": Timer sofort starten oder stoppen
         if (_prefs.advert_loc_policy == ADVERT_LOC_SHARE) {
-          // V3.05: Timer nur starten wenn er noch nicht läuft (kein Reset bei Handy-Connect)
+          // V3.05: only start timer if not already running (no reset on phone connect)
           // Beim ersten Aktivieren: sofort senden + Timer starten
           if (next_auto_advert == 0) {
             advert();
@@ -2227,8 +2227,8 @@ bool MyMesh::advert() {
   mesh::Packet* pkt;
   bool send_gps = false;
   if (_prefs.advert_loc_policy != ADVERT_LOC_NONE) {
-    // GPS nur mitsenden wenn GPS hardwareseitig aktiv UND aktueller Fix vorhanden
-    // Gespeicherte/alte Koordinaten werden bewusst ignoriert
+    // Only include GPS if hardware GPS is active AND a current fix is available
+    // Cached/stale coordinates are intentionally ignored
     LocationProvider* loc = sensors.getLocationProvider();
     if (loc != NULL && loc->isEnabled() && loc->isValid()) {
       send_gps = true;
@@ -2241,7 +2241,7 @@ bool MyMesh::advert() {
   }
   if (pkt) {
     if (_prefs.client_repeat) {
-      // Off-Grid Modus: Flood-Advert damit andere M1s weiterleiten koennen
+      // Off-grid mode: flood advert so other M1s can relay it
       sendFlood(pkt, (uint32_t)0, _prefs.path_hash_mode + 1);
     } else {
       sendZeroHop(pkt);
