@@ -75,7 +75,7 @@ On the Wio Tracker L1 (joystick input), you can compose and send messages direct
 2. **Text composition** — select characters one by one using left/right on the joystick, confirm each with a short press; long press sends the message
 3. After sending, a brief "Sent!" confirmation is shown before returning to the message history
 
-Message length is limited to 80 characters. This feature is not available on the ThinkNode M1 (single-button input only).
+Message length is limited to 20 characters. This feature is not available on the ThinkNode M1 (single-button input only).
 
 ### UI & Usability
 
