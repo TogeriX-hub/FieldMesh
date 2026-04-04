@@ -2,7 +2,7 @@
 
 **A MeshCore firmware fork optimized for outdoor use — festivals, hiking, off-grid events, and situations where you need your radio network to do more than stock MeshCore offers.**
 
-Built on [MeshCore](https://github.com/ripplebiz/MeshCore) · Tested on: Elecrow ThinkNode M1, Seeed Wio Tracker L1 · Based on MeshCore v1.14.1
+Built on [MeshCore](https://github.com/ripplebiz/MeshCore) ·  Based on MeshCore v1.14.1
 
 -----
 
