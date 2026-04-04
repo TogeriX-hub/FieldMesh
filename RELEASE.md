@@ -5,6 +5,37 @@ For full technical details, see the internal documentation PDF.
 
 ---
 
+## [5.10] — Headless Device Support (T1000-E, RAK WiseMesh TAG)
+
+### New features
+- **Headless device support** — `ui-orig` now fully integrated into FieldMesh; devices with no display and a single button (Seeed T1000-E, RAK WiseMesh TAG) are supported as first-class citizens
+- **Off-Grid toggle via 5× click** — 5 presses on the single button toggles Off-Grid mode on/off; buzzer feedback is forced regardless of mute state (ascending tone = on, descending = off)
+- **SOS alarm via buzzer** — incoming `!SOS` messages trigger a continuous buzzer siren that overrides quiet mode and loops until acknowledged with a short press
+
+### Changes
+- All button actions (advert, GPS toggle, buzzer toggle, Off-Grid toggle) now produce forced buzzer feedback regardless of quiet mode — essential for display-less operation
+- Ascending tone (`c,e`) = feature enabled; descending tone (`e,c`) = feature disabled — consistent across all actions
+- `newMsg()` signature updated to include `is_favorite` parameter — compatible with V5 `AbstractUITask` interface
+- `refreshDisplay()` and `isOnRecentOrTrackingPage()` added as explicit no-op overrides — required for `MyMesh` compatibility
+
+### Button mapping (headless devices — single button)
+| Press | Action |
+|---|---|
+| 1× | Wake display / acknowledge SOS alarm |
+| 2× | Send advert |
+| 3× | Buzzer mute on/off |
+| 4× | GPS on/off |
+| 5× | Off-Grid mode on/off |
+| Long press (first 8 s) | CLI Rescue Mode |
+| Long press | Shutdown |
+
+### Technical notes
+- Changes confined to `ui-orig/Button.h`, `ui-orig/Button.cpp`, `ui-orig/UITask.h`, `ui-orig/UITask.cpp`
+- `ui-new` (ThinkNode M1, Wio Tracker L1) is completely unaffected
+- `_buzzer_restore_quiet` flag ensures non-blocking buzzer playback before quiet state is restored
+
+---
+
 ## [5.00] — Message History & Text Input
 
 ### New features

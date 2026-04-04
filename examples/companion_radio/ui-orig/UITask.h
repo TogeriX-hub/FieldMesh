@@ -29,6 +29,8 @@ class UITask : public AbstractUITask {
   int _msgcount;
   bool _need_refresh = true;
   bool _displayWasOn = false;  // Track display state before button press
+  bool _sos_active = false;            // V5: SOS alarm active (siren loops until short press)
+  bool _buzzer_restore_quiet = false;  // V5: restore quiet state after forced tone playback
   unsigned long ui_started_at;
 
   // Button handlers
@@ -49,6 +51,7 @@ class UITask : public AbstractUITask {
   void handleButtonDoublePress();
   void handleButtonTriplePress();
   void handleButtonQuadruplePress();
+  void handleButtonQuintuplePress();  // V2.02: Off-Grid Toggle
   void handleButtonLongPress();
 
  
@@ -65,9 +68,12 @@ public:
 
   // from AbstractUITask
   void msgRead(int msgcount) override;
-  void newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount) override;
+  void newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount, bool is_favorite = false) override;
   void notify(UIEventType t = UIEventType::none) override;
   void loop() override;
+  void triggerSOS(const char* from, const char* text) override;  // V5: SOS alarm via buzzer
+  void refreshDisplay() override {}                               // no display — no-op
+  bool isOnRecentOrTrackingPage() const override { return false; } // no pages — always false
 
   void shutdown(bool restart = false);
 };

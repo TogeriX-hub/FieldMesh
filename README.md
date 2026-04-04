@@ -2,7 +2,7 @@
 
 **A MeshCore firmware fork optimized for outdoor use — festivals, hiking, off-grid events, and situations where you need your radio network to do more than stock MeshCore offers.**
 
-Built on [MeshCore](https://github.com/ripplebiz/MeshCore) · Tested on: Elecrow ThinkNode M1, Seeed Wio Tracker L1 · Based on MeshCore v1.14.1
+Built on [MeshCore](https://github.com/ripplebiz/MeshCore) ·  Based on MeshCore v1.14.1
 
 -----
 
@@ -89,11 +89,11 @@ Message length is limited to 20 characters. This feature is not available on the
 
 |                  |                                |
 |------------------|--------------------------------|
-|**Tested on**     |Elecrow ThinkNode M1 (E-Ink), Seeed Wio Tracker L1 (OLED)|
-|**Other hardware**|Untested — contributions welcome|
+|**Tested on**     |Elecrow ThinkNode M1 (E-Ink), Seeed Wio Tracker L1 (OLED), Seeed T1000-E (no display)|
+|**Other hardware**|RAK WiseMesh TAG and similar single-button headless devices — contributions welcome|
 |**Base firmware** |MeshCore v1.14.1                |
 
-FieldMesh has been developed and tested on the ThinkNode M1 (E-Ink, single button) and the Wio Tracker L1 (OLED, joystick). The code is written to be portable — all hardware-specific pins are in `variant.h`, layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test it on another platform, please open an issue with your findings.
+FieldMesh has been developed and tested on the ThinkNode M1 (E-Ink, single button) and the Wio Tracker L1 (OLED, joystick). V5.10 adds support for headless devices (no display, single button) — the Seeed T1000-E is the primary reference device for this class. The code is written to be portable — all hardware-specific pins are in `variant.h`, layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test it on another platform, please open an issue with your findings.
 
 -----
 
@@ -112,6 +112,10 @@ These files differ from upstream MeshCore. Everything else is untouched.
 |`examples/companion_radio/ui-new/UITask.h`  |Outdoor menu, SOS screens, buzzer and backlight members; message history and compose screens (V5)|
 |`examples/companion_radio/ui-new/UITask.cpp`|All UI: tracking page, Haversine, outdoor menu, SOS screens, backlight logic; message history, filter, compose, channel select (V5)|
 |`examples/companion_radio/ui-new/icons.h`   |Adds 48×48px advert icon for large displays                                 |
+|`examples/companion_radio/ui-orig/Button.h` |Adds `QUINTUPLE_PRESS` event and `onQuintuplePress()` callback (V5.10)      |
+|`examples/companion_radio/ui-orig/Button.cpp`|Handles 5x click as distinct event; `== 4` fix for quadruple detection (V5.10)|
+|`examples/companion_radio/ui-orig/UITask.h` |Adds `handleButtonQuintuplePress()`, `triggerSOS()`, `_sos_active` flag; `newMsg()` signature updated (V5.10)|
+|`examples/companion_radio/ui-orig/UITask.cpp`|Off-Grid toggle via 5x click; SOS alarm via buzzer; forced buzzer feedback for all button actions (V5.10)|
 |`variants/thinknode_m1/variant.h`           |Corrects `PIN_BUTTON2` to GPIO 39                                           |
 |`variants/thinknode_m1/platformio.ini`      |Sets `AUTO_OFF_MILLIS=0` to prevent E-Ink display timeout                   |
 |`variants/wio-tracker-l1/target.cpp`        |Adds `joystick_up` / `joystick_down` MomentaryButton instances              |
@@ -132,7 +136,7 @@ No additional dependencies beyond what MeshCore already requires.
 
 ## Limitations & Known Issues
 
-- Tested on ThinkNode M1 and Wio Tracker L1 — other hardware untested
+- Tested on ThinkNode M1, Wio Tracker L1, and Seeed T1000-E — other hardware untested
 - Off-Grid frequency is hardcoded for EU (869.4625 MHz) — other regions need a different default
 - SOS requires a channel named "sos" to exist in your MeshCore setup
 - Tracking page shows a maximum of 3 contacts (favourited in the companion app)
@@ -352,6 +356,71 @@ Direct messages require the companion app.
 
 The counter shows how many received messages you have not yet stepped through in the message history view.
 It is independent from MeshCore's internal message queue and is not affected by smartphone sync state.
+
+</details>
+
+---
+
+## Headless devices (T1000-E, RAK WiseMesh TAG)
+
+<details>
+<summary><strong>What can I do with a device that has no display?</strong></summary>
+
+Headless devices (no display, single button) support a focused set of features:
+
+- receive and relay mesh messages
+- toggle Off-Grid mode via 5× button press
+- receive SOS alarms via buzzer
+- send adverts, toggle GPS, toggle buzzer mute
+
+All actions give forced buzzer feedback — ascending tone means on/enabled, descending means off/disabled.
+
+</details>
+
+
+<details>
+<summary><strong>How do I toggle Off-Grid mode on a headless device?</strong></summary>
+
+Press the button 5 times in quick succession.
+
+The buzzer confirms the result:
+- two ascending tones (low → high) = Off-Grid is now **on**
+- two descending tones (high → low) = Off-Grid is now **off**
+
+This feedback is always played, even if the buzzer is otherwise muted.
+
+</details>
+
+
+<details>
+<summary><strong>How does SOS work on a headless device?</strong></summary>
+
+When an SOS message is received, the buzzer sounds a continuous siren alarm. The alarm loops until you press the button once (short press) to acknowledge it.
+
+Note: headless devices cannot send SOS — there is no free button slot for a two-step SOS send confirmation. SOS receive only.
+
+</details>
+
+
+<details>
+<summary><strong>What do the different buzzer tones mean on a headless device?</strong></summary>
+
+| Tone | Meaning |
+|---|---|
+| Ascending (c → e) | Feature turned on (GPS, buzzer, Off-Grid) |
+| Descending (e → c) | Feature turned off |
+| Double beep | Advert sent |
+| Continuous siren | SOS alarm received — press once to acknowledge |
+
+</details>
+
+
+<details>
+<summary><strong>How do I know if my headless device is in Off-Grid mode after a reboot?</strong></summary>
+
+The Off-Grid state is saved to flash and restored on boot. If Off-Grid was active before the reboot, it will be active again after — but there is no visual indicator without a display.
+
+To check: press 5× to toggle, listen to the tone (ascending = was off, now on; descending = was on, now off), then press 5× again to return to the original state.
 
 </details>
 

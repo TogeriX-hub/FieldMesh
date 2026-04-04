@@ -17,6 +17,7 @@ public:
         DOUBLE_PRESS,
         TRIPLE_PRESS,
         QUADRUPLE_PRESS,
+        QUINTUPLE_PRESS,     // V2.02: 5x click for off-grid toggle
         LONG_PRESS,
         ANY_PRESS
     };
@@ -34,6 +35,7 @@ public:
     void onDoublePress(EventCallback callback) { _onDoublePress = callback; }
     void onTriplePress(EventCallback callback) { _onTriplePress = callback; }
     void onQuadruplePress(EventCallback callback) { _onQuadruplePress = callback; }
+    void onQuintuplePress(EventCallback callback) { _onQuintuplePress = callback; }  // V2.02
     void onLongPress(EventCallback callback) { _onLongPress = callback; }
     void onAnyPress(EventCallback callback) { _onAnyPress = callback; }
     
@@ -71,6 +73,7 @@ private:
     EventCallback _onDoublePress = nullptr;
     EventCallback _onTriplePress = nullptr;
     EventCallback _onQuadruplePress = nullptr;
+    EventCallback _onQuintuplePress = nullptr;  // V2.02
     EventCallback _onLongPress = nullptr;
     EventCallback _onAnyPress = nullptr;
     

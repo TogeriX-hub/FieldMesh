@@ -69,6 +69,7 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   _userButton->onDoublePress([this]() { handleButtonDoublePress(); });
   _userButton->onTriplePress([this]() { handleButtonTriplePress(); });
   _userButton->onQuadruplePress([this]() { handleButtonQuadruplePress(); });
+  _userButton->onQuintuplePress([this]() { handleButtonQuintuplePress(); });  // V2.02
   _userButton->onLongPress([this]() { handleButtonLongPress(); });
   _userButton->onAnyPress([this]() { handleButtonAnyPress(); });
 #endif
@@ -83,6 +84,7 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   _userButtonAnalog->onDoublePress([this]() { handleButtonDoublePress(); });
   _userButtonAnalog->onTriplePress([this]() { handleButtonTriplePress(); });
   _userButtonAnalog->onQuadruplePress([this]() { handleButtonQuadruplePress(); });
+  _userButtonAnalog->onQuintuplePress([this]() { handleButtonQuintuplePress(); });  // V2.02
   _userButtonAnalog->onLongPress([this]() { handleButtonLongPress(); });
   _userButtonAnalog->onAnyPress([this]() { handleButtonAnyPress(); });
 #endif
@@ -109,8 +111,6 @@ switch(t){
     break;
 }
 #endif
-//  Serial.print("DBG:  Alert user -> ");
-//  Serial.println((int) t);
 }
 
 void UITask::msgRead(int msgcount) {
@@ -126,7 +126,7 @@ void UITask::clearMsgPreview() {
   _need_refresh = true;
 }
 
-void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount) {
+void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount, bool is_favorite) {
   _msgcount = msgcount;
 
   if (path_len == 0xFF) {
@@ -141,10 +141,17 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
       _display->turnOn();
     }
     if (_display->isOn()) {
-    _auto_off = millis() + AUTO_OFF_MILLIS;  // extend the auto-off timer
-    _need_refresh = true;
+      _auto_off = millis() + AUTO_OFF_MILLIS;  // extend the auto-off timer
+      _need_refresh = true;
     }
   }
+
+#ifdef PIN_BUZZER
+  // V5: favorites get a distinct tone
+  if (is_favorite) {
+    notify(UIEventType::contactMessage);
+  }
+#endif
 }
 
 void UITask::renderBatteryIndicator(uint16_t batteryMilliVolts) {
@@ -180,7 +187,7 @@ void UITask::renderBatteryIndicator(uint16_t batteryMilliVolts) {
 }
 
 void UITask::renderCurrScreen() {
-  if (_display == NULL) return;  // assert() ??
+  if (_display == NULL) return;
 
   char tmp[80];
   if (_alert[0]) {
@@ -325,7 +332,19 @@ void UITask::loop() {
   userLedHandler();
 
 #ifdef PIN_BUZZER
-  if (buzzer.isPlaying())  buzzer.loop();
+  if (buzzer.isPlaying()) {
+    buzzer.loop();
+  } else {
+    // V5: restore quiet state after a forced tone has finished playing
+    if (_buzzer_restore_quiet) {
+      buzzer.quiet(_node_prefs->buzzer_quiet);
+      _buzzer_restore_quiet = false;
+    }
+    // V5: keep SOS siren looping until acknowledged
+    if (_sos_active) {
+      buzzer.play("siren:d=8,o=5,b=100:d,e,d,e,d,e,d,e");
+    }
+  }
 #endif
 
   if (_display != NULL && _display->isOn()) {
@@ -347,6 +366,8 @@ void UITask::loop() {
   }
 }
 
+// ── Button Handlers ───────────────────────────────────────────────────────────
+
 void UITask::handleButtonAnyPress() {
   MESH_DEBUG_PRINTLN("UITask: any press triggered");
   // called on any button press before other events, to wake up the display quickly
@@ -362,6 +383,17 @@ void UITask::handleButtonAnyPress() {
 
 void UITask::handleButtonShortPress() {
   MESH_DEBUG_PRINTLN("UITask: short press triggered");
+
+  // V5: SOS alarm takes priority — short press acknowledges
+  if (_sos_active) {
+    _sos_active = false;
+#ifdef PIN_BUZZER
+    buzzer.shutdown();
+#endif
+    _need_refresh = true;
+    return;
+  }
+
   if (_display != NULL) {
     // Only clear message preview if display was already on before button press
     if (_displayWasOn) {
@@ -381,10 +413,6 @@ void UITask::handleButtonShortPress() {
 
 void UITask::handleButtonDoublePress() {
   MESH_DEBUG_PRINTLN("UITask: double press triggered, sending advert");
-  // ADVERT
-  #ifdef PIN_BUZZER
-      notify(UIEventType::ack);
-  #endif
   if (the_mesh.advert()) {
     MESH_DEBUG_PRINTLN("Advert sent!");
     sprintf(_alert, "Advert sent!");
@@ -392,47 +420,81 @@ void UITask::handleButtonDoublePress() {
     MESH_DEBUG_PRINTLN("Advert failed!");
     sprintf(_alert, "Advert failed..");
   }
+#ifdef PIN_BUZZER
+  // double beep — forced regardless of buzzer_quiet
+  buzzer.quiet(false);
+  buzzer.play("advert:d=16,o=6,b=200:c,p,c");
+  _buzzer_restore_quiet = true;
+#endif
   _need_refresh = true;
 }
 
 void UITask::handleButtonTriplePress() {
   MESH_DEBUG_PRINTLN("UITask: triple press triggered");
-  // Toggle buzzer quiet mode
-  #ifdef PIN_BUZZER
-    if (buzzer.isQuiet()) {
-      buzzer.quiet(false);
-      notify(UIEventType::ack);
-      sprintf(_alert, "Buzzer: ON");
-    } else {
-      buzzer.quiet(true);
-      sprintf(_alert, "Buzzer: OFF");
-    }
-    _node_prefs->buzzer_quiet = buzzer.isQuiet();
-    the_mesh.savePrefs();
-    _need_refresh = true;
-  #endif
+#ifdef PIN_BUZZER
+  if (buzzer.isQuiet()) {
+    buzzer.quiet(false);
+    buzzer.play("buz_on:d=16,o=6,b=200:c,e");
+    // no _buzzer_restore_quiet — buzzer stays on
+    _node_prefs->buzzer_quiet = 0;
+    sprintf(_alert, "Buzzer: ON");
+  } else {
+    // last tone before going silent
+    buzzer.quiet(false);
+    buzzer.play("buz_off:d=16,o=6,b=200:e,c");
+    _buzzer_restore_quiet = true;  // restore quiet after playback
+    _node_prefs->buzzer_quiet = 1;
+    sprintf(_alert, "Buzzer: OFF");
+  }
+  the_mesh.savePrefs();
+  _need_refresh = true;
+#endif
 }
 
 void UITask::handleButtonQuadruplePress() {
   MESH_DEBUG_PRINTLN("UITask: quad press triggered");
   if (_sensors != NULL) {
-    // toggle GPS onn/off
+    // toggle GPS on/off
     int num = _sensors->getNumSettings();
     for (int i = 0; i < num; i++) {
       if (strcmp(_sensors->getSettingName(i), "gps") == 0) {
         if (strcmp(_sensors->getSettingValue(i), "1") == 0) {
           _sensors->setSettingValue("gps", "0");
-          notify(UIEventType::ack);
           sprintf(_alert, "GPS: Disabled");
+#ifdef PIN_BUZZER
+          buzzer.quiet(false);
+          buzzer.play("gps_off:d=16,o=6,b=200:e,c");
+          _buzzer_restore_quiet = true;
+#endif
         } else {
           _sensors->setSettingValue("gps", "1");
-          notify(UIEventType::ack);
           sprintf(_alert, "GPS: Enabled");
+#ifdef PIN_BUZZER
+          buzzer.quiet(false);
+          buzzer.play("gps_on:d=16,o=6,b=200:c,e");
+          _buzzer_restore_quiet = true;
+#endif
         }
         break;
       }
     }
   }
+  _need_refresh = true;
+}
+
+void UITask::handleButtonQuintuplePress() {
+  MESH_DEBUG_PRINTLN("UITask: quintuple press triggered");
+  // V2.02: off-grid toggle — buzzer feedback forced regardless of buzzer_quiet
+  the_mesh.toggleOffGrid();
+#ifdef PIN_BUZZER
+  buzzer.quiet(false);
+  if (the_mesh.isOffGridActive()) {
+    buzzer.play("offgrid_on:d=16,o=6,b=200:c,e");   // ascending = on
+  } else {
+    buzzer.play("offgrid_off:d=16,o=6,b=200:e,c");  // descending = off
+  }
+  _buzzer_restore_quiet = true;  // V5: restore quiet state after playback
+#endif
   _need_refresh = true;
 }
 
@@ -443,4 +505,20 @@ void UITask::handleButtonLongPress() {
   } else {
     shutdown();
   }
+}
+
+// ── SOS ───────────────────────────────────────────────────────────────────────
+
+// V5: SOS alarm received — siren loops until short press
+// Called by MyMesh::onChannelMessageRecv() when !SOS is detected
+void UITask::triggerSOS(const char* from, const char* text) {
+  _sos_active = true;
+#ifdef PIN_BUZZER
+  // override buzzer_quiet — SOS is an emergency
+  buzzer.quiet(false);
+  _node_prefs->buzzer_quiet = 0;
+  // intentionally not saving prefs — quiet state restored after acknowledgement
+  buzzer.play("siren:d=8,o=5,b=100:d,e,d,e,d,e,d,e");
+#endif
+  _need_refresh = true;
 }
