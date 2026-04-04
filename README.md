@@ -89,11 +89,11 @@ Message length is limited to 20 characters. This feature is not available on the
 
 |                  |                                |
 |------------------|--------------------------------|
-|**Tested on**     |Elecrow ThinkNode M1 (E-Ink), Seeed Wio Tracker L1 (OLED)|
-|**Other hardware**|Untested — contributions welcome|
+|**Tested on**     |Elecrow ThinkNode M1 (E-Ink), Seeed Wio Tracker L1 (OLED), Seeed T1000-E (no display)|
+|**Other hardware**|RAK WiseMesh TAG and similar single-button headless devices — contributions welcome|
 |**Base firmware** |MeshCore v1.14.1                |
 
-FieldMesh has been developed and tested on the ThinkNode M1 (E-Ink, single button) and the Wio Tracker L1 (OLED, joystick). The code is written to be portable — all hardware-specific pins are in `variant.h`, layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test it on another platform, please open an issue with your findings.
+FieldMesh has been developed and tested on the ThinkNode M1 (E-Ink, single button) and the Wio Tracker L1 (OLED, joystick). V5.10 adds support for headless devices (no display, single button) — the Seeed T1000-E is the primary reference device for this class. The code is written to be portable — all hardware-specific pins are in `variant.h`, layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test it on another platform, please open an issue with your findings.
 
 -----
 
@@ -112,6 +112,10 @@ These files differ from upstream MeshCore. Everything else is untouched.
 |`examples/companion_radio/ui-new/UITask.h`  |Outdoor menu, SOS screens, buzzer and backlight members; message history and compose screens (V5)|
 |`examples/companion_radio/ui-new/UITask.cpp`|All UI: tracking page, Haversine, outdoor menu, SOS screens, backlight logic; message history, filter, compose, channel select (V5)|
 |`examples/companion_radio/ui-new/icons.h`   |Adds 48×48px advert icon for large displays                                 |
+|`examples/companion_radio/ui-orig/Button.h` |Adds `QUINTUPLE_PRESS` event and `onQuintuplePress()` callback (V5.10)      |
+|`examples/companion_radio/ui-orig/Button.cpp`|Handles 5x click as distinct event; `== 4` fix for quadruple detection (V5.10)|
+|`examples/companion_radio/ui-orig/UITask.h` |Adds `handleButtonQuintuplePress()`, `triggerSOS()`, `_sos_active` flag; `newMsg()` signature updated (V5.10)|
+|`examples/companion_radio/ui-orig/UITask.cpp`|Off-Grid toggle via 5x click; SOS alarm via buzzer; forced buzzer feedback for all button actions (V5.10)|
 |`variants/thinknode_m1/variant.h`           |Corrects `PIN_BUTTON2` to GPIO 39                                           |
 |`variants/thinknode_m1/platformio.ini`      |Sets `AUTO_OFF_MILLIS=0` to prevent E-Ink display timeout                   |
 |`variants/wio-tracker-l1/target.cpp`        |Adds `joystick_up` / `joystick_down` MomentaryButton instances              |
@@ -132,7 +136,7 @@ No additional dependencies beyond what MeshCore already requires.
 
 ## Limitations & Known Issues
 
-- Tested on ThinkNode M1 and Wio Tracker L1 — other hardware untested
+- Tested on ThinkNode M1, Wio Tracker L1, and Seeed T1000-E — other hardware untested
 - Off-Grid frequency is hardcoded for EU (869.4625 MHz) — other regions need a different default
 - SOS requires a channel named "sos" to exist in your MeshCore setup
 - Tracking page shows a maximum of 3 contacts (favourited in the companion app)
