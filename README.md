@@ -35,7 +35,7 @@ Your own node advertises its position automatically every 5 minutes when GPS sha
 
 MeshCore has a feature called **Client Repeat** where a node actively relays packets to extend network reach. FieldMesh builds on this — but the upstream frequency defaults for Client Repeat were problematic: the EU 433 MHz value was a single illegal point frequency, the 869 MHz value landed in a sub-band with 0.1% duty cycle (practically unusable), and the 915 MHz value was outside the legal band in some regions.
 
-FieldMesh corrects the frequency ranges to legal values and adds a **one-press Off-Grid toggle** accessible from the Tracking page menu. It switches to a dedicated off-grid frequency — **869.4625 MHz / BW125 / SF11 / CR5** (EU Sub-Band g1, 10% duty cycle, no LBT required) — and enables Client Repeat in one step, saving your normal parameters automatically so you can switch back without re-entering anything.
+FieldMesh corrects the frequency ranges to legal values and adds a **one-press Off-Grid toggle** accessible from the Tracking page menu. It switches to a dedicated off-grid frequency — **869.4625 MHz / BW125 / SF11 / CR5** (EU Sub-Band g1, 10% duty cycle, no LBT required) — and enables Client Repeat in one step, saving your normal parameters automatically so you can switch back without re-entering anything. There is a dedicated US build with US legal frequencies available under [releases](../../releases/latest).
 
 **Off-Grid uses a completely separate frequency from your normal MeshCore network.** For example, the EU/UK Narrow preset runs on 869.618 MHz / BW62.5. Off-Grid runs on 869.4625 MHz / BW125. The two signals don't overlap — there is a ~62 kHz gap between them. You can run Off-Grid mode at a festival or in the field without interfering with the wider MeshCore network around you.
 
@@ -251,6 +251,7 @@ This happens on a separate frequency to avoid interfering with the main MeshCore
 
 Currently, the Off-Grid frequency can only be changed in the code.
 You need to clone the repository and adjust the configuration manually.
+If you just want to download prebuild firmware you will find a EU and US build unter [releases](../../releases/latest)
 
 </details>
 
