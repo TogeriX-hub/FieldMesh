@@ -359,6 +359,71 @@ It is independent from MeshCore's internal message queue and is not affected by 
 
 </details>
 
+---
+
+## Headless devices (T1000-E, RAK WiseMesh TAG)
+
+<details>
+<summary><strong>What can I do with a device that has no display?</strong></summary>
+
+Headless devices (no display, single button) support a focused set of features:
+
+- receive and relay mesh messages
+- toggle Off-Grid mode via 5× button press
+- receive SOS alarms via buzzer
+- send adverts, toggle GPS, toggle buzzer mute
+
+All actions give forced buzzer feedback — ascending tone means on/enabled, descending means off/disabled.
+
+</details>
+
+
+<details>
+<summary><strong>How do I toggle Off-Grid mode on a headless device?</strong></summary>
+
+Press the button 5 times in quick succession.
+
+The buzzer confirms the result:
+- two ascending tones (low → high) = Off-Grid is now **on**
+- two descending tones (high → low) = Off-Grid is now **off**
+
+This feedback is always played, even if the buzzer is otherwise muted.
+
+</details>
+
+
+<details>
+<summary><strong>How does SOS work on a headless device?</strong></summary>
+
+When an SOS message is received, the buzzer sounds a continuous siren alarm. The alarm loops until you press the button once (short press) to acknowledge it.
+
+Note: headless devices cannot send SOS — there is no free button slot for a two-step SOS send confirmation. SOS receive only.
+
+</details>
+
+
+<details>
+<summary><strong>What do the different buzzer tones mean on a headless device?</strong></summary>
+
+| Tone | Meaning |
+|---|---|
+| Ascending (c → e) | Feature turned on (GPS, buzzer, Off-Grid) |
+| Descending (e → c) | Feature turned off |
+| Double beep | Advert sent |
+| Continuous siren | SOS alarm received — press once to acknowledge |
+
+</details>
+
+
+<details>
+<summary><strong>How do I know if my headless device is in Off-Grid mode after a reboot?</strong></summary>
+
+The Off-Grid state is saved to flash and restored on boot. If Off-Grid was active before the reboot, it will be active again after — but there is no visual indicator without a display.
+
+To check: press 5× to toggle, listen to the tone (ascending = was off, now on; descending = was on, now off), then press 5× again to return to the original state.
+
+</details>
+
 -----
 
 ## Contributing
