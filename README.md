@@ -2,7 +2,7 @@
 
 **A MeshCore firmware fork optimized for outdoor use — festivals, hiking, off-grid events, and situations where you need your radio network to do more than stock MeshCore offers.**
 
-Built on [MeshCore](https://github.com/ripplebiz/MeshCore) ·  Based on MeshCore v1.14.1
+Built on [MeshCore](https://github.com/ripplebiz/MeshCore) ·  Based on MeshCore v1.14.1 ·  Download latest [release](../../releases/latest)
 
 -----
 
@@ -137,7 +137,7 @@ No additional dependencies beyond what MeshCore already requires.
 ## Limitations & Known Issues
 
 - Tested on ThinkNode M1, Wio Tracker L1, and Seeed T1000-E — other hardware untested
-- Off-Grid frequency is hardcoded for EU (869.4625 MHz) — other regions need a different default
+- Off-Grid frequency is hardcoded — other regions need a different default! On the [releases](../../releases/latest) section you will find both a firmware for EU and US download
 - SOS requires a channel named "sos" to exist in your MeshCore setup
 - Tracking page shows a maximum of 3 contacts (favourited in the companion app)
 - Message history is RAM-only — stored messages are lost on reboot (intentional)
