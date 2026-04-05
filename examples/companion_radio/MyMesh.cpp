@@ -651,14 +651,7 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   // V5: call newMsg() only when app is NOT connected.
   // When connected, messages are handled on the phone — do not add to display history.
   if (_ui && !_serial->isConnected()) {
-    // Extract the sender's node name from the message text (format: "NodeName: message").
-    // MeshCore prepends the sender's node_name, so we use that as from_name — consistent
-    // with DM behaviour where from_name = from.name (the actual contact name).
-    // Fallback to channel_name if the format is not recognised.
-    char sender_buf[33];
-    const char* from_name = extractSenderName(text, sender_buf, sizeof(sender_buf))
-                            ? sender_buf : channel_name;
-    _ui->newMsg(path_len, from_name, text, offline_queue_len, isSenderFavorite(text));
+    _ui->newMsg(path_len, channel_name, text, offline_queue_len, isSenderFavorite(text));
   }
 #endif
 }
