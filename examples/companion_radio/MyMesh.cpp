@@ -570,24 +570,21 @@ static bool extractSenderName(const char* text, char* out_name, int max_len) {
 
 // V5: Favourite check for channel messages.
 // Extracts the sender name from the text and searches the contact list by name.
-// Namens-Kollision (zwei Kontakte gleicher Name): erster Treffer gewinnt — akzeptiertes Risiko.
-// IMPORTANT: ContactInfo declared static to avoid stack overflow.
-// With MAX_CONTACTS=350 and a deep call stack (BaseChatMesh::loop), a local
-// ContactInfo would overflow the nRF52840 stack and crash the BLE stack.
+// Name collision (two contacts with the same name): first match wins — accepted risk.
+// Uses searchContactsByPrefix() for a direct pointer into contacts[] — no copy, no
+// stack/BSS allocation needed. searchContactsByPrefix() does a prefix match, so we
+// verify exact match afterward (contact name must end exactly where sender_name ends).
 bool MyMesh::isSenderFavorite(const char* text) {
   char sender_name[33];
   if (!extractSenderName(text, sender_name, sizeof(sender_name))) {
     return false;
   }
-  static ContactInfo contact;  // static: BSS segment, not on the stack
-  for (uint32_t i = 0; i < MAX_CONTACTS; i++) {
-    if (!getContactByIdx(i, contact)) break;
-    if (contact.name[0] == 0) continue;
-    if (strcmp(contact.name, sender_name) == 0) {
-      return (contact.flags & 0x01) != 0;
-    }
-  }
-  return false;
+  ContactInfo* c = searchContactsByPrefix(sender_name);
+  if (c == NULL) return false;
+  // Verify exact match: contact name must not be longer than sender_name
+  size_t len = strlen(sender_name);
+  if (c->name[len] != '\0') return false;
+  return (c->flags & 0x01) != 0;
 }
 
 // V5: Send channel message from UI (without smartphone).
