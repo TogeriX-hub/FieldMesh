@@ -231,6 +231,8 @@ private:
 
     bool isChannelMsg() const;
   };
+
+  bool isChannelMsgFromFavorite(const Frame& f);
   int offline_queue_len;
   Frame offline_queue[OFFLINE_QUEUE_SIZE];
 

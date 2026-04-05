@@ -210,23 +210,46 @@ bool MyMesh::Frame::isChannelMsg() const {
   return buf[0] == RESP_CODE_CHANNEL_MSG_RECV || buf[0] == RESP_CODE_CHANNEL_MSG_RECV_V3;
 }
 
+// Check whether a queued channel message frame was sent by a favourite contact.
+// Text offset: V3 header = 11 bytes (code+SNR+2×reserved+channel_idx+path_len+txt_type+4×timestamp),
+//              V1/V2     =  8 bytes (code+channel_idx+path_len+txt_type+4×timestamp).
+bool MyMesh::isChannelMsgFromFavorite(const Frame& f) {
+  if (!f.isChannelMsg()) return false;
+  int text_offset = (f.buf[0] == RESP_CODE_CHANNEL_MSG_RECV_V3) ? 11 : 8;
+  if (f.len <= text_offset) return false;
+  char text_buf[MAX_FRAME_SIZE + 1];
+  int text_len = f.len - text_offset;
+  memcpy(text_buf, &f.buf[text_offset], text_len);
+  text_buf[text_len] = 0;
+  return isSenderFavorite(text_buf);
+}
+
 void MyMesh::addToOfflineQueue(const uint8_t frame[], int len) {
   if (offline_queue_len >= OFFLINE_QUEUE_SIZE) {
     MESH_DEBUG_PRINTLN("WARN: offline_queue is full!");
-    int pos = 0;
-    while (pos < offline_queue_len) {
+    // Search ALL stored channel messages for the oldest non-favourite to evict.
+    // Only fall back to evicting a favourite channel message if there are no
+    // non-favourite channel messages left in the queue.
+    int evict_pos = -1;  // index of candidate to remove (-1 = none found yet)
+    for (int pos = 0; pos < offline_queue_len; pos++) {
       if (offline_queue[pos].isChannelMsg()) {
-        for (int i = pos; i < offline_queue_len - 1; i++) { // delete oldest channel msg from queue
-          offline_queue[i] = offline_queue[i + 1];
+        if (evict_pos < 0) evict_pos = pos;  // first channel msg: tentative fallback
+        if (!isChannelMsgFromFavorite(offline_queue[pos])) {
+          evict_pos = pos;  // prefer oldest non-favourite
+          break;
         }
-        MESH_DEBUG_PRINTLN("INFO: removed oldest channel message from queue.");
-        offline_queue[offline_queue_len - 1].len = len;
-        memcpy(offline_queue[offline_queue_len - 1].buf, frame, len);
-        return;
       }
-      pos++;
     }
-    MESH_DEBUG_PRINTLN("INFO: no channel messages to remove from queue.");
+    if (evict_pos >= 0) {
+      for (int i = evict_pos; i < offline_queue_len - 1; i++) {
+        offline_queue[i] = offline_queue[i + 1];
+      }
+      MESH_DEBUG_PRINTLN("INFO: removed channel message from queue.");
+      offline_queue[offline_queue_len - 1].len = len;
+      memcpy(offline_queue[offline_queue_len - 1].buf, frame, len);
+    } else {
+      MESH_DEBUG_PRINTLN("INFO: no channel messages to remove from queue.");
+    }
   } else {
     offline_queue[offline_queue_len].len = len;
     memcpy(offline_queue[offline_queue_len].buf, frame, len);
