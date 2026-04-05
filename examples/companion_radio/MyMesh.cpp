@@ -473,13 +473,17 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
   }
 
 #ifdef DISPLAY_CLASS
-  // V5: call newMsg() only when app is NOT connected.
-  // When connected, messages are handled on the phone — do not add to display history.
+  // V5: favourite messages always call newMsg() (popup shows even when phone is connected).
+  // Non-favourite DMs only update the device history when offline.
   bool should_display = txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_SIGNED_PLAIN;
-  if (should_display && _ui && !_serial->isConnected()) {
+  if (should_display && _ui) {
     bool is_fav = (from.flags & 0x01) != 0;
-    _ui->newMsg(path_len, from.name, text, offline_queue_len, is_fav);
-    _ui->notify(UIEventType::contactMessage);
+    if (is_fav || !_serial->isConnected()) {
+      _ui->newMsg(path_len, from.name, text, offline_queue_len, is_fav);
+      if (!_serial->isConnected()) {
+        _ui->notify(UIEventType::contactMessage);
+      }
+    }
   }
 #endif
 }
@@ -648,10 +652,21 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
     return;  // do not call newMsg() — SOSAlertScreen takes priority
   }
 
-  // V5: call newMsg() only when app is NOT connected.
-  // When connected, messages are handled on the phone — do not add to display history.
-  if (_ui && !_serial->isConnected()) {
-    _ui->newMsg(path_len, channel_name, text, offline_queue_len, isSenderFavorite(text));
+  // V5: favourite messages always call newMsg() (popup shows even when phone is connected,
+  // as stated in the V5.05 comment in UITask::newMsg).
+  // Non-favourite channel messages only update the device history when offline.
+  //
+  // from_name: extract the sender's node name from the text (format: "NodeName: message")
+  // since MeshCore prepends node_name — consistent with DM behaviour (from.name).
+  // Falls back to channel_name if the format is not recognised.
+  if (_ui) {
+    bool is_fav = isSenderFavorite(text);
+    if (is_fav || !_serial->isConnected()) {
+      char sender_buf[33];
+      const char* from_name = extractSenderName(text, sender_buf, sizeof(sender_buf))
+                              ? sender_buf : channel_name;
+      _ui->newMsg(path_len, from_name, text, offline_queue_len, is_fav);
+    }
   }
 #endif
 }
