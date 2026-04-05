@@ -541,52 +541,6 @@ void MyMesh::onSignedMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uin
   queueMessage(from, TXT_TYPE_SIGNED_PLAIN, pkt, sender_timestamp, sender_prefix, 4, text);
 }
 
-// ── V5: Helper — extract sender name from channel message text ─────────────
-// MeshCore-Format: "NodeName | Region: text" oder "NodeName: text"
-// Returns true if a name was found; out_name is filled in.
-static bool extractSenderName(const char* text, char* out_name, int max_len) {
-  // Preferred: " | " (with spaces) — standard format
-  const char* pipe = strstr(text, " | ");
-  if (pipe != NULL) {
-    int len = (int)(pipe - text);
-    if (len > 0 && len < max_len) {
-      strncpy(out_name, text, len);
-      out_name[len] = 0;
-      return true;
-    }
-  }
-  // Fallback: ": " ohne Pipe
-  const char* colon = strstr(text, ": ");
-  if (colon != NULL) {
-    int len = (int)(colon - text);
-    if (len > 0 && len < max_len) {
-      strncpy(out_name, text, len);
-      out_name[len] = 0;
-      return true;
-    }
-  }
-  return false;  // format not recognised
-}
-
-// V5: Favourite check for channel messages.
-// Extracts the sender name from the text and searches the contact list by name.
-// Name collision (two contacts with the same name): first match wins — accepted risk.
-// Uses searchContactsByPrefix() for a direct pointer into contacts[] — no copy, no
-// stack/BSS allocation needed. searchContactsByPrefix() does a prefix match, so we
-// verify exact match afterward (contact name must end exactly where sender_name ends).
-bool MyMesh::isSenderFavorite(const char* text) {
-  char sender_name[33];
-  if (!extractSenderName(text, sender_name, sizeof(sender_name))) {
-    return false;
-  }
-  ContactInfo* c = searchContactsByPrefix(sender_name);
-  if (c == NULL) return false;
-  // Verify exact match: contact name must not be longer than sender_name
-  size_t len = strlen(sender_name);
-  if (c->name[len] != '\0') return false;
-  return (c->flags & 0x01) != 0;
-}
-
 // V5: Send channel message from UI (without smartphone).
 // Analogous to sendSOS() — wrapper so UITask stays free of getRTCClock() logic.
 bool MyMesh::sendChannelMessage(uint8_t channel_idx, const char* text) {
@@ -649,21 +603,10 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
     return;  // do not call newMsg() — SOSAlertScreen takes priority
   }
 
-  // V5: favourite messages always call newMsg() (popup shows even when phone is connected,
-  // as stated in the V5.05 comment in UITask::newMsg).
-  // Non-favourite channel messages only update the device history when offline.
-  //
-  // from_name: extract the sender's node name from the text (format: "NodeName: message")
-  // since MeshCore prepends node_name — consistent with DM behaviour (from.name).
-  // Falls back to channel_name if the format is not recognised.
-  if (_ui) {
-    bool is_fav = isSenderFavorite(text);
-    if (is_fav || !_serial->isConnected()) {
-      char sender_buf[33];
-      const char* from_name = extractSenderName(text, sender_buf, sizeof(sender_buf))
-                              ? sender_buf : channel_name;
-      _ui->newMsg(path_len, from_name, text, offline_queue_len, is_fav);
-    }
+  // Channel messages are never treated as favourites (favourite detection is DM-only).
+  // Show in history only when the phone app is not connected (standalone mode).
+  if (_ui && !_serial->isConnected()) {
+    _ui->newMsg(path_len, channel_name, text, offline_queue_len, false);
   }
 #endif
 }

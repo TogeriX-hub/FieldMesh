@@ -172,8 +172,6 @@ public:
   // V5: send channel message from UI (wrapper for sendGroupMessage, analogous to sendSOS)
   bool sendChannelMessage(uint8_t channel_idx, const char* text);
 
-  // V5: favourite check for channel messages (extract sender name from text)
-  bool isSenderFavorite(const char* text);
 
 private:
   void writeOKFrame();
