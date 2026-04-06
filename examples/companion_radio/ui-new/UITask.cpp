@@ -1839,6 +1839,9 @@ void UITask::msgRead(int msgcount) {
     // App has fully drained the sync queue — also clear history in RAM.
     // Messages read via the app should not remain on the display.
     ((MsgHistoryScreen*) msg_history)->clearAll();  // also resets _num_unread via setUnreadCount(0)
+    _latest_fav_name[0] = 0;  //resets Favorite_cache at App-Sync
+    _latest_fav_time = 0;
+    
     gotoHomeScreen();
   }
 }
