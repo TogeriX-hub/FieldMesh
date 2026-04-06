@@ -538,20 +538,9 @@ void MyMesh::onSignedMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uin
 }
 
 // ── V5: Helper — extract sender name from channel message text ─────────────
-// MeshCore-Format: "NodeName | Region: text" oder "NodeName: text"
+// MeshCore-Format: "NodeName: text"
 // Returns true if a name was found; out_name is filled in.
-static bool extractSenderName(const char* text, char* out_name, int max_len) {
-  // Preferred: " | " (with spaces) — standard format
-  const char* pipe = strstr(text, " | ");
-  if (pipe != NULL) {
-    int len = (int)(pipe - text);
-    if (len > 0 && len < max_len) {
-      strncpy(out_name, text, len);
-      out_name[len] = 0;
-      return true;
-    }
-  }
-  // Fallback: ": " ohne Pipe
+
   const char* colon = strstr(text, ": ");
   if (colon != NULL) {
     int len = (int)(colon - text);
