@@ -38,11 +38,10 @@
 // Formatiert vergangene Zeit als relativen String: "5s", "3m", "2h"
 // Identical to the V4 pattern (MsgPreviewScreen, RECENT, TRACKING).
 static void formatRelTime(char* buf, size_t buf_size, uint32_t now, uint32_t then) {
-  int secs = (int)(now - then);
-  if (secs < 0) secs = 0;
-  if (secs < 60)        snprintf(buf, buf_size, "%ds", secs);
-  else if (secs < 3600) snprintf(buf, buf_size, "%dm", secs / 60);
-  else                  snprintf(buf, buf_size, "%dh", secs / 3600);
+  uint32_t secs = (now >= then) ? (now - then) : 0;
+  if (secs < 60)        snprintf(buf, buf_size, "%us", secs);
+  else if (secs < 3600) snprintf(buf, buf_size, "%um", secs / 60);
+  else                  snprintf(buf, buf_size, "%uh", secs / 3600);
 }
 static float calcDistance(double lat1, double lon1, double lat2, double lon2) {
   if (lat1 == 0.0 && lon1 == 0.0) return -1.0f;  // eigene Position unbekannt
@@ -257,18 +256,21 @@ public:
       display.setTextSize(1);
       display.setColor(DisplayDriver::LIGHT);
 
-      // -- Online counter: combine message senders (UITask cache) + advert senders (recent[])
+      // -- Online counter: combine message senders (UITask cache) + advert senders
       // Time window: 30 minutes = 1800 seconds
       // Note: slight double-counting possible if a node both advertised and sent a message
       uint32_t now_ts = _rtc->getCurrentTime();
       const uint32_t ONLINE_WINDOW_SECS = 1800;
 
-      the_mesh.getRecentlyHeard(recent, UI_RECENT_LIST_SIZE);
+      // Use full advert_paths[] ring buffer (ADVERT_PATH_TABLE_SIZE slots), not the
+      // 4-entry RECENT display list, so the counter is not capped at UI_RECENT_LIST_SIZE.
+      AdvertPath adv_buf[ADVERT_PATH_TABLE_SIZE];
+      int adv_count = the_mesh.getRecentlyHeard(adv_buf, ADVERT_PATH_TABLE_SIZE);
       int adv_fresh = 0;
-      for (int i = 0; i < UI_RECENT_LIST_SIZE; i++) {
-        if (recent[i].name[0] == 0) continue;
-        uint32_t age = (now_ts >= recent[i].recv_timestamp)
-                       ? (now_ts - recent[i].recv_timestamp) : 0;
+      for (int i = 0; i < adv_count; i++) {
+        if (adv_buf[i].name[0] == 0) continue;
+        uint32_t age = (now_ts >= adv_buf[i].recv_timestamp)
+                       ? (now_ts - adv_buf[i].recv_timestamp) : 0;
         if (age <= ONLINE_WINDOW_SECS) adv_fresh++;
       }
       int online_total = _task->countOnlineNodes(now_ts, ONLINE_WINDOW_SECS) + adv_fresh;
@@ -348,8 +350,7 @@ public:
         if (connected) {
           display.drawTextCentered(display.width() / 2, 33, "< Connected >");
         } else if (has_fav) {
-          display.setCursor(0, 33);
-          display.print(fav_line);
+          display.drawTextEllipsized(0, 33, display.width(), fav_line);
         } else if (gps_share_on && off_grid_on) {
           display.setCursor(0, 33);
           display.print("[GPS-SHARE][OG]");
