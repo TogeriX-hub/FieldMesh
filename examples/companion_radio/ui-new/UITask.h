@@ -40,6 +40,14 @@ class UITask : public AbstractUITask {
   int _num_unread;               // V5: internal unread counter (independent of _msgcount)
   char _latest_fav_name[33];     // V5: name of the most recent favourite with a message
   uint32_t _latest_fav_time;     // V5: Zeitstempel seiner letzten Nachricht
+
+  // Online node cache — nodes heard (advert or message) within the last 30 minutes
+  struct OnlineNode {
+    char     name[33];
+    uint32_t last_seen;
+  };
+  static const int ONLINE_CACHE_SIZE = 16;
+  OnlineNode _online_nodes[ONLINE_CACHE_SIZE];
   unsigned long ui_started_at, next_batt_chck;
   int next_backlight_btn_check = 0;
 #ifdef DISP_BACKLIGHT
@@ -92,6 +100,7 @@ public:
     _num_unread = 0;           // V5
     _latest_fav_name[0] = 0;  // V5
     _latest_fav_time = 0;     // V5
+    memset(_online_nodes, 0, sizeof(_online_nodes));
   }
 
   void begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs);
@@ -113,6 +122,11 @@ public:
   int         getNumUnread() const { return _num_unread; }                    // V5
   const char* getLatestFavoriteName() const { return _latest_fav_name; }     // V5
   uint32_t    getLatestFavoriteTime() const { return _latest_fav_time; }     // V5
+
+  // Online node cache
+  void updateOnlineNode(const char* name, uint32_t timestamp);
+  int  countOnlineNodes(uint32_t now, uint32_t window_secs = 1800) const;
+
   bool hasDisplay() const { return _display != NULL; }
   bool isButtonPressed() const;
 
