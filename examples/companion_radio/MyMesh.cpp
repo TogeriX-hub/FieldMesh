@@ -646,13 +646,19 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
 
   // V5: call newMsg() only when app is NOT connected.
   // When connected, messages are handled on the phone — do not add to display history.
-  if (_ui && !_serial->isConnected()) {
+  // But always update the active node counter so incoming messages are counted while connected.
+  if (_ui) {
     // extract sender name for display and online node cache
     // everything before ": " in the text — e.g. "Juno48 | Region: Hello" -> "Juno48 | Region"
     char sender_name[33];
     const char* display_name = extractSenderName(text, sender_name, sizeof(sender_name))
                                ? sender_name : channel_name;
-    _ui->newMsg(path_len, display_name, text, offline_queue_len, isSenderFavorite(text), channel_name);
+    if (!_serial->isConnected()) {
+      _ui->newMsg(path_len, display_name, text, offline_queue_len, isSenderFavorite(text), channel_name);
+    } else {
+      // App is connected: update active node counter only (no display history)
+      _ui->updateOnlineNode(display_name, getRTCClock()->getCurrentTime());
+    }
   }
 #endif
 }
