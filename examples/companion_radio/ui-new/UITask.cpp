@@ -644,12 +644,23 @@ class MsgHistoryScreen : public UIScreen {
     return -1;
   }
 
+  bool hasAnyFavorite() const {
+    for (int i = 0; i < MAX_HISTORY_MSGS; i++) {
+      if (history[i].valid && history[i].is_favorite) return true;
+    }
+    return false;
+  }
+
   // Delete entry from RAM and update HomeScreen counter
   void deleteEntry(int idx) {
     if (!history[idx].valid) return;
+    bool was_favorite = history[idx].is_favorite;
     memset(&history[idx], 0, sizeof(MsgEntry)); // valid=false durch memset
     if (num_total > 0) num_total--;
     _task->setUnreadCount(num_total);
+    if (was_favorite && !hasAnyFavorite()) {
+      _task->clearFavoriteCache();
+    }
   }
 
 public:
@@ -703,6 +714,7 @@ public:
     head       = MAX_HISTORY_MSGS - 1;
     display_idx = 0;
     _task->setUnreadCount(0);
+    _task->clearFavoriteCache();
   }
 
   int getNumTotal() const { return num_total; }
