@@ -149,3 +149,8 @@ static const uint8_t advert_icon_large[] = {
 static const uint8_t muted_icon[] = {
   0x20, 0x6a, 0xea, 0xe4, 0xe4, 0xea, 0x6a, 0x20
 };
+
+// Filled circle 8x8px — used as online node status indicator on FIRST page
+static const uint8_t nodes_icon[] = {
+    0x3C, 0x7E, 0xFF, 0xFF, 0xFF, 0xFF, 0x7E, 0x3C
+};

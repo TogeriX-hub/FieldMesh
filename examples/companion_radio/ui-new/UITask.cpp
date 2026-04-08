@@ -307,11 +307,13 @@ public:
           display.setTextSize(1);
         }
 
-        // Online counter
+        // Online counter: filled circle icon + number + "nodes"
         int y = connected ? 22 : 44;
-        sprintf(tmp, "[%d] nodes", online_total);
-        display.setCursor(0, y);
-        display.print(tmp);
+        display.drawXbm(0, y, nodes_icon, 8, 8);
+        char online_str[16];
+        snprintf(online_str, sizeof(online_str), " %d nodes", online_total);
+        display.setCursor(10, y);
+        display.print(online_str);
         y += 11;
 
         // Mode status line — both modes on one line, only shown when at least one is active
@@ -342,11 +344,13 @@ public:
           display.print(tmp);
         }
 
-        // [X] always right-aligned, even when connected
+        // online node count: filled circle icon + number, right-aligned
         char online_str[8];
-        snprintf(online_str, sizeof(online_str), "[%d]", online_total);
-        int online_w = display.getTextWidth(online_str);
-        display.setCursor(display.width() - online_w - 1, 22);
+        snprintf(online_str, sizeof(online_str), " %d", online_total);
+        int online_w = display.getTextWidth(online_str) + 8 + 2; // icon(8) + gap(2) + text
+        int icon_x = display.width() - online_w - 1;
+        display.drawXbm(icon_x, 22, nodes_icon, 8, 8);
+        display.setCursor(icon_x + 8 + 2, 22);
         display.print(online_str);
 
         // Line 2 (y=33): priority order: connected > favourite > mode > empty
