@@ -698,7 +698,7 @@ class MsgHistoryScreen : public UIScreen {
   struct MsgEntry {
     uint32_t timestamp;
     char from_name[33];
-    char channel_tag[8];
+    char channel_tag[16];
     char msg[80];
     bool is_favorite;
     bool valid;           // true = Eintrag belegt, false = geloescht/leer
@@ -766,7 +766,7 @@ public:
   }
 
   // Add new message — only when app is NOT connected (called by UITask::newMsg)
-  void addMessage(uint8_t path_len, const char* from_name, const char* msg_text, bool is_favorite = false) {
+  void addMessage(uint8_t path_len, const char* from_name, const char* msg_text, bool is_favorite = false, const char* channel_name = nullptr) {
     head = (head + 1) % MAX_HISTORY_MSGS;
 
     // If the new head slot was still occupied (ring buffer full): correct the counter
@@ -784,6 +784,9 @@ public:
 
     if (path_len == 0xFF) {
       strcpy(p->channel_tag, "[DM]");
+    } else if (channel_name && channel_name[0]) {
+      strncpy(p->channel_tag, channel_name, sizeof(p->channel_tag) - 1);
+      p->channel_tag[sizeof(p->channel_tag) - 1] = 0;
     } else {
       strcpy(p->channel_tag, "[CH]");
     }
@@ -1112,7 +1115,7 @@ class FavPreviewScreen : public UIScreen {
   struct {
     uint32_t timestamp;
     char     from_name[33];
-    char     channel_tag[8];
+    char     channel_tag[16];
     char     msg[80];
   } _entry;
   bool _has_entry = false;
@@ -1121,12 +1124,15 @@ public:
   FavPreviewScreen(UITask* task, mesh::RTCClock* rtc) : _task(task), _rtc(rtc) {}
 
   // Called by UITask::newMsg() — always overwrites the last entry.
-  void setMessage(uint8_t path_len, const char* from_name, const char* text) {
+  void setMessage(uint8_t path_len, const char* from_name, const char* text, const char* channel_name = nullptr) {
     _entry.timestamp = _rtc->getCurrentTime();
     strncpy(_entry.from_name, from_name, sizeof(_entry.from_name) - 1);
     _entry.from_name[sizeof(_entry.from_name) - 1] = 0;
     if (path_len == 0xFF) {
       strncpy(_entry.channel_tag, "[DM]", sizeof(_entry.channel_tag));
+    } else if (channel_name && channel_name[0]) {
+      strncpy(_entry.channel_tag, channel_name, sizeof(_entry.channel_tag) - 1);
+      _entry.channel_tag[sizeof(_entry.channel_tag) - 1] = 0;
     } else {
       strncpy(_entry.channel_tag, "[CH]", sizeof(_entry.channel_tag));
     }
@@ -1946,7 +1952,7 @@ void UITask::msgRead(int msgcount) {
   }
 }
 
-void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount, bool is_favorite) {
+void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount, bool is_favorite, const char* channel_name) {
   _msgcount = msgcount;
 
   // V3: do not interrupt SOS alarm with normal messages
@@ -1955,7 +1961,7 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
   // V5: Nachricht in History speichern.
   // addMessage() calls setUnreadCount(num_total) — _num_unread is set there.
   // newMsg() is called by MyMesh only when app is NOT connected (since V5.03).
-  ((MsgHistoryScreen*) msg_history)->addMessage(path_len, from_name, text, is_favorite);
+  ((MsgHistoryScreen*) msg_history)->addMessage(path_len, from_name, text, is_favorite, channel_name);
 
   // Update online node cache — from_name is always the node name at this point
   // (channel messages: MyMesh resolves the sender name before calling newMsg)
@@ -1976,7 +1982,7 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
   // Wegdruecken loescht nichts — Nachricht bleibt in History erhalten.
   // Exception: if history or filter screen is already active → show alert only, no popup switch.
   if (is_favorite) {
-    ((FavPreviewScreen*) fav_preview)->setMessage(path_len, from_name, text);
+    ((FavPreviewScreen*) fav_preview)->setMessage(path_len, from_name, text, channel_name);
     if (curr != msg_history && curr != msg_filter) {
       setCurrScreen(fav_preview);
     } else {
