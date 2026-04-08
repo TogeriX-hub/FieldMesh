@@ -864,19 +864,25 @@ public:
       display.setCursor(display.width() - tw - 2, 1);
       display.print(time_buf);
 
-      // Name left-aligned: "[CH1] NodeName *" or "[DM] NodeName *"
+      // Name left-aligned: "Public *" (channel) or "[DM] NodeName *" (direct)
       char left_part[48];
-      if (p->is_favorite) {
-        snprintf(left_part, sizeof(left_part), "%s %s *", p->channel_tag, filtered_name);
+      bool is_dm = (strcmp(p->channel_tag, "[DM]") == 0);
+      if (is_dm) {
+        snprintf(left_part, sizeof(left_part), p->is_favorite ? "%s %s *" : "%s %s", p->channel_tag, filtered_name);
       } else {
-        snprintf(left_part, sizeof(left_part), "%s %s", p->channel_tag, filtered_name);
+        snprintf(left_part, sizeof(left_part), p->is_favorite ? "%s *" : "%s", p->channel_tag);
       }
       display.setCursor(0, 1);
       display.print(left_part);
     } else {
       // L1: Platz knapp — zentriert wie bisher
+      bool is_dm = (strcmp(p->channel_tag, "[DM]") == 0);
       char title[48];
-      snprintf(title, sizeof(title), "%s %s", p->channel_tag, filtered_name);
+      if (is_dm) {
+        snprintf(title, sizeof(title), "%s %s", p->channel_tag, filtered_name);
+      } else {
+        snprintf(title, sizeof(title), "%s", p->channel_tag);
+      }
       if (p->is_favorite) {
         if (strlen(title) < sizeof(title) - 3) strcat(title, " *");
       }
@@ -1169,13 +1175,21 @@ public:
       display.print(time_buf);
 
       char left_part[48];
-      snprintf(left_part, sizeof(left_part), "%s %s *", _entry.channel_tag, filtered_name);
+      if (strcmp(_entry.channel_tag, "[DM]") == 0) {
+        snprintf(left_part, sizeof(left_part), "%s %s *", _entry.channel_tag, filtered_name);
+      } else {
+        snprintf(left_part, sizeof(left_part), "%s *", _entry.channel_tag);
+      }
       display.setCursor(0, 1);
       display.print(left_part);
     } else {
       // L1: zentriert
       char title[48];
-      snprintf(title, sizeof(title), "%s %s *", _entry.channel_tag, filtered_name);
+      if (strcmp(_entry.channel_tag, "[DM]") == 0) {
+        snprintf(title, sizeof(title), "%s %s *", _entry.channel_tag, filtered_name);
+      } else {
+        snprintf(title, sizeof(title), "%s *", _entry.channel_tag);
+      }
       display.drawTextCentered(display.width() / 2, 1, title);
     }
     display.setColor(DisplayDriver::LIGHT);
