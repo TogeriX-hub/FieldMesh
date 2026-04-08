@@ -476,11 +476,17 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
 #ifdef DISPLAY_CLASS
   // V5: call newMsg() only when app is NOT connected.
   // When connected, messages are handled on the phone — do not add to display history.
+  // But always update the active node counter so incoming messages are counted while connected.
   bool should_display = txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_SIGNED_PLAIN;
-  if (should_display && _ui && !_serial->isConnected()) {
-    bool is_fav = (from.flags & 0x01) != 0;
-    _ui->newMsg(path_len, from.name, text, offline_queue_len, is_fav);
-    _ui->notify(UIEventType::contactMessage);
+  if (should_display && _ui) {
+    if (!_serial->isConnected()) {
+      bool is_fav = (from.flags & 0x01) != 0;
+      _ui->newMsg(path_len, from.name, text, offline_queue_len, is_fav);
+      _ui->notify(UIEventType::contactMessage);
+    } else {
+      // App is connected: update active node counter only (no display history)
+      _ui->updateOnlineNode(from.name, getRTCClock()->getCurrentTime());
+    }
   }
 #endif
 }

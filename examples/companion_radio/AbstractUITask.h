@@ -48,4 +48,5 @@ public:
   virtual void triggerSOS(const char* from, const char* text) {}  // V3: default no-op (no display)
   virtual void refreshDisplay() {}                                 // Advert refresh without backlight change
   virtual bool isOnRecentOrTrackingPage() const { return false; } // Used for advert refresh check
+  virtual void updateOnlineNode(const char* name, uint32_t timestamp) {}  // V5: default no-op
 };
