@@ -646,7 +646,7 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
     char sender_name[33];
     const char* display_name = extractSenderName(text, sender_name, sizeof(sender_name))
                                ? sender_name : channel_name;
-    _ui->newMsg(path_len, display_name, text, offline_queue_len, isSenderFavorite(text));
+    _ui->newMsg(path_len, display_name, text, offline_queue_len, isSenderFavorite(text), channel_name);
   }
 #endif
 }
