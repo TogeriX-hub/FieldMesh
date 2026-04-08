@@ -120,6 +120,7 @@ public:
   void decrementUnread()        { if (_num_unread > 0) _num_unread--; }
   void resetUnread()            { _num_unread = 0; }
   void setUnreadCount(int n)    { _num_unread = (n >= 0) ? n : 0; }  // V5.03: direkt setzen
+  void clearFavoriteCache()     { _latest_fav_name[0] = 0; _latest_fav_time = 0; }
 
   bool isBuzzerQuiet() {
 #ifdef PIN_BUZZER
