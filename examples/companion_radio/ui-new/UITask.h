@@ -1,5 +1,7 @@
 #pragma once
 
+struct AdvertPath;  // forward declaration for countOnlineNodesExcluding
+
 #include <MeshCore.h>
 #include <helpers/ui/DisplayDriver.h>
 #include <helpers/ui/UIScreen.h>
@@ -126,6 +128,11 @@ public:
   // Online node cache
   void updateOnlineNode(const char* name, uint32_t timestamp);
   int  countOnlineNodes(uint32_t now, uint32_t window_secs = 1800) const;
+  // Like countOnlineNodes but skips entries whose name already appears in a
+  // fresh advert (adv_buf[0..adv_count-1] with recv_timestamp within window).
+  // Use this to avoid double-counting nodes that both advertised and sent a message.
+  int  countOnlineNodesExcluding(uint32_t now, uint32_t window_secs,
+                                  const AdvertPath* adv_buf, int adv_count) const;
 
   bool hasDisplay() const { return _display != NULL; }
   bool isButtonPressed() const;

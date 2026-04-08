@@ -256,9 +256,8 @@ public:
       display.setTextSize(1);
       display.setColor(DisplayDriver::LIGHT);
 
-      // -- Online counter: combine message senders (UITask cache) + advert senders
+      // -- Online counter: combine advert senders + message-only senders (no double-counting)
       // Time window: 30 minutes = 1800 seconds
-      // Note: slight double-counting possible if a node both advertised and sent a message
       uint32_t now_ts = _rtc->getCurrentTime();
       const uint32_t ONLINE_WINDOW_SECS = 1800;
 
@@ -273,7 +272,11 @@ public:
                        ? (now_ts - adv_buf[i].recv_timestamp) : 0;
         if (age <= ONLINE_WINDOW_SECS) adv_fresh++;
       }
-      int online_total = _task->countOnlineNodes(now_ts, ONLINE_WINDOW_SECS) + adv_fresh;
+      // Only add message-cache entries whose name does NOT already appear in the
+      // fresh advert list — prevents double-counting nodes that both advertised
+      // and sent a direct/group message within the window.
+      int online_total = _task->countOnlineNodesExcluding(now_ts, ONLINE_WINDOW_SECS,
+                                                           adv_buf, adv_count) + adv_fresh;
 
       // -- Mode flags
       bool gps_share_on = the_mesh.isAutoAdvertEnabled();
@@ -2025,6 +2028,32 @@ int UITask::countOnlineNodes(uint32_t now, uint32_t window_secs) const {
                    ? (now - _online_nodes[i].last_seen)
                    : 0;
     if (age <= window_secs) count++;
+  }
+  return count;
+}
+
+int UITask::countOnlineNodesExcluding(uint32_t now, uint32_t window_secs,
+                                       const AdvertPath* adv_buf, int adv_count) const {
+  int count = 0;
+  for (int i = 0; i < ONLINE_CACHE_SIZE; i++) {
+    if (_online_nodes[i].name[0] == 0) continue;
+    uint32_t age = (now >= _online_nodes[i].last_seen)
+                   ? (now - _online_nodes[i].last_seen) : 0;
+    if (age > window_secs) continue;
+
+    // Skip this entry if the same node is already counted via a fresh advert
+    bool in_adv = false;
+    for (int j = 0; j < adv_count && !in_adv; j++) {
+      if (adv_buf[j].name[0] == 0) continue;
+      uint32_t adv_age = (now >= adv_buf[j].recv_timestamp)
+                         ? (now - adv_buf[j].recv_timestamp) : 0;
+      if (adv_age > window_secs) continue;
+      if (strncmp(_online_nodes[i].name, adv_buf[j].name,
+                  sizeof(_online_nodes[i].name) - 1) == 0) {
+        in_adv = true;
+      }
+    }
+    if (!in_adv) count++;
   }
   return count;
 }
