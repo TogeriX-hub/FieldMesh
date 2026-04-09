@@ -309,7 +309,6 @@ public:
 
         // Line 2 (y=33): online counter — always in the same position
         int y = 33;
-        display.drawXbm(0, y, nodes_icon, 8, 8);
         char online_str[16];
         snprintf(online_str, sizeof(online_str), " %d nodes", online_total);
         display.drawXbm(0, y + 2, nodes_icon, 8, 8);   // +2px: center icon with GFX proportional font text
