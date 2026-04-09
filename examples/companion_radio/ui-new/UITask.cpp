@@ -38,11 +38,10 @@
 // Formatiert vergangene Zeit als relativen String: "5s", "3m", "2h"
 // Identical to the V4 pattern (MsgPreviewScreen, RECENT, TRACKING).
 static void formatRelTime(char* buf, size_t buf_size, uint32_t now, uint32_t then) {
-  int secs = (int)(now - then);
-  if (secs < 0) secs = 0;
-  if (secs < 60)        snprintf(buf, buf_size, "%ds", secs);
-  else if (secs < 3600) snprintf(buf, buf_size, "%dm", secs / 60);
-  else                  snprintf(buf, buf_size, "%dh", secs / 3600);
+  uint32_t secs = (now >= then) ? (now - then) : 0;
+  if (secs < 60)        snprintf(buf, buf_size, "%us", secs);
+  else if (secs < 3600) snprintf(buf, buf_size, "%um", secs / 60);
+  else                  snprintf(buf, buf_size, "%uh", secs / 3600);
 }
 static float calcDistance(double lat1, double lon1, double lat2, double lon2) {
   if (lat1 == 0.0 && lon1 == 0.0) return -1.0f;  // eigene Position unbekannt
@@ -254,11 +253,123 @@ public:
     }
 
     if (_page == HomePage::FIRST) {
-      // V5: num_unread statt msgcount (UI-interner Zaehler)
-      display.setColor(DisplayDriver::YELLOW);
-      display.setTextSize(2);
-      sprintf(tmp, "MSG: %d", _task->getNumUnread());
-      display.drawTextCentered(display.width() / 2, 20, tmp);
+      display.setTextSize(1);
+      display.setColor(DisplayDriver::LIGHT);
+
+      // -- Online counter: combine advert senders + message-only senders (no double-counting)
+      // Time window: 30 minutes = 1800 seconds
+      uint32_t now_ts = _rtc->getCurrentTime();
+      const uint32_t ONLINE_WINDOW_SECS = 1800;
+
+      // Use full advert_paths[] ring buffer (ADVERT_PATH_TABLE_SIZE slots), not the
+      // 4-entry RECENT display list, so the counter is not capped at UI_RECENT_LIST_SIZE.
+      AdvertPath adv_buf[ADVERT_PATH_TABLE_SIZE];
+      int adv_count = the_mesh.getRecentlyHeard(adv_buf, ADVERT_PATH_TABLE_SIZE);
+      int adv_fresh = 0;
+      for (int i = 0; i < adv_count; i++) {
+        if (adv_buf[i].name[0] == 0) continue;
+        uint32_t age = (now_ts >= adv_buf[i].recv_timestamp)
+                       ? (now_ts - adv_buf[i].recv_timestamp) : 0;
+        if (age <= ONLINE_WINDOW_SECS) adv_fresh++;
+      }
+      // Only add message-cache entries whose name does NOT already appear in the
+      // fresh advert list — prevents double-counting nodes that both advertised
+      // and sent a direct/group message within the window.
+      int online_total = _task->countOnlineNodesExcluding(now_ts, ONLINE_WINDOW_SECS,
+                                                           adv_buf, adv_count) + adv_fresh;
+
+      // -- Mode flags
+      bool gps_share_on = the_mesh.isAutoAdvertEnabled();
+      bool off_grid_on  = the_mesh.isOffGridActive();
+      bool connected    = _task->hasConnection();
+
+      // -- Favourite info
+      const char* fav_name = _task->getLatestFavoriteName();
+      bool has_fav = (fav_name != nullptr && fav_name[0] != 0);
+      char fav_line[48] = "";
+      if (has_fav) {
+        uint32_t fav_time = _task->getLatestFavoriteTime();
+        char rel_time[8];
+        formatRelTime(rel_time, sizeof(rel_time), now_ts, fav_time);
+        char filtered_fav[33];
+        display.translateUTF8ToBlocks(filtered_fav, fav_name, sizeof(filtered_fav));
+        snprintf(fav_line, sizeof(fav_line), "* %s  %s", filtered_fav, rel_time);
+      }
+
+      if (display.height() >= 128) {
+        // == LARGE DISPLAY (M1, 200px) =========================================
+
+        // Line 1 (y=22): "< Connected >" (size 1) when connected, MSG:X (size 2) when disconnected
+        if (connected) {
+          display.drawTextCentered(display.width() / 2, 22, "< Connected >");
+        } else {
+          display.setTextSize(2);
+          sprintf(tmp, "MSG: %d", _task->getNumUnread());
+          display.drawTextCentered(display.width() / 2, 22, tmp);
+          display.setTextSize(1);
+        }
+
+        // Line 2 (y=33): online counter — always in the same position
+        int y = 33;
+        char online_str[16];
+        snprintf(online_str, sizeof(online_str), " %d nodes", online_total);
+        display.drawXbm(0, y + 3, nodes_icon, 8, 8);   // +3px: center icon with GFX proportional font text
+        display.setCursor(10, y);
+        display.print(online_str);
+        y += 11;
+
+        // Mode status line — both modes on one line, only shown when at least one is active
+        if (gps_share_on || off_grid_on) {
+          char mode_str[32] = "";
+          if (gps_share_on) strncat(mode_str, "[GPS-SHARE] ", sizeof(mode_str) - strlen(mode_str) - 1);
+          if (off_grid_on)  strncat(mode_str, "[OFF-GRID]",  sizeof(mode_str) - strlen(mode_str) - 1);
+          display.setCursor(0, y);
+          display.print(mode_str);
+          y += 11;
+        }
+
+        // Favourite line (disconnected only)
+        if (!connected && has_fav) {
+          display.setCursor(0, y);
+          display.print(fav_line);
+        }
+
+      } else {
+        // == SMALL DISPLAY (L1, 64px) ==========================================
+
+        // Line 1 (y=22): MSG:X left + [X] right — both TextSize 1
+        if (!connected) {
+          sprintf(tmp, "MSG: %d", _task->getNumUnread());
+          display.setCursor(0, 22);
+          display.print(tmp);
+        }
+
+        // online node count: filled circle icon + number, right-aligned
+        char online_str[8];
+        snprintf(online_str, sizeof(online_str), " %d", online_total);
+        int online_w = display.getTextWidth(online_str) + 8 + 2; // icon(8) + gap(2) + text
+        int icon_x = display.width() - online_w - 1;
+        display.drawXbm(icon_x, 22, nodes_icon, 8, 8);
+        display.setCursor(icon_x + 8 + 2, 22);
+        display.print(online_str);
+
+        // Line 2 (y=33): priority order: connected > favourite > mode > empty
+        if (connected) {
+          display.drawTextCentered(display.width() / 2, 33, "< Connected >");
+        } else if (has_fav) {
+          display.drawTextEllipsized(0, 33, display.width(), fav_line);
+        } else if (gps_share_on && off_grid_on) {
+          display.setCursor(0, 33);
+          display.print("[GPS-SHARE][OG]");
+        } else if (gps_share_on) {
+          display.setCursor(0, 33);
+          display.print("[GPS-SHARE]");
+        } else if (off_grid_on) {
+          display.setCursor(0, 33);
+          display.print("[OFF-GRID]");
+        }
+        // else: line 2 stays empty
+      }
 
       #ifdef WIFI_SSID
         IPAddress ip = WiFi.localIP();
@@ -267,32 +378,7 @@ public:
         display.drawTextCentered(display.width() / 2, 54, tmp);
       #endif
 
-      // Verbindungsstatus (BLE-PIN-Anzeige entfaellt in V5 — statischer PIN 123456 bekannt)
-      if (_task->hasConnection()) {
-        display.setColor(DisplayDriver::GREEN);
-        display.setTextSize(1);
-        display.drawTextCentered(display.width() / 2, 43, "< Connected >");
-      }
-
-      // V5: favourite info — most recent favourite with a message
-      const char* fav_name = _task->getLatestFavoriteName();
-      if (fav_name != nullptr && fav_name[0] != 0) {
-        uint32_t fav_time = _task->getLatestFavoriteTime();
-        char rel_time[8];
-        formatRelTime(rel_time, sizeof(rel_time), _rtc->getCurrentTime(), fav_time);
-        char fav_line[48];
-        char filtered_fav[33];
-        display.translateUTF8ToBlocks(filtered_fav, fav_name, sizeof(filtered_fav));
-        snprintf(fav_line, sizeof(fav_line), "* %s  %s", filtered_fav, rel_time);
-        display.setTextSize(1);
-        display.setColor(DisplayDriver::GREEN);
-        // Only show if it does not overlap with the connected line
-        if (!_task->hasConnection()) {
-          display.drawTextCentered(display.width() / 2, 43, fav_line);
-        }
-      }
-
-      // Hinweiszeile ganz unten
+      // Footer hint line
       display.setCursor(0, display.height() - 13);
       display.setColor(DisplayDriver::LIGHT);
       display.setTextSize(1);
@@ -305,7 +391,8 @@ public:
       the_mesh.getRecentlyHeard(recent, UI_RECENT_LIST_SIZE);
       display.setColor(DisplayDriver::GREEN);
       int y = 20;
-      for (int i = 0; i < UI_RECENT_LIST_SIZE; i++, y += 11) {
+      int max_y = (display.height() >= 128) ? 53 : 42;
+      for (int i = 0; i < UI_RECENT_LIST_SIZE && y <= max_y; i++, y += 11) {
         auto a = &recent[i];
         if (a->name[0] == 0) continue;  // empty slot
         int secs = _rtc->getCurrentTime() - a->recv_timestamp;
@@ -338,9 +425,10 @@ public:
       own_gps = own_gps && loc != NULL && loc->isValid();
 #endif
       int y = 20;
-      // max 3 nodes so status line at y=53 (64-11) is not overlapped
-      // scan all entries but show at most 3 favourites (y <= 42)
-      for (int i = 0; i < UI_RECENT_LIST_SIZE && y <= 42; i++) {
+      int max_y = (display.height() >= 128) ? 53 : 42;
+      // display-height-adaptive limit: 3 nodes on small display (y<=42), 4 on large (y<=53)
+      // ensures footer line at display.height()-11 is never overlapped
+      for (int i = 0; i < UI_RECENT_LIST_SIZE && y <= max_y; i++) {
         auto a = &recent[i];
         if (a->name[0] == 0) continue;
 
@@ -610,7 +698,7 @@ class MsgHistoryScreen : public UIScreen {
   struct MsgEntry {
     uint32_t timestamp;
     char from_name[33];
-    char channel_tag[8];
+    char channel_tag[16];
     char msg[80];
     bool is_favorite;
     bool valid;           // true = Eintrag belegt, false = geloescht/leer
@@ -644,12 +732,23 @@ class MsgHistoryScreen : public UIScreen {
     return -1;
   }
 
+  bool hasAnyFavorite() const {
+    for (int i = 0; i < MAX_HISTORY_MSGS; i++) {
+      if (history[i].valid && history[i].is_favorite) return true;
+    }
+    return false;
+  }
+
   // Delete entry from RAM and update HomeScreen counter
   void deleteEntry(int idx) {
     if (!history[idx].valid) return;
+    bool was_favorite = history[idx].is_favorite;
     memset(&history[idx], 0, sizeof(MsgEntry)); // valid=false durch memset
     if (num_total > 0) num_total--;
     _task->setUnreadCount(num_total);
+    if (was_favorite && !hasAnyFavorite()) {
+      _task->clearFavoriteCache();
+    }
   }
 
 public:
@@ -667,7 +766,7 @@ public:
   }
 
   // Add new message — only when app is NOT connected (called by UITask::newMsg)
-  void addMessage(uint8_t path_len, const char* from_name, const char* msg_text, bool is_favorite = false) {
+  void addMessage(uint8_t path_len, const char* from_name, const char* msg_text, bool is_favorite = false, const char* channel_name = nullptr) {
     head = (head + 1) % MAX_HISTORY_MSGS;
 
     // If the new head slot was still occupied (ring buffer full): correct the counter
@@ -685,6 +784,9 @@ public:
 
     if (path_len == 0xFF) {
       strcpy(p->channel_tag, "[DM]");
+    } else if (channel_name && channel_name[0]) {
+      strncpy(p->channel_tag, channel_name, sizeof(p->channel_tag) - 1);
+      p->channel_tag[sizeof(p->channel_tag) - 1] = 0;
     } else {
       strcpy(p->channel_tag, "[CH]");
     }
@@ -703,6 +805,7 @@ public:
     head       = MAX_HISTORY_MSGS - 1;
     display_idx = 0;
     _task->setUnreadCount(0);
+    _task->clearFavoriteCache();
   }
 
   int getNumTotal() const { return num_total; }
@@ -761,19 +864,25 @@ public:
       display.setCursor(display.width() - tw - 2, 1);
       display.print(time_buf);
 
-      // Name left-aligned: "[CH1] NodeName *" or "[DM] NodeName *"
+      // Name left-aligned: "Public *" (channel) or "[DM] NodeName *" (direct)
       char left_part[48];
-      if (p->is_favorite) {
-        snprintf(left_part, sizeof(left_part), "%s %s *", p->channel_tag, filtered_name);
+      bool is_dm = (strcmp(p->channel_tag, "[DM]") == 0);
+      if (is_dm) {
+        snprintf(left_part, sizeof(left_part), p->is_favorite ? "%s %s *" : "%s %s", p->channel_tag, filtered_name);
       } else {
-        snprintf(left_part, sizeof(left_part), "%s %s", p->channel_tag, filtered_name);
+        snprintf(left_part, sizeof(left_part), p->is_favorite ? "%s *" : "%s", p->channel_tag);
       }
       display.setCursor(0, 1);
       display.print(left_part);
     } else {
       // L1: Platz knapp — zentriert wie bisher
+      bool is_dm = (strcmp(p->channel_tag, "[DM]") == 0);
       char title[48];
-      snprintf(title, sizeof(title), "%s %s", p->channel_tag, filtered_name);
+      if (is_dm) {
+        snprintf(title, sizeof(title), "%s %s", p->channel_tag, filtered_name);
+      } else {
+        snprintf(title, sizeof(title), "%s", p->channel_tag);
+      }
       if (p->is_favorite) {
         if (strlen(title) < sizeof(title) - 3) strcat(title, " *");
       }
@@ -1012,7 +1121,7 @@ class FavPreviewScreen : public UIScreen {
   struct {
     uint32_t timestamp;
     char     from_name[33];
-    char     channel_tag[8];
+    char     channel_tag[16];
     char     msg[80];
   } _entry;
   bool _has_entry = false;
@@ -1021,12 +1130,15 @@ public:
   FavPreviewScreen(UITask* task, mesh::RTCClock* rtc) : _task(task), _rtc(rtc) {}
 
   // Called by UITask::newMsg() — always overwrites the last entry.
-  void setMessage(uint8_t path_len, const char* from_name, const char* text) {
+  void setMessage(uint8_t path_len, const char* from_name, const char* text, const char* channel_name = nullptr) {
     _entry.timestamp = _rtc->getCurrentTime();
     strncpy(_entry.from_name, from_name, sizeof(_entry.from_name) - 1);
     _entry.from_name[sizeof(_entry.from_name) - 1] = 0;
     if (path_len == 0xFF) {
       strncpy(_entry.channel_tag, "[DM]", sizeof(_entry.channel_tag));
+    } else if (channel_name && channel_name[0]) {
+      strncpy(_entry.channel_tag, channel_name, sizeof(_entry.channel_tag) - 1);
+      _entry.channel_tag[sizeof(_entry.channel_tag) - 1] = 0;
     } else {
       strncpy(_entry.channel_tag, "[CH]", sizeof(_entry.channel_tag));
     }
@@ -1063,13 +1175,21 @@ public:
       display.print(time_buf);
 
       char left_part[48];
-      snprintf(left_part, sizeof(left_part), "%s %s *", _entry.channel_tag, filtered_name);
+      if (strcmp(_entry.channel_tag, "[DM]") == 0) {
+        snprintf(left_part, sizeof(left_part), "%s %s *", _entry.channel_tag, filtered_name);
+      } else {
+        snprintf(left_part, sizeof(left_part), "%s *", _entry.channel_tag);
+      }
       display.setCursor(0, 1);
       display.print(left_part);
     } else {
       // L1: zentriert
       char title[48];
-      snprintf(title, sizeof(title), "%s %s *", _entry.channel_tag, filtered_name);
+      if (strcmp(_entry.channel_tag, "[DM]") == 0) {
+        snprintf(title, sizeof(title), "%s %s *", _entry.channel_tag, filtered_name);
+      } else {
+        snprintf(title, sizeof(title), "%s *", _entry.channel_tag);
+      }
       display.drawTextCentered(display.width() / 2, 1, title);
     }
     display.setColor(DisplayDriver::LIGHT);
@@ -1839,11 +1959,14 @@ void UITask::msgRead(int msgcount) {
     // App has fully drained the sync queue — also clear history in RAM.
     // Messages read via the app should not remain on the display.
     ((MsgHistoryScreen*) msg_history)->clearAll();  // also resets _num_unread via setUnreadCount(0)
+    _latest_fav_name[0] = 0;  //resets Favorite_cache at App-Sync
+    _latest_fav_time = 0;
+    
     gotoHomeScreen();
   }
 }
 
-void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount, bool is_favorite) {
+void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount, bool is_favorite, const char* channel_name) {
   _msgcount = msgcount;
 
   // V3: do not interrupt SOS alarm with normal messages
@@ -1852,7 +1975,13 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
   // V5: Nachricht in History speichern.
   // addMessage() calls setUnreadCount(num_total) — _num_unread is set there.
   // newMsg() is called by MyMesh only when app is NOT connected (since V5.03).
-  ((MsgHistoryScreen*) msg_history)->addMessage(path_len, from_name, text, is_favorite);
+  ((MsgHistoryScreen*) msg_history)->addMessage(path_len, from_name, text, is_favorite, channel_name);
+
+  // Update online node cache — from_name is always the node name at this point
+  // (channel messages: MyMesh resolves the sender name before calling newMsg)
+  if (from_name && from_name[0] != 0) {
+    updateOnlineNode(from_name, rtc_clock.getCurrentTime());
+  }
 
   // Update favourite cache for HomeScreen FIRST page
   if (is_favorite) {
@@ -1867,7 +1996,7 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
   // Wegdruecken loescht nichts — Nachricht bleibt in History erhalten.
   // Exception: if history or filter screen is already active → show alert only, no popup switch.
   if (is_favorite) {
-    ((FavPreviewScreen*) fav_preview)->setMessage(path_len, from_name, text);
+    ((FavPreviewScreen*) fav_preview)->setMessage(path_len, from_name, text, channel_name);
     if (curr != msg_history && curr != msg_filter) {
       setCurrScreen(fav_preview);
     } else {
@@ -1891,6 +2020,78 @@ void UITask::newMsg(uint8_t path_len, const char* from_name, const char* text, i
       _next_refresh = 100;
     }
   }
+}
+
+void UITask::updateOnlineNode(const char* name, uint32_t timestamp) {
+  if (!name || name[0] == 0) return;
+
+  // already present? -> update timestamp
+  for (int i = 0; i < ONLINE_CACHE_SIZE; i++) {
+    if (_online_nodes[i].name[0] != 0 &&
+        strncmp(_online_nodes[i].name, name, sizeof(_online_nodes[i].name) - 1) == 0) {
+      _online_nodes[i].last_seen = timestamp;
+      return;
+    }
+  }
+
+  // new entry: find free slot
+  for (int i = 0; i < ONLINE_CACHE_SIZE; i++) {
+    if (_online_nodes[i].name[0] == 0) {
+      strncpy(_online_nodes[i].name, name, sizeof(_online_nodes[i].name) - 1);
+      _online_nodes[i].name[sizeof(_online_nodes[i].name) - 1] = 0;
+      _online_nodes[i].last_seen = timestamp;
+      return;
+    }
+  }
+
+  // cache full: overwrite oldest entry
+  int oldest_idx = 0;
+  for (int i = 1; i < ONLINE_CACHE_SIZE; i++) {
+    if (_online_nodes[i].last_seen < _online_nodes[oldest_idx].last_seen) {
+      oldest_idx = i;
+    }
+  }
+  strncpy(_online_nodes[oldest_idx].name, name, sizeof(_online_nodes[oldest_idx].name) - 1);
+  _online_nodes[oldest_idx].name[sizeof(_online_nodes[oldest_idx].name) - 1] = 0;
+  _online_nodes[oldest_idx].last_seen = timestamp;
+}
+
+int UITask::countOnlineNodes(uint32_t now, uint32_t window_secs) const {
+  int count = 0;
+  for (int i = 0; i < ONLINE_CACHE_SIZE; i++) {
+    if (_online_nodes[i].name[0] == 0) continue;
+    uint32_t age = (now >= _online_nodes[i].last_seen)
+                   ? (now - _online_nodes[i].last_seen)
+                   : 0;
+    if (age <= window_secs) count++;
+  }
+  return count;
+}
+
+int UITask::countOnlineNodesExcluding(uint32_t now, uint32_t window_secs,
+                                       const AdvertPath* adv_buf, int adv_count) const {
+  int count = 0;
+  for (int i = 0; i < ONLINE_CACHE_SIZE; i++) {
+    if (_online_nodes[i].name[0] == 0) continue;
+    uint32_t age = (now >= _online_nodes[i].last_seen)
+                   ? (now - _online_nodes[i].last_seen) : 0;
+    if (age > window_secs) continue;
+
+    // Skip this entry if the same node is already counted via a fresh advert
+    bool in_adv = false;
+    for (int j = 0; j < adv_count && !in_adv; j++) {
+      if (adv_buf[j].name[0] == 0) continue;
+      uint32_t adv_age = (now >= adv_buf[j].recv_timestamp)
+                         ? (now - adv_buf[j].recv_timestamp) : 0;
+      if (adv_age > window_secs) continue;
+      if (strncmp(_online_nodes[i].name, adv_buf[j].name,
+                  sizeof(_online_nodes[i].name) - 1) == 0) {
+        in_adv = true;
+      }
+    }
+    if (!in_adv) count++;
+  }
+  return count;
 }
 
 void UITask::userLedHandler() {

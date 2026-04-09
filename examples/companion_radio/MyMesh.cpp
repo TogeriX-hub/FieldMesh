@@ -275,7 +275,7 @@ uint8_t MyMesh::getExtraAckTransmitCount() const {
 }
 
 void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
-  if (_serial->isConnected() && len + 3 <= MAX_FRAME_SIZE) {
+  if (_app_initialized && _serial->isConnected() && len + 3 <= MAX_FRAME_SIZE) {
     int i = 0;
     out_frame[i++] = PUSH_CODE_LOG_RX_DATA;
     out_frame[i++] = (int8_t)(snr * 4);
@@ -412,10 +412,11 @@ int MyMesh::getRecentlyHeard(AdvertPath dest[], int max_num) {
 }
 
 void MyMesh::onContactPathUpdated(const ContactInfo &contact) {
-  out_frame[0] = PUSH_CODE_PATH_UPDATED;
-  memcpy(&out_frame[1], contact.id.pub_key, PUB_KEY_SIZE);
-  _serial->writeFrame(out_frame, 1 + PUB_KEY_SIZE); // NOTE: app may not be connected
-
+  if (_app_initialized && _serial->isConnected() && !_serial->isWriteBusy()) {
+    out_frame[0] = PUSH_CODE_PATH_UPDATED;
+    memcpy(&out_frame[1], contact.id.pub_key, PUB_KEY_SIZE);
+    _serial->writeFrame(out_frame, 1 + PUB_KEY_SIZE);
+  }
   dirty_contacts_expiry = futureMillis(LAZY_CONTACTS_WRITE_DELAY);
 }
 
@@ -466,7 +467,7 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
   i += tlen;
   addToOfflineQueue(out_frame, i);
 
-  if (_serial->isConnected()) {
+  if (_app_initialized && _serial->isConnected() && !_serial->isWriteBusy()) {
     uint8_t frame[1];
     frame[0] = PUSH_CODE_MSG_WAITING; // send push 'tickle'
     _serial->writeFrame(frame, 1);
@@ -475,11 +476,17 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
 #ifdef DISPLAY_CLASS
   // V5: call newMsg() only when app is NOT connected.
   // When connected, messages are handled on the phone — do not add to display history.
+  // But always update the active node counter so incoming messages are counted while connected.
   bool should_display = txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_SIGNED_PLAIN;
-  if (should_display && _ui && !_serial->isConnected()) {
-    bool is_fav = (from.flags & 0x01) != 0;
-    _ui->newMsg(path_len, from.name, text, offline_queue_len, is_fav);
-    _ui->notify(UIEventType::contactMessage);
+  if (should_display && _ui) {
+    if (!_serial->isConnected()) {
+      bool is_fav = (from.flags & 0x01) != 0;
+      _ui->newMsg(path_len, from.name, text, offline_queue_len, is_fav);
+      _ui->notify(UIEventType::contactMessage);
+    } else {
+      // App is connected: update active node counter only (no display history)
+      _ui->updateOnlineNode(from.name, getRTCClock()->getCurrentTime());
+    }
   }
 #endif
 }
@@ -614,7 +621,7 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
   i += tlen;
   addToOfflineQueue(out_frame, i);
 
-  if (_serial->isConnected()) {
+  if (_app_initialized && _serial->isConnected() && !_serial->isWriteBusy()) {
     uint8_t frame[1];
     frame[0] = PUSH_CODE_MSG_WAITING; // send push 'tickle'
     _serial->writeFrame(frame, 1);
@@ -639,8 +646,19 @@ void MyMesh::onChannelMessageRecv(const mesh::GroupChannel &channel, mesh::Packe
 
   // V5: call newMsg() only when app is NOT connected.
   // When connected, messages are handled on the phone — do not add to display history.
-  if (_ui && !_serial->isConnected()) {
-    _ui->newMsg(path_len, channel_name, text, offline_queue_len, isSenderFavorite(text));
+  // But always update the active node counter so incoming messages are counted while connected.
+  if (_ui) {
+    // extract sender name for display and online node cache
+    // everything before ": " in the text — e.g. "Juno48 | Region: Hello" -> "Juno48 | Region"
+    char sender_name[33];
+    const char* display_name = extractSenderName(text, sender_name, sizeof(sender_name))
+                               ? sender_name : channel_name;
+    if (!_serial->isConnected()) {
+      _ui->newMsg(path_len, display_name, text, offline_queue_len, isSenderFavorite(text), channel_name);
+    } else {
+      // App is connected: update active node counter only (no display history)
+      _ui->updateOnlineNode(display_name, getRTCClock()->getCurrentTime());
+    }
   }
 #endif
 }
@@ -880,6 +898,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
     : BaseChatMesh(radio, *new ArduinoMillis(), rng, rtc, *new StaticPoolPacketManager(16), tables),
       _serial(NULL), telemetry(MAX_PACKET_PAYLOAD - 4), _store(&store), _ui(ui) {
   _iter_started = false;
+  _app_initialized = false;
   _cli_rescue = false;
   offline_queue_len = 0;
   app_target_ver = 0;
@@ -1105,7 +1124,8 @@ void MyMesh::handleCmdFrame(size_t len) {
     cmd_frame[len] = 0; // make app_name null terminated
     MESH_DEBUG_PRINTLN("App %s connected", app_name);
 
-    _iter_started = false; // stop any left-over ContactsIterator
+    _iter_started = false;     // stop any left-over ContactsIterator
+    _app_initialized = false;  // reset until handshake completes
     int i = 0;
     out_frame[i++] = RESP_CODE_SELF_INFO;
     out_frame[i++] = ADV_TYPE_CHAT; // what this node Advert identifies as (maybe node's pronouns too?? :-)
@@ -1140,6 +1160,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     memcpy(&out_frame[i], _prefs.node_name, tlen);
     i += tlen;
     _serial->writeFrame(out_frame, i);
+    _app_initialized = true;  // handshake complete, async pushes now allowed
   } else if (cmd_frame[0] == CMD_SEND_TXT_MSG && len >= 14) {
     int i = 1;
     uint8_t txt_type = cmd_frame[i++];
@@ -2160,6 +2181,11 @@ void MyMesh::checkCLIRescueCmd() {
 }
 
 void MyMesh::checkSerialInterface() {
+  if (!_serial->isConnected() && _app_initialized) {
+    _app_initialized = false;
+    _iter_started = false;
+  }
+
   size_t len = _serial->checkRecvFrame(cmd_frame);
   if (len > 0) {
     handleCmdFrame(len);

@@ -42,10 +42,11 @@ public:
   virtual void msgRead(int msgcount) = 0;
   // V5: is_favorite = true if the sender was a favourite at the time of receipt.
   // Default false for backward compatibility with other UITask implementations.
-  virtual void newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount, bool is_favorite = false) = 0;
+  virtual void newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount, bool is_favorite = false, const char* channel_name = nullptr) = 0;
   virtual void notify(UIEventType t = UIEventType::none) = 0;
   virtual void loop() = 0;
   virtual void triggerSOS(const char* from, const char* text) {}  // V3: default no-op (no display)
   virtual void refreshDisplay() {}                                 // Advert refresh without backlight change
   virtual bool isOnRecentOrTrackingPage() const { return false; } // Used for advert refresh check
+  virtual void updateOnlineNode(const char* name, uint32_t timestamp) {}  // V5: default no-op
 };

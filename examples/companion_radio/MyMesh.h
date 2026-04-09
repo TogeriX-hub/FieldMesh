@@ -212,6 +212,7 @@ private:
   uint32_t _most_recent_lastmod;
   uint32_t _active_ble_pin;
   bool _iter_started;
+  bool _app_initialized;  // true after CMD_APP_START handshake completed
   bool _cli_rescue;
   char cli_command[80];
   uint8_t app_target_ver;
