@@ -309,9 +309,9 @@ public:
 
         // Online counter: filled circle icon + number + "nodes"
         int y = connected ? 22 : 44;
-        display.drawXbm(0, y, nodes_icon, 8, 8);
         char online_str[16];
         snprintf(online_str, sizeof(online_str), " %d nodes", online_total);
+        display.drawXbm(0, y + 2, nodes_icon, 8, 8);   // +2px: center icon with GFX proportional font text
         display.setCursor(10, y);
         display.print(online_str);
         y += 11;
