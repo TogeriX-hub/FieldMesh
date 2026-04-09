@@ -299,8 +299,16 @@ public:
       if (display.height() >= 128) {
         // == LARGE DISPLAY (M1, 200px) =========================================
 
-        // Online counter: filled circle icon + number + "nodes" — always at top
-        int y = 22;
+        // Line 1 (y=22): "< Connected >" when connected, MSG:X when disconnected
+        if (connected) {
+          display.drawTextCentered(display.width() / 2, 22, "< Connected >");
+        } else {
+          sprintf(tmp, "MSG: %d", _task->getNumUnread());
+          display.drawTextCentered(display.width() / 2, 22, tmp);
+        }
+
+        // Line 2 (y=33): online counter — always in the same position
+        int y = 33;
         display.drawXbm(0, y, nodes_icon, 8, 8);
         char online_str[16];
         snprintf(online_str, sizeof(online_str), " %d nodes", online_total);
@@ -318,17 +326,10 @@ public:
           y += 11;
         }
 
-        // Connected / MSG:X / favourite — MSG:X replaces "< Connected >" when disconnected
-        if (connected) {
-          display.drawTextCentered(display.width() / 2, y, "< Connected >");
-        } else {
-          sprintf(tmp, "MSG: %d", _task->getNumUnread());
-          display.drawTextCentered(display.width() / 2, y, tmp);
-          if (has_fav) {
-            y += 11;
-            display.setCursor(0, y);
-            display.print(fav_line);
-          }
+        // Favourite line (disconnected only)
+        if (!connected && has_fav) {
+          display.setCursor(0, y);
+          display.print(fav_line);
         }
 
       } else {
