@@ -5,7 +5,32 @@ For full technical details, see the internal documentation PDF.
 
 ---
 
-## [5.10] — Headless Device Support (T1000-E, RAK WiseMesh TAG)
+## [V5.2] - HomeScreen Overhaul & Reliability Fixes
+ 
+### New Features
+ 
+- **Online node counter on HomeScreen** — The FIRST page now shows how many nodes have been heard recently, combining advert senders and message senders into a single deduplicated count with a 30-minute window (`updateOnlineNode()`, `countOnlineNodes()` with 16-entry LRU cache)
+- **Node counter icon** — The online count is now displayed with a filled circle icon (`nodes_icon`, 8×8px) instead of plain `[X]` text
+- **Mode indicator on HomeScreen** — GPS-SHARE and OFF-GRID modes are shown directly on the FIRST page
+- **Real channel name in message history** — `MsgHistoryScreen` and `FavPreviewScreen` now show the actual channel name (e.g. `Public`) instead of a hardcoded `[CH]` tag; the channel name is threaded from `MyMesh` through the full `newMsg()` call chain
+- **Channel messages update node counter while connected** — When the phone app is connected, incoming channel messages now also update the active node counter, matching the behaviour for direct messages
+ 
+### Bug Fixes
+ 
+- **HomeScreen FIRST page: advert node cap removed** — `adv_fresh` now uses a dedicated `ADVERT_PATH_TABLE_SIZE` (16) buffer instead of the 4-entry RECENT display array, removing the artificial cap on advert-based nodes in the online counter
+- **HomeScreen FIRST page: `formatRelTime()` undefined behaviour fixed** — Replaced signed `int` cast (UB when `now < then`) with safe `uint32_t` arithmetic
+- **HomeScreen FIRST page: favourite name clipping fixed** — Long favourite names on small displays now use `drawTextEllipsized()` instead of plain `print()`, preventing silent clipping
+- **HomeScreen FIRST page: MSG counter hidden when app is connected** — The `MSG:X` counter no longer shows while the smartphone app is connected
+- **Favourite indicator not clearing after reading all messages** — The `* FavName time` line on HomeScreen was not reset when the user deleted all messages; fixed by calling `clearFavoriteCache()` from `deleteEntry()` and `clearAll()` in `MsgHistoryScreen`
+- **Stale favourite info after app disconnect** — `_latest_fav_name` and `_latest_fav_time` are now reset on app sync, preventing old contact info from reappearing on HomeScreen after disconnect
+- **Double-counting nodes in online counter** — A node heard via both an advert and a message was counted twice; fixed with `countOnlineNodesExcluding()`, which only counts message-cache entries not already present in the fresh advert list
+- **Channel message title bar showed sender name redundantly** — For channel messages, the sender name was shown both in the title bar and in the message body; the title bar now shows only the channel name for channel messages and `[DM] NodeName` for direct messages
+- **Favourite detection broken for nodes with `|` in name** — Node names containing ` | ` (e.g. `Juno48 | DE.BW`) caused incorrect short-name extraction, so channel messages from such nodes were never recognised as favourites; fixed by using `": "` as the separator (consistent with MeshCore channel format `NodeName: text`)
+- **BLE initialization handshake flood fixed** — After `onSecured()`, async pushes (`MSG_WAITING`, `PATH_UPDATED`) fired freely before `CMD_APP_START` arrived, filling all 12 `send_queue` slots and causing `RESP_SELF_INFO` to be silently dropped (app timeout); fixed by introducing `_app_initialized` flag gating all async pushes, plus `isWriteBusy()` guard on `MSG_WAITING` pushes
+- **Adaptive row limits on RECENT and TRACKING pages** — Both pages now use a `max_y` variable based on `display.height()` instead of hardcoded pixel values
+---
+
+## [5.1] — Headless Device Support (T1000-E, RAK WiseMesh TAG)
 
 ### New features
 - **Headless device support** — `ui-orig` now fully integrated into FieldMesh; devices with no display and a single button (Seeed T1000-E, RAK WiseMesh TAG) are supported as first-class citizens
