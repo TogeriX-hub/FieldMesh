@@ -299,16 +299,18 @@ public:
       if (display.height() >= 128) {
         // == LARGE DISPLAY (M1, 200px) =========================================
 
-        // Line 1 (y=22): "< Connected >" when connected, MSG:X when disconnected
+        // Line 1 (y=22): "< Connected >" (size 1) when connected, MSG:X (size 2) when disconnected
         if (connected) {
           display.drawTextCentered(display.width() / 2, 22, "< Connected >");
         } else {
+          display.setTextSize(2);
           sprintf(tmp, "MSG: %d", _task->getNumUnread());
           display.drawTextCentered(display.width() / 2, 22, tmp);
+          display.setTextSize(1);
         }
 
-        // Line 2 (y=33): online counter — always in the same position
-        int y = 33;
+        // Online counter — y=33 when connected, y=44 when disconnected (large MSG needs room)
+        int y = connected ? 33 : 44;
         display.drawXbm(0, y, nodes_icon, 8, 8);
         char online_str[16];
         snprintf(online_str, sizeof(online_str), " %d nodes", online_total);
