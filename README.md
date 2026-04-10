@@ -77,6 +77,10 @@ On the Wio Tracker L1 (joystick input), you can compose and send messages direct
 
 Message length is limited to 20 characters. This feature is not available on the ThinkNode M1 (single-button input only).
 
+### Home screen indicators (V5.2)
+
+The home screen now shows an online node counter — the number of nodes heard in the last 30 minutes, combining advert senders and message senders. Displayed as ● X. The current mode (GPS-SHARE or OFF-GRID) is shown as a text indicator when active.
+
 ### UI & Usability
 
 - Splash screen with version info and "FieldMesh" branding
@@ -114,7 +118,7 @@ These files differ from upstream MeshCore. Everything else is untouched.
 |`examples/companion_radio/ui-new/icons.h`   |Adds 48×48px advert icon for large displays                                 |
 |`examples/companion_radio/ui-orig/Button.h` |Adds `QUINTUPLE_PRESS` event and `onQuintuplePress()` callback (V5.10)      |
 |`examples/companion_radio/ui-orig/Button.cpp`|Handles 5x click as distinct event; `== 4` fix for quadruple detection (V5.10)|
-|`examples/companion_radio/ui-orig/UITask.h` |Adds `handleButtonQuintuplePress()`, `triggerSOS()`, `_sos_active` flag; `newMsg()` signature updated (V5.10)|
+|`examples/companion_radio/ui-orig/UITask.h` |Adds `handleButtonQuintuplePress()`, `triggerSOS()`, `_sos_active` flag; `newMsg()` signature synced with AbstractUITask (V5.2)|
 |`examples/companion_radio/ui-orig/UITask.cpp`|Off-Grid toggle via 5x click; SOS alarm via buzzer; forced buzzer feedback for all button actions (V5.10)|
 |`variants/thinknode_m1/variant.h`           |Corrects `PIN_BUTTON2` to GPIO 39                                           |
 |`variants/thinknode_m1/platformio.ini`      |Sets `AUTO_OFF_MILLIS=0` to prevent E-Ink display timeout                   |
@@ -336,7 +340,7 @@ Your companion app will still receive all messages that arrived while it was con
 <details>
 <summary><strong>Can I send messages without the companion app?</strong></summary>
 
-Yes, on the Wio Tracker L1. Long-press on the home screen to open the message menu, then select "Send Message". You will be prompted to choose a channel, then compose your text using the joystick. Messages can be up to 80 characters long.
+Yes, on the Wio Tracker L1. Long-press on the home screen to open the message menu, then select "Send Message". You will be prompted to choose a channel, then compose your text using the joystick. Messages can be up to 20 characters long.
 
 This feature is not available on the ThinkNode M1 — single-button input does not support text composition.
 
