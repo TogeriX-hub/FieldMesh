@@ -2,6 +2,8 @@
 
 **A MeshCore firmware fork optimized for outdoor use — festivals, hiking, off-grid events, and situations where you need your radio network to do more than stock MeshCore offers.**
 
+<p align="center"><img src="docs/FieldMesh/images/hero_mountain.jpg" width="100%"></p>
+
 Built on [MeshCore](https://github.com/ripplebiz/MeshCore) ·  Based on MeshCore v1.14.1 ·  Download latest [release](../../releases/latest)
 
 -----
@@ -86,6 +88,12 @@ The home screen now shows an online node counter — the number of nodes heard i
 - Splash screen with version info and "FieldMesh" branding
 - Backlight fix for Elecrow M1
 - → [UI images](docs/FieldMesh/images/)
+
+<p align="center">
+  <img src="docs/FieldMesh/images/ui_sos.jpg" width="32%">
+  <img src="docs/FieldMesh/images/ui_messages.jpg" width="32%">
+  <img src="docs/FieldMesh/images/ui_settings.jpg" width="32%">
+</p>
 
 -----
 
