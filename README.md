@@ -4,7 +4,7 @@
 
 <p align="center"><img src="docs/FieldMesh/images/hero_mountain.jpg" width="100%"></p>
 
-Built on [MeshCore](https://github.com/ripplebiz/MeshCore) ·  Based on MeshCore v1.14.1 ·  Download latest [release](../../releases/latest)
+Built on [MeshCore](https://github.com/ripplebiz/MeshCore) ·  Based on MeshCore v1.15.0 ·  Download latest [release](../../releases/latest)
 
 -----
 
