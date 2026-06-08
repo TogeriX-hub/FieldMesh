@@ -5,14 +5,14 @@
 #include "AbstractUITask.h"
 
 /*------------ Frame Protocol --------------*/
-#define FIRMWARE_VER_CODE 11
+#define FIRMWARE_VER_CODE 13
 
 #ifndef FIRMWARE_BUILD_DATE
-#define FIRMWARE_BUILD_DATE "19 Apr 2026"
+#define FIRMWARE_BUILD_DATE "6 Jun 2026"
 #endif
 
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "v1.15.0"
+#define FIRMWARE_VERSION "v1.16.0"
 #endif
 
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
@@ -107,6 +107,11 @@ public:
   void enterCLIRescue();
 
   int  getRecentlyHeard(AdvertPath dest[], int max_num);
+
+  // To check if there is pending work (used in main.cpp loop for sleep)
+  bool hasPendingWork() const {
+    return _mgr->getOutboundTotal() > 0 || dirty_contacts_expiry != 0;
+  }
 
 protected:
   float getAirtimeBudgetFactor() const override;
@@ -210,7 +215,8 @@ private:
 
   // helpers, short-cuts
   void saveChannels() { _store->saveChannels(this); }
-  void saveContacts() { _store->saveContacts(this); }
+  void saveContacts() { _store->saveContacts(this, save_filter); }
+  static bool save_filter(const ContactInfo& c);
 
   DataStore* _store;
   NodePrefs _prefs;
@@ -228,6 +234,7 @@ private:
   bool _iter_started;
   bool _app_initialized;  // true after CMD_APP_START handshake completed
   bool _cli_rescue;
+  bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
   char cli_command[80];
   uint8_t app_target_ver;
   uint8_t *sign_data;

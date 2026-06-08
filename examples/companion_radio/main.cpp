@@ -125,7 +125,7 @@ void setup() {
 
   if (!radio_init()) { halt(); }
 
-  fast_rng.begin(radio_get_rng_seed());
+  fast_rng.begin(radio_driver.getRngSeed());
 
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   InternalFS.begin();
@@ -220,6 +220,8 @@ void setup() {
 #ifdef DISPLAY_CLASS
   ui_task.begin(disp, &sensors, the_mesh.getNodePrefs());  // still want to pass this in as dependency, as prefs might be moved
 #endif
+
+  board.onBootComplete();
 }
 
 void loop() {
@@ -229,4 +231,10 @@ void loop() {
   ui_task.loop();
 #endif
   rtc_clock.tick();
+
+  if (!the_mesh.hasPendingWork()) {
+#if defined(NRF52_PLATFORM)
+    board.sleep(0); // nrf ignores seconds param, sleeps whenever possible
+#endif
+  }
 }
