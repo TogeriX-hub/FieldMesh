@@ -188,6 +188,9 @@ public:
   }
 #endif
 
+  // To check if there is pending work
+  bool hasPendingWork() const;
+
   // V5: send channel message from UI (wrapper for sendGroupMessage, analogous to sendSOS)
   bool sendChannelMessage(uint8_t channel_idx, const char* text);
 
