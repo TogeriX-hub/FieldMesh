@@ -107,7 +107,10 @@ private:
       case SEARCHING:
         if (new_fix) {
           _last_search_ms = now - _since;
-          learnSearchTime(_last_search_ms);
+          // a search after failures (e.g. new ephemeris after hours indoors) is no typical
+          // search time - learning it would make every following search longer. Exception:
+          // nothing learned yet (receivers that always need long, e.g. without backup power)
+          if (_fail_count == 0 || _predicted_ms == 0) learnSearchTime(_last_search_ms);
           _fail_count = 0;
           _first_search = false;
           setState(HOLDING, now);
