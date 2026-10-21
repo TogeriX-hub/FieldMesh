@@ -1,6 +1,10 @@
 #include <Arduino.h>   // needed for PlatformIO
 #include <Mesh.h>
 #include "MyMesh.h"
+#ifdef FM_GPS_LOG
+  #include "GpsLog.h"   // FieldMesh v6.1: diagnostic builds only
+  GpsLog gps_log;
+#endif
 
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
@@ -284,6 +288,9 @@ void setup() {
 
 void loop() {
   the_mesh.loop();
+#ifdef FM_GPS_LOG
+  gps_log.loop(the_mesh.gpsCycle(), rtc_clock.getCurrentTime(), board, store.getSecondaryFS());
+#endif
   interface_manager.loop();
   sensors.loop();
 #ifdef DISPLAY_CLASS

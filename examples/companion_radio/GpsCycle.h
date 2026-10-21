@@ -60,6 +60,13 @@ public:
 
   // call from MyMesh::loop(); returns a mask of Event
   uint8_t loop(SensorManager& sensors, NodePrefs& prefs) {
+    _last_ev = step(sensors, prefs);
+    return _last_ev;
+  }
+  uint8_t lastEvents() const { return _last_ev; }   // events of the last loop() (diagnostics)
+
+private:
+  uint8_t step(SensorManager& sensors, NodePrefs& prefs) {
     uint8_t ev = EV_NONE;
     uint32_t now = millis();
     LocationProvider* loc = sensors.getLocationProvider();
@@ -93,11 +100,13 @@ public:
     switch (_state) {
       case SEARCHING:
         if (new_fix) {
-          learnSearchTime(now - _since);
+          _last_search_ms = now - _since;
+          learnSearchTime(_last_search_ms);
           _fail_count = 0;
           _first_search = false;
           setState(HOLDING, now);
         } else if (now - _since >= _search_limit) {
+          _last_search_ms = now - _since;
           _fail_count++;
           _first_search = false;
           ev |= EV_SEARCH_FAILED;
@@ -142,6 +151,7 @@ public:
     return ev;
   }
 
+public:
   // a fix from a newly parsed sentence, not older than 2 min, and GPS still enabled
   bool hasFreshFix() const {
     return _state != OFF && _have_fix && (uint32_t)(millis() - _last_fix_ms) <= MAX_FIX_AGE_MS;
@@ -175,6 +185,7 @@ public:
   bool isHardSleep() const { return _hard; }
   uint32_t predictedSearchMs() const { return _predicted_ms; }
   uint8_t failCount() const { return _fail_count; }
+  uint32_t lastSearchMs() const { return _last_search_ms; }   // duration of the last search
 
   static bool hardwareSwitchOn() {
 #ifdef PIN_GPS_SWITCH
@@ -196,6 +207,8 @@ private:
   uint32_t _last_ts = 0;        // sentence timestamp of the last accepted fix
   uint32_t _predicted_ms = 0;   // learned search time (EWMA), 0 = unknown
   uint32_t _sos_until = 0;
+  uint32_t _last_search_ms = 0;
+  uint8_t  _last_ev = EV_NONE;
   int32_t  _lat = 0, _lon = 0;
   uint8_t  _sats = 0;
   uint8_t  _fail_count = 0;
