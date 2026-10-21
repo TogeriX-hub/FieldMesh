@@ -1121,11 +1121,8 @@ bool MyMesh::isValidClientRepeatFreq(uint32_t f) const {
 }
 
 // Off-grid mode: save normal parameters and switch to off-grid settings (or back)
-// Off-grid settings: 869.4625 MHz, BW 125, SF 11, CR 5 (EU sub-band g1, no LBT)
-#define OFFGRID_FREQ  869.4625f
-#define OFFGRID_BW    125.0f
-#define OFFGRID_SF    11
-#define OFFGRID_CR    5
+// FieldMesh v6.1: off-grid frequency follows the region of the normal frequency (OffGrid.h)
+#include "OffGrid.h"
 
 void MyMesh::toggleOffGrid() {
   if (!_prefs.isRepeatEn()) {
@@ -1135,7 +1132,7 @@ void MyMesh::toggleOffGrid() {
     _prefs.normal_sf   = _prefs.sf;
     _prefs.normal_cr   = _prefs.cr;
     // Off-Grid-Parameter setzen
-    _prefs.freq = OFFGRID_FREQ;
+    _prefs.freq = offGridFreqFor(_prefs.normal_freq);   // EU < 900 MHz <= US
     _prefs.bw   = OFFGRID_BW;
     _prefs.sf   = OFFGRID_SF;
     _prefs.cr   = OFFGRID_CR;

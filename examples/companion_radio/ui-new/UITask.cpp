@@ -1,6 +1,7 @@
 #include "UITask.h"
 #include <helpers/TxtDataHelpers.h>
 #include "../MyMesh.h"
+#include "../OffGrid.h"   // FieldMesh v6.1: Off-Grid region label
 #include "target.h"
 #include <time.h>
 #ifdef ENABLE_WIFI_INTERFACE
@@ -1790,7 +1791,14 @@ public:
         case OFFGRID:
           the_mesh.toggleOffGrid();
           _task->notify(UIEventType::ack);
-          _task->showAlert(the_mesh.isOffGridActive() ? "Off-Grid: ON" : "Off-Grid: OFF", 1000);
+          if (the_mesh.isOffGridActive()) {
+            // v6.1: show the region the off-grid frequency was chosen for
+            char alert[24];
+            snprintf(alert, sizeof(alert), "Off-Grid: ON (%s)", offGridRegionLabel(the_mesh.getNodePrefs()->freq));
+            _task->showAlert(alert, 1000);
+          } else {
+            _task->showAlert("Off-Grid: OFF", 1000);
+          }
           break;
         case BACK:
           _task->gotoHomeScreen();
