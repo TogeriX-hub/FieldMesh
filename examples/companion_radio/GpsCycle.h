@@ -21,6 +21,10 @@
 // Board files are not modified. If neither works (no provider / no "gps" setting) the cycle
 // only tracks fix freshness and never sleeps.
 //
+// NMEA output is reduced to RMC + GGA like Meshtastic, only for the two known receiver
+// families: L76K ($PCAS03, after every GPS start - lost on reset) and Airoha ($PAIR062,
+// saved with $PAIR513, once per boot). Other receivers are left untouched.
+//
 // The cycle never changes prefs.gps_enabled itself, except for the M1 hardware GPS switch
 // (PIN_GPS_SWITCH): GPS only runs when switch AND setting are on; switching it on sets the
 // setting (reported as EV_PREFS_CHANGED so the caller saves prefs).
@@ -87,7 +91,9 @@ private:
       _first_search = true;
       _fail_count = 0;
       startSearch(now);
+      scheduleNmeaConfig(now);
     }
+    runNmeaConfig(loc, now);
 
     bool new_fix = pollFix(loc, now);
     bool forced = (int32_t)(_awake_until - now) > 0;
@@ -209,6 +215,9 @@ private:
   uint32_t _sos_until = 0;
   uint32_t _last_search_ms = 0;
   uint8_t  _last_ev = EV_NONE;
+  uint8_t  _cfg_step = 0;       // NMEA configuration: 0 = nothing to do
+  uint32_t _cfg_due = 0;
+  bool     _cfg_saved = false;  // Airoha: configuration saved in the receiver this boot
   int32_t  _lat = 0, _lon = 0;
   uint8_t  _sats = 0;
   uint8_t  _fail_count = 0;
@@ -304,6 +313,44 @@ private:
     sensors.setSettingValue("gps", "1");  // board start_gps()
 #endif
     loc->drain();   // discard UART bytes from before the sleep
+  }
+
+  // NMEA reduction (Meshtastic GPS.cpp): RMC + GGA only - fewer UART bytes to parse.
+  // Sent ~2 s after GPS start so the receiver is ready to listen.
+  void scheduleNmeaConfig(uint32_t now) {
+#if defined(PIN_GPS_STANDBY)
+    _cfg_step = 1;                       // L76K: settings are lost on reset/power cycle
+#elif defined(GPS_VRTC_EN)
+    if (!_cfg_saved) _cfg_step = 1;      // Airoha: saved in the receiver, once per boot
+#endif
+    _cfg_due = now + 2000;
+  }
+
+  void runNmeaConfig(LocationProvider* loc, uint32_t now) {
+    if (_cfg_step == 0 || _state == SLEEPING || (int32_t)(now - _cfg_due) < 0) return;
+#if defined(PIN_GPS_STANDBY)
+    loc->sendSentence("$PCAS03,1,0,0,0,1,0,0,0,0,0,,,0,0");   // L76K: GGA + RMC only
+    _cfg_step = 0;
+#elif defined(GPS_VRTC_EN)
+    if (_cfg_step == 1) {
+      loc->sendSentence("$PAIR062,0,1");   // GGA on
+      loc->sendSentence("$PAIR062,1,0");   // GLL off
+      loc->sendSentence("$PAIR062,2,0");   // GSA off
+      loc->sendSentence("$PAIR062,3,0");   // GSV off
+      loc->sendSentence("$PAIR062,4,1");   // RMC on
+      loc->sendSentence("$PAIR062,5,0");   // VTG off
+      loc->sendSentence("$PAIR062,6,0");   // ZDA off
+      _cfg_step = 2;
+      _cfg_due = now + 300;
+    } else {
+      loc->sendSentence("$PAIR513");       // save configuration
+      _cfg_step = 0;
+      _cfg_saved = true;
+    }
+#else
+    (void)loc;
+    _cfg_step = 0;
+#endif
   }
 
   // ThinkNode M1: hardware switch has priority (PLAN_v6.1: GPS runs only with switch AND setting).
