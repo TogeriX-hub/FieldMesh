@@ -27,6 +27,11 @@ public:
     virtual void loop() = 0;
     virtual bool isEnabled() = 0;
 
+    // FieldMesh: optional hook called for every checksum-valid NMEA sentence (e.g. to evaluate
+    // GSV satellite signal levels). Default: not supported.
+    typedef void (*SentenceCallback)(const char* sentence, void* ctx);
+    virtual void setSentenceCallback(SentenceCallback cb, void* ctx) { (void)cb; (void)ctx; }
+
     // Format compact diagnostics in the caller-provided buffer. Providers that
     // have more information (for example UART counters) can override this.
     virtual void formatDiagnostics(char* out, size_t out_size) {

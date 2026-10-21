@@ -6,7 +6,8 @@
 // One record per cycle event, only while GPS is enabled:
 //   ON     GPS enabled (boot or switched on)        OFF    GPS disabled
 //   FIX    end of a hold phase: search time, satellites, position
-//   FAIL   search ended without fix (search time = limit)
+//   FAIL   search ended without fix (search time = limit), sats = most strong satellites seen
+//   EXT    search extended (sky visible, no fix yet), sats = most strong satellites seen
 //   AWAKE  kept running (GPS/Tracking page, SOS)     SLEEP  back to the normal cycle
 // Each record carries UTC time (RTC), uptime and the battery voltage.
 //
@@ -28,7 +29,7 @@
 
 class GpsLog {
 public:
-  enum Type : uint8_t { T_ON = 1, T_OFF, T_FIX, T_FAIL, T_AWAKE, T_SLEEP };
+  enum Type : uint8_t { T_ON = 1, T_OFF, T_FIX, T_FAIL, T_AWAKE, T_SLEEP, T_EXT };
 
   struct __attribute__((packed)) Rec {
     uint32_t unix_time;
@@ -60,6 +61,7 @@ public:
       _last_state = st;
     }
     if (ev & GpsCycle::EV_FIX)           add(T_FIX, gps, unix_time, true);
+    if (ev & GpsCycle::EV_SEARCH_EXTENDED) add(T_EXT, gps, unix_time, false);
     if (ev & GpsCycle::EV_SEARCH_FAILED) add(T_FAIL, gps, unix_time, false);
 
     pollSerial();
@@ -104,10 +106,11 @@ private:
     r.uptime_s  = millis() / 1000;
     r.type      = t;
     r.search_ds = (t == T_FIX || t == T_FAIL) ? clamp16(gps.lastSearchMs() / 100) : 0;
+    if (t == T_EXT) r.search_ds = clamp16(gps.searchElapsedMs() / 100);
     r.pred_ds   = clamp16(gps.predictedSearchMs() / 100);
     r.batt_mv   = _board->getBattMilliVolts();   // read only when a record is written
     bool pos = with_pos && gps.hasFreshFix();
-    r.sats      = pos ? gps.satellites() : 0;
+    r.sats      = pos ? gps.satellites() : ((t == T_FAIL || t == T_EXT) ? gps.searchMaxStrong() : 0);
     r.lat       = pos ? gps.latitude() : 0;
     r.lon       = pos ? gps.longitude() : 0;
     if (Serial) printRec(r);
@@ -135,6 +138,7 @@ private:
       case T_ON: return "ON";       case T_OFF: return "OFF";
       case T_FIX: return "FIX";     case T_FAIL: return "FAIL";
       case T_AWAKE: return "AWAKE"; case T_SLEEP: return "SLEEP";
+      case T_EXT: return "EXT";
       default: return "?";
     }
   }

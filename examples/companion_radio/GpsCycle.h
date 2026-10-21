@@ -7,9 +7,14 @@
 //   - every 2 min a search for a fix, then the fix is held for 20 s, then the GPS sleeps
 //   - the wake-up is moved forward by the learned search time (EWMA 0.2), so a new fix is
 //     available about every 2 min; no long back-off when there is no fix
-//   - search limits: first search after GPS start 180 s, then 30 s, after 3 failures 15 s,
-//     every 5th failed search 120 s (enough for a new ephemeris download); never less than
-//     twice the learned search time
+//   - search limits: first search after GPS start 180 s, then 30 s, after 3 failures 15 s;
+//     never less than twice the learned search time
+//   - sky check from the GSV sentences: when the search time is up without fix but >= 4
+//     satellites with >= 25 dB-Hz are in view, the sky is there and only time is missing
+//     (e.g. ephemeris expired after hours indoors) -> extend the search up to 120 s. The
+//     extension ends early when the strong satellites are gone for 15 s; after a failed
+//     extension there is none for 10 min (window case: signal but no fix possible).
+//     Receivers without GSV data fall back to a blind 120 s search on every 5th failure.
 //   - "keep awake" requests (GPS/Tracking page on screen, SOS) keep the GPS running
 //
 // Sleep mode is chosen centrally from the board defines, like Meshtastic:
@@ -21,9 +26,9 @@
 // Board files are not modified. If neither works (no provider / no "gps" setting) the cycle
 // only tracks fix freshness and never sleeps.
 //
-// NMEA output is reduced to RMC + GGA like Meshtastic, only for the two known receiver
-// families: L76K ($PCAS03, after every GPS start - lost on reset) and Airoha ($PAIR062,
-// saved with $PAIR513, once per boot). Other receivers are left untouched.
+// NMEA output is reduced to GGA + RMC + GSV (GSV for the sky check), only for the two known
+// receiver families: L76K ($PCAS03, after every GPS start - lost on reset) and Airoha
+// ($PAIR062, saved with $PAIR513, once per boot). Other receivers are left untouched.
 //
 // The cycle never changes prefs.gps_enabled itself, except for the M1 hardware GPS switch
 // (PIN_GPS_SWITCH): GPS only runs when switch AND setting are on; switching it on sets the
@@ -45,6 +50,7 @@ public:
     EV_SEARCH_FAILED = 0x02,   // search ended without fix
     EV_SOS_RESEND    = 0x04,   // SOS was sent without position and a fix is now available
     EV_PREFS_CHANGED = 0x08,   // prefs.gps_enabled changed (M1 hardware switch) -> save prefs
+    EV_SEARCH_EXTENDED = 0x10, // search extended: sky visible, but no fix yet
   };
 
   static constexpr uint32_t INTERVAL_MS        = 120000;  // fix every 2 min (Meshtastic default)
@@ -59,6 +65,12 @@ public:
   static constexpr uint32_t KEEP_AWAKE_PAGE_MS = 60000;   // GPS/Tracking page: +60 s after leaving
   static constexpr uint32_t KEEP_AWAKE_SOS_MS  = 600000;  // 10 min after sending SOS
   static constexpr uint32_t POLL_MS            = 250;
+  static constexpr uint8_t  STRONG_SNR_DBHZ    = 25;      // signal good enough to decode data
+  static constexpr uint8_t  STRONG_MIN_SATS    = 4;
+  static constexpr uint32_t STRONG_RECENT_MS   = 3000;    // "sky visible now"
+  static constexpr uint32_t EXT_LOST_MS        = 15000;   // end an extension when sky is gone
+  static constexpr uint32_t EXT_BLOCK_MS       = 600000;  // no extension 10 min after a failed one
+  static constexpr uint32_t GSV_VALID_MS       = 900000;  // GSV seen recently -> sky check usable
 
   GpsCycle() { }
 
@@ -74,6 +86,10 @@ private:
     uint8_t ev = EV_NONE;
     uint32_t now = millis();
     LocationProvider* loc = sensors.getLocationProvider();
+    if (loc != NULL && !_cb_set) {
+      loc->setSentenceCallback(onSentence, this);   // GSV sky check
+      _cb_set = true;
+    }
 
     ev |= checkHardwareSwitch(sensors, prefs);
 
@@ -110,19 +126,21 @@ private:
           // a search after failures (e.g. new ephemeris after hours indoors) is no typical
           // search time - learning it would make every following search longer. Exception:
           // nothing learned yet (receivers that always need long, e.g. without backup power)
-          if (_fail_count == 0 || _predicted_ms == 0) learnSearchTime(_last_search_ms);
+          if (_fail_count == 0 && !_extended) learnSearchTime(_last_search_ms);
+          else if (_predicted_ms == 0) learnSearchTime(_last_search_ms);
           _fail_count = 0;
           _first_search = false;
           setState(HOLDING, now);
         } else if (now - _since >= _search_limit) {
-          _last_search_ms = now - _since;
-          _fail_count++;
-          _first_search = false;
-          ev |= EV_SEARCH_FAILED;
-          // keep trying every 2 min, counted from the start of this search
-          uint32_t elapsed = now - _since;
-          uint32_t wait = (elapsed < INTERVAL_MS) ? INTERVAL_MS - elapsed : 0;
-          goSleep(sensors, loc, now, forced, wait);
+          if (canExtend(now)) {
+            _extended = true;
+            _search_limit = SEARCH_LONG_MS;
+            ev |= EV_SEARCH_EXTENDED;
+          } else {
+            ev |= failSearch(sensors, loc, now, forced);
+          }
+        } else if (_extended && (uint32_t)(now - _strong_ms) > EXT_LOST_MS) {
+          ev |= failSearch(sensors, loc, now, forced);   // sky gone again (back indoors)
         }
         break;
 
@@ -195,6 +213,9 @@ public:
   uint32_t predictedSearchMs() const { return _predicted_ms; }
   uint8_t failCount() const { return _fail_count; }
   uint32_t lastSearchMs() const { return _last_search_ms; }   // duration of the last search
+  uint8_t searchMaxStrong() const { return _search_max_strong; } // most strong sats seen in a search
+  uint32_t searchElapsedMs() const { return _state == SEARCHING ? (uint32_t)(millis() - _since) : 0; }
+  bool gsvAvailable() const { return _gsv_ever && (uint32_t)(millis() - _gsv_ms) < GSV_VALID_MS; }
 
   static bool hardwareSwitchOn() {
 #ifdef PIN_GPS_SWITCH
@@ -218,6 +239,16 @@ private:
   uint32_t _sos_until = 0;
   uint32_t _last_search_ms = 0;
   uint8_t  _last_ev = EV_NONE;
+  // GSV sky check
+  bool     _cb_set = false;
+  bool     _gsv_ever = false;
+  bool     _extended = false;      // current search was extended
+  uint32_t _gsv_ms = 0;            // last GSV sentence
+  uint32_t _strong_ms = 0;         // last epoch with >= STRONG_MIN_SATS strong satellites
+  uint32_t _ext_block_until = 0;
+  uint8_t  _search_max_strong = 0;
+  uint8_t  _epoch_n = 0;           // strong satellites collected in the current epoch
+  uint16_t _epoch_ids[24];         // (constellation, PRN) of those, to count each only once
   uint8_t  _cfg_step = 0;       // NMEA configuration: 0 = nothing to do
   uint32_t _cfg_due = 0;
   bool     _cfg_saved = false;  // Airoha: configuration saved in the receiver this boot
@@ -249,7 +280,7 @@ private:
     if (_first_search) return SEARCH_FIRST_MS;
     uint32_t limit;
     if (_fail_count == 0) limit = SEARCH_MS;
-    else if (_fail_count % 5 == 0) limit = SEARCH_LONG_MS;
+    else if (_fail_count % 5 == 0 && !gsvAvailable()) limit = SEARCH_LONG_MS;   // blind fallback
     else if (_fail_count >= 3) limit = SEARCH_SHORT_MS;
     else limit = SEARCH_MS;
     // receivers that need longer per fix (e.g. no backup power during hard sleep) get at
@@ -260,7 +291,66 @@ private:
 
   void startSearch(uint32_t now) {
     _search_limit = searchLimit();
+    _extended = false;
+    _search_max_strong = 0;
     setState(SEARCHING, now);
+  }
+
+  bool canExtend(uint32_t now) const {
+    return !_extended && _search_limit < SEARCH_LONG_MS
+        && _strong_ms != 0 && (uint32_t)(now - _strong_ms) < STRONG_RECENT_MS
+        && (int32_t)(now - _ext_block_until) >= 0;
+  }
+
+  // search ended without fix: keep trying every 2 min, counted from the start of this search
+  uint8_t failSearch(SensorManager& sensors, LocationProvider* loc, uint32_t now, bool forced) {
+    _last_search_ms = now - _since;
+    _fail_count++;
+    _first_search = false;
+    if (_extended) _ext_block_until = now + EXT_BLOCK_MS;   // sky but no fix -> pause extensions
+    uint32_t elapsed = now - _since;
+    uint32_t wait = (elapsed < INTERVAL_MS) ? INTERVAL_MS - elapsed : 0;
+    goSleep(sensors, loc, now, forced, wait);
+    return EV_SEARCH_FAILED;
+  }
+
+  // ---- GSV sky check ------------------------------------------------------------------------
+  static void onSentence(const char* sentence, void* ctx) { ((GpsCycle*)ctx)->handleSentence(sentence); }
+
+  // field i (0 = "$xxGSV") of an NMEA sentence as integer, -1 if empty/missing
+  static int nmeaField(const char* s, int idx) {
+    int i = 0;
+    while (*s && *s != '*' && i < idx) { if (*s == ',') i++; s++; }
+    if (i != idx || *s == ',' || *s == '*' || *s == 0) return -1;
+    int v = 0; bool any = false;
+    while (*s >= '0' && *s <= '9') { v = v * 10 + (*s - '0'); s++; any = true; }
+    return any ? v : -1;
+  }
+
+  void handleSentence(const char* s) {
+    if (s[0] != '$' || strlen(s) < 7) return;
+    const char* type = &s[3];
+    if (strncmp(type, "GGA", 3) == 0) {          // GGA starts a new epoch (one per second)
+      if (_epoch_n >= STRONG_MIN_SATS) _strong_ms = millis();
+      if (_state == SEARCHING && _epoch_n > _search_max_strong) _search_max_strong = _epoch_n;
+      _epoch_n = 0;
+      return;
+    }
+    if (strncmp(type, "GSV", 3) != 0) return;
+    _gsv_ever = true;
+    _gsv_ms = millis();
+    uint16_t sys = ((uint8_t)s[1] * 31u + (uint8_t)s[2]) & 0xFF;   // talker = constellation
+    // satellites in groups of 4 fields from field 4: PRN, elevation, azimuth, SNR
+    for (int g = 0; g < 4; g++) {
+      int prn = nmeaField(s, 4 + g * 4);
+      int snr = nmeaField(s, 7 + g * 4);
+      if (prn < 0) break;
+      if (snr < STRONG_SNR_DBHZ) continue;
+      uint16_t id = (sys << 8) | (uint16_t)(prn & 0xFF);
+      bool dup = false;
+      for (uint8_t k = 0; k < _epoch_n; k++) if (_epoch_ids[k] == id) { dup = true; break; }
+      if (!dup && _epoch_n < sizeof(_epoch_ids) / sizeof(_epoch_ids[0])) _epoch_ids[_epoch_n++] = id;
+    }
   }
 
   // Meshtastic: EWMA 0.2, first sample (cold start) discarded, failures not counted
@@ -318,7 +408,7 @@ private:
     loc->drain();   // discard UART bytes from before the sleep
   }
 
-  // NMEA reduction (Meshtastic GPS.cpp): RMC + GGA only - fewer UART bytes to parse.
+  // NMEA reduction (Meshtastic GPS.cpp): GGA + RMC, plus GSV for the sky check.
   // Sent ~2 s after GPS start so the receiver is ready to listen.
   void scheduleNmeaConfig(uint32_t now) {
 #if defined(PIN_GPS_STANDBY)
@@ -332,14 +422,14 @@ private:
   void runNmeaConfig(LocationProvider* loc, uint32_t now) {
     if (_cfg_step == 0 || _state == SLEEPING || (int32_t)(now - _cfg_due) < 0) return;
 #if defined(PIN_GPS_STANDBY)
-    loc->sendSentence("$PCAS03,1,0,0,0,1,0,0,0,0,0,,,0,0");   // L76K: GGA + RMC only
+    loc->sendSentence("$PCAS03,1,0,0,1,1,0,0,0,0,0,,,0,0");   // L76K: GGA + GSV + RMC
     _cfg_step = 0;
 #elif defined(GPS_VRTC_EN)
     if (_cfg_step == 1) {
       loc->sendSentence("$PAIR062,0,1");   // GGA on
       loc->sendSentence("$PAIR062,1,0");   // GLL off
       loc->sendSentence("$PAIR062,2,0");   // GSA off
-      loc->sendSentence("$PAIR062,3,0");   // GSV off
+      loc->sendSentence("$PAIR062,3,1");   // GSV on (sky check)
       loc->sendSentence("$PAIR062,4,1");   // RMC on
       loc->sendSentence("$PAIR062,5,0");   // VTG off
       loc->sendSentence("$PAIR062,6,0");   // ZDA off
