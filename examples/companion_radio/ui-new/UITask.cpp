@@ -510,11 +510,11 @@ public:
       the_mesh.getRecentlyHeard(recent, UI_RECENT_LIST_SIZE);
       display.setColor(UIColor::primary_txt);
       display.setTextSize(1);
-      bool own_gps = (sensors.node_lat != 0.0 || sensors.node_lon != 0.0);
-#if ENV_INCLUDE_GPS == 1
-      LocationProvider* loc = sensors.getLocationProvider();
-      own_gps = own_gps && loc != NULL && loc->isValid();
-#endif
+      // v6.1: own position = fresh fix (<= 2 min) from the GPS duty cycle
+      GpsCycle& gps = the_mesh.gpsCycle();
+      bool own_gps = gps.hasFreshFix();
+      double own_lat = gps.latitude() / 1000000.0;
+      double own_lon = gps.longitude() / 1000000.0;
       int y = 20;
       int max_y = (display.height() >= 128) ? 53 : 42;
       // display-height-adaptive limit: 3 nodes on small display (y<=42), 4 on large (y<=53)
@@ -543,7 +543,7 @@ public:
           strcpy(dist_buf, "?");
         } else {
           float dist = calcDistance(
-            sensors.node_lat, sensors.node_lon,
+            own_lat, own_lon,
             ci->gps_lat / 1000000.0, ci->gps_lon / 1000000.0
           );
           if (dist < 0)         strcpy(dist_buf, "?");
@@ -833,6 +833,11 @@ public:
 #endif
   bool isOnRecentPage()   const { return _page == HomePage::RECENT; }
   bool isOnTrackingPage() const { return _page == HomePage::TRACKING; }
+#if ENV_INCLUDE_GPS == 1
+  bool isOnGpsPage()      const { return _page == HomePage::GPS; }       // v6.1
+#else
+  bool isOnGpsPage()      const { return false; }
+#endif
   bool isOnSOSPage()      const { return _page == HomePage::SOS; }       // V3
   bool isOnFirstPage()    const { return _page == HomePage::FIRST; }     // V5: E6
 };
@@ -2546,6 +2551,12 @@ void UITask::loop() {
 
   if (curr) curr->poll();
 
+  // v6.1: GPS/Tracking page on screen -> keep the GPS running (+60 s after leaving/display off)
+  if (_display != NULL && _display->isOn() && curr == home
+      && (((HomeScreen*)home)->isOnTrackingPage() || ((HomeScreen*)home)->isOnGpsPage())) {
+    the_mesh.gpsCycle().keepAwake(GpsCycle::KEEP_AWAKE_PAGE_MS);
+  }
+
   if (_display != NULL && _display->isOn()) {
     if (millis() >= _next_refresh && curr) {
       _display->startFrame();
@@ -2741,7 +2752,8 @@ void UITask::toggleGPS() {
     int num = _sensors->getNumSettings();
     for (int i = 0; i < num; i++) {
       if (strcmp(_sensors->getSettingName(i), "gps") == 0) {
-        if (strcmp(_sensors->getSettingValue(i), "1") == 0) {
+        // v6.1: decide by the setting - while the GPS duty cycle sleeps the board reports "0"
+        if (_node_prefs->gps_enabled) {
           _sensors->setSettingValue("gps", "0");
           _node_prefs->gps_enabled = 0;
           notify(UIEventType::ack);

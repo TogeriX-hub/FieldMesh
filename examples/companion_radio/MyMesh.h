@@ -24,6 +24,7 @@
 
 #include "DataStore.h"
 #include "NodePrefs.h"
+#include "GpsCycle.h"   // FieldMesh v6.1
 
 #include <RTClib.h>
 #include <helpers/ArduinoHelpers.h>
@@ -308,6 +309,7 @@ private:
   AdvertPath advert_paths[ADVERT_PATH_TABLE_SIZE]; // circular table
 
   unsigned long next_auto_advert;  // millis() timestamp for next auto-advert (0=inactive)
+  GpsCycle _gps_cycle;             // FieldMesh v6.1: GPS duty cycle + fresh own position
 
   // FieldMesh (#23): RTC jump detection — reference point (RTC seconds + millis) of the last check
   uint32_t _clk_ref_rtc;
@@ -315,6 +317,8 @@ private:
   void checkClockJump();
 
 public:
+  GpsCycle& gpsCycle() { return _gps_cycle; }   // FieldMesh v6.1 (UI: keep-awake, own position)
+
   // Auto-advert is active when GPS sharing is enabled
   bool isAutoAdvertEnabled() const {
     return _prefs.advert_loc_policy == ADVERT_LOC_SHARE;

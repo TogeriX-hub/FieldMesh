@@ -1167,17 +1167,20 @@ bool MyMesh::sendSOS() {
 
     // Nachrichtentext zusammenbauen
     char text[80];
-    LocationProvider* loc = sensors.getLocationProvider();
-    if (loc != NULL && loc->isEnabled() && loc->isValid()) {
+    // FieldMesh v6.1: fresh fix (<= 2 min) from the GPS duty cycle
+    bool has_pos = _gps_cycle.hasFreshFix();
+    if (has_pos) {
       snprintf(text, sizeof(text), "!SOS %.4f,%.4f",
-        loc->getLatitude()  / 1000000.0,
-        loc->getLongitude() / 1000000.0);
+        _gps_cycle.latitude()  / 1000000.0,
+        _gps_cycle.longitude() / 1000000.0);
     } else {
       strncpy(text, "!SOS no GPS", sizeof(text));
     }
 
     uint32_t ts = getRTCClock()->getCurrentTimeUnique();
-    return sendGroupMessage(ts, ch.channel, _prefs.node_name, text, strlen(text));
+    bool sent = sendGroupMessage(ts, ch.channel, _prefs.node_name, text, strlen(text));
+    if (sent) _gps_cycle.onSosSent(has_pos);   // GPS on for 10 min, resend once with position
+    return sent;
   }
   return false;  // no SOS channel found
 }
@@ -2008,7 +2011,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       strcpy(dp, sensors.getSettingName(i));
       dp = strchr(dp, 0);
       *dp++ = ':';
-      strcpy(dp, sensors.getSettingValue(i));
+      strcpy(dp, _gps_cycle.reportSetting(sensors.getSettingName(i), sensors.getSettingValue(i)));  // FieldMesh v6.1
       dp = strchr(dp, 0);
     }
     _serial->writeFrame(out_frame, dp - (char *)out_frame);
@@ -2592,6 +2595,11 @@ void MyMesh::loop() {
   }
 
   checkClockJump();  // FieldMesh (#23)
+
+  // FieldMesh v6.1: GPS duty cycle
+  uint8_t gps_ev = _gps_cycle.loop(sensors, _prefs);
+  if (gps_ev & GpsCycle::EV_PREFS_CHANGED) savePrefs();
+  if (gps_ev & GpsCycle::EV_SOS_RESEND) sendSOS();   // first SOS went out without position
 }
 
 // FieldMesh (#23): detect RTC jumps and shift stored timestamps.
@@ -2641,15 +2649,12 @@ bool MyMesh::advert() {
   mesh::Packet* pkt;
   bool send_gps = false;
   if (_prefs.advert_loc_policy != ADVERT_LOC_NONE) {
-    // Only include GPS if hardware GPS is active AND a current fix is available
-    // Cached/stale coordinates are intentionally ignored
-    LocationProvider* loc = sensors.getLocationProvider();
-    if (loc != NULL && loc->isEnabled() && loc->isValid()) {
-      send_gps = true;
-    }
+    // Only include GPS with a current fix - cached/stale coordinates are intentionally ignored
+    // FieldMesh v6.1: fresh fix (<= 2 min) from the GPS duty cycle
+    send_gps = _gps_cycle.hasFreshFix();
   }
   if (send_gps) {
-    pkt = createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon);
+    pkt = createSelfAdvert(_prefs.node_name, _gps_cycle.latitude() / 1000000.0, _gps_cycle.longitude() / 1000000.0);
   } else {
     pkt = createSelfAdvert(_prefs.node_name);
   }

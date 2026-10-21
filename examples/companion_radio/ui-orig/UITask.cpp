@@ -649,8 +649,11 @@ void UITask::handleButtonQuadruplePress() {
     int num = _sensors->getNumSettings();
     for (int i = 0; i < num; i++) {
       if (strcmp(_sensors->getSettingName(i), "gps") == 0) {
-        if (strcmp(_sensors->getSettingValue(i), "1") == 0) {
+        // v6.1: decide by the setting (the board reports "0" while the GPS duty cycle sleeps)
+        // and store it, so the choice survives a reboot
+        if (_node_prefs->gps_enabled) {
           _sensors->setSettingValue("gps", "0");
+          _node_prefs->gps_enabled = 0;
           sprintf(_alert, "GPS: Disabled");
 #ifdef PIN_BUZZER
           buzzer.quiet(false);
@@ -659,6 +662,7 @@ void UITask::handleButtonQuadruplePress() {
 #endif
         } else {
           _sensors->setSettingValue("gps", "1");
+          _node_prefs->gps_enabled = 1;
           sprintf(_alert, "GPS: Enabled");
 #ifdef PIN_BUZZER
           buzzer.quiet(false);
@@ -666,6 +670,7 @@ void UITask::handleButtonQuadruplePress() {
           _buzzer_restore_quiet = true;
 #endif
         }
+        the_mesh.savePrefs();
         break;
       }
     }
