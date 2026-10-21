@@ -2588,18 +2588,32 @@ void MyMesh::loop() {
     dirty_contacts_expiry = 0;
   }
 
-  // auto-advert timer: send 0-hop advert at configured interval
-  if (next_auto_advert && millisHasNowPassed(next_auto_advert)) {
-    advert();
-    next_auto_advert = futureMillis(AUTO_ADVERT_INTERVAL_MS);  // schedule next
-  }
-
-  checkClockJump();  // FieldMesh (#23)
-
   // FieldMesh v6.1: GPS duty cycle
   uint8_t gps_ev = _gps_cycle.loop(sensors, _prefs);
   if (gps_ev & GpsCycle::EV_PREFS_CHANGED) savePrefs();
   if (gps_ev & GpsCycle::EV_SOS_RESEND) sendSOS();   // first SOS went out without position
+
+  // FieldMesh v6.1: tracking (GPS sharing + GPS running) -> movement / heartbeat cadence,
+  // otherwise the fixed auto-advert timer as before
+  if (isAutoAdvertEnabled() && _gps_cycle.state() != GpsCycle::OFF) {
+    if (!_tracking_active) { _track.reset(millis()); _tracking_active = true; }
+    if (_track.poll(millis(), (gps_ev & GpsCycle::EV_FIX) != 0, _gps_cycle.latitude(),
+                    _gps_cycle.longitude(), _gps_cycle.satellites()) != TrackScheduler::NONE) {
+      bool with_pos = _gps_cycle.hasFreshFix();   // advert() uses the same check
+      advert();
+      _track.sent(millis(), with_pos, _gps_cycle.latitude(), _gps_cycle.longitude());
+    }
+    if (next_auto_advert) next_auto_advert = futureMillis(AUTO_ADVERT_INTERVAL_MS);  // fallback restarts later
+  } else {
+    _tracking_active = false;
+    // auto-advert timer: send 0-hop advert at configured interval
+    if (next_auto_advert && millisHasNowPassed(next_auto_advert)) {
+      advert();
+      next_auto_advert = futureMillis(AUTO_ADVERT_INTERVAL_MS);  // schedule next
+    }
+  }
+
+  checkClockJump();  // FieldMesh (#23)
 }
 
 // FieldMesh (#23): detect RTC jumps and shift stored timestamps.

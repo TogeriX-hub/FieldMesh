@@ -25,6 +25,7 @@
 #include "DataStore.h"
 #include "NodePrefs.h"
 #include "GpsCycle.h"   // FieldMesh v6.1
+#include "TrackScheduler.h"   // FieldMesh v6.1
 
 #include <RTClib.h>
 #include <helpers/ArduinoHelpers.h>
@@ -310,6 +311,8 @@ private:
 
   unsigned long next_auto_advert;  // millis() timestamp for next auto-advert (0=inactive)
   GpsCycle _gps_cycle;             // FieldMesh v6.1: GPS duty cycle + fresh own position
+  TrackScheduler _track;           // FieldMesh v6.1: advert cadence while tracking
+  bool _tracking_active = false;
 
   // FieldMesh (#23): RTC jump detection — reference point (RTC seconds + millis) of the last check
   uint32_t _clk_ref_rtc;

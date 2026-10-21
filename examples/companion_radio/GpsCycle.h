@@ -8,7 +8,8 @@
 //   - the wake-up is moved forward by the learned search time (EWMA 0.2), so a new fix is
 //     available about every 2 min; no long back-off when there is no fix
 //   - search limits: first search after GPS start 180 s, then 30 s, after 3 failures 15 s,
-//     every 5th failed search 120 s (enough for a new ephemeris download)
+//     every 5th failed search 120 s (enough for a new ephemeris download); never less than
+//     twice the learned search time
 //   - "keep awake" requests (GPS/Tracking page on screen, SOS) keep the GPS running
 //
 // Sleep mode is chosen centrally from the board defines, like Meshtastic:
@@ -147,6 +148,7 @@ public:
   }
   int32_t latitude() const { return _lat; }     // degrees * 1e6 (LocationProvider format)
   int32_t longitude() const { return _lon; }
+  uint8_t satellites() const { return _sats; }  // of the last accepted fix
   uint32_t fixAgeMs() const { return _have_fix ? (uint32_t)(millis() - _last_fix_ms) : 0xFFFFFFFF; }
 
   // keep the GPS running for at least ms from now (call repeatedly while needed)
@@ -195,6 +197,7 @@ private:
   uint32_t _predicted_ms = 0;   // learned search time (EWMA), 0 = unknown
   uint32_t _sos_until = 0;
   int32_t  _lat = 0, _lon = 0;
+  uint8_t  _sats = 0;
   uint8_t  _fail_count = 0;
   uint8_t  _samples = 0;
   bool     _have_fix = false;
@@ -219,10 +222,15 @@ private:
 
   uint32_t searchLimit() const {
     if (_first_search) return SEARCH_FIRST_MS;
-    if (_fail_count == 0) return SEARCH_MS;
-    if (_fail_count % 5 == 0) return SEARCH_LONG_MS;
-    if (_fail_count >= 3) return SEARCH_SHORT_MS;
-    return SEARCH_MS;
+    uint32_t limit;
+    if (_fail_count == 0) limit = SEARCH_MS;
+    else if (_fail_count % 5 == 0) limit = SEARCH_LONG_MS;
+    else if (_fail_count >= 3) limit = SEARCH_SHORT_MS;
+    else limit = SEARCH_MS;
+    // receivers that need longer per fix (e.g. no backup power during hard sleep) get at
+    // least twice their learned search time, otherwise nearly every search would fail
+    if (limit < 2 * _predicted_ms) limit = 2 * _predicted_ms;
+    return limit;
   }
 
   void startSearch(uint32_t now) {
@@ -253,6 +261,8 @@ private:
     _last_fix_ms = now;
     _lat = loc->getLatitude();
     _lon = loc->getLongitude();
+    long sats = loc->satellitesCount();
+    _sats = (sats < 0) ? 0 : (sats > 255 ? 255 : (uint8_t)sats);
     _have_fix = true;
     return true;
   }
