@@ -1173,7 +1173,7 @@ bool MyMesh::sendSOS() {
         loc->getLatitude()  / 1000000.0,
         loc->getLongitude() / 1000000.0);
     } else {
-      strncpy(text, "!SOS kein GPS", sizeof(text));
+      strncpy(text, "!SOS no GPS", sizeof(text));
     }
 
     uint32_t ts = getRTCClock()->getCurrentTimeUnique();
