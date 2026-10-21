@@ -931,11 +931,12 @@ public:
 
     strncpy(p->from_name, from_name ? from_name : "", sizeof(p->from_name) - 1);
 
-    if (path_len == 0xFF) {
-      strcpy(p->channel_tag, "[DM]");
-    } else if (channel_name && channel_name[0]) {
+    // v6.1: channel name (or "[DM]" from onMessageRecv) first, path_len only as fallback
+    if (channel_name && channel_name[0]) {
       strncpy(p->channel_tag, channel_name, sizeof(p->channel_tag) - 1);
       p->channel_tag[sizeof(p->channel_tag) - 1] = 0;
+    } else if (path_len == 0xFF) {
+      strcpy(p->channel_tag, "[DM]");
     } else {
       strcpy(p->channel_tag, "[CH]");
     }
@@ -1295,11 +1296,12 @@ public:
     _entry.timestamp = _rtc->getCurrentTime();
     strncpy(_entry.from_name, from_name, sizeof(_entry.from_name) - 1);
     _entry.from_name[sizeof(_entry.from_name) - 1] = 0;
-    if (path_len == 0xFF) {
-      strncpy(_entry.channel_tag, "[DM]", sizeof(_entry.channel_tag));
-    } else if (channel_name && channel_name[0]) {
+    // v6.1: channel name (or "[DM]" from onMessageRecv) first, path_len only as fallback
+    if (channel_name && channel_name[0]) {
       strncpy(_entry.channel_tag, channel_name, sizeof(_entry.channel_tag) - 1);
       _entry.channel_tag[sizeof(_entry.channel_tag) - 1] = 0;
+    } else if (path_len == 0xFF) {
+      strncpy(_entry.channel_tag, "[DM]", sizeof(_entry.channel_tag));
     } else {
       strncpy(_entry.channel_tag, "[CH]", sizeof(_entry.channel_tag));
     }
@@ -2125,7 +2127,9 @@ void UITask::onMessageRecv(mesh::Packet *pkt, const ContactInfo &from, uint8_t t
   // But always update the active node counter so incoming messages are counted while connected.
   if (!hasConnection()) {
     bool is_fav = (from.flags & 0x01) != 0;
-    newMsg(path_len, from.name, text, _msgcount, is_fav);
+    // v6.1: always tag direct messages as [DM] - addMessage()/setMessage() only recognise
+    // direct-routed DMs (path_len 0xFF), flood-routed DMs were shown as [CH]
+    newMsg(path_len, from.name, text, _msgcount, is_fav, "[DM]");
     notify(UIEventType::contactMessage);
   } else {
     // App is connected: update active node counter only (no display history)
