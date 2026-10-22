@@ -9,11 +9,15 @@
 //   FAIL   search ended without fix (search time = limit), sats = most strong satellites seen
 //   EXT    search extended (sky visible, no fix yet), sats = most strong satellites seen
 //   AWAKE  kept running (GPS/Tracking page, SOS)     SLEEP  back to the normal cycle
-// Each record carries UTC time (RTC), uptime and the battery voltage.
+// Each record carries UTC time (RTC), uptime and the battery voltage, plus receiver
+// diagnostics: GSV sentences and best SNR during the search, NMEA sentence types seen since
+// the last wake (bit 0 GGA, 1 RMC, 2 GSV, 3 GSA, 4 GLL, 5 VTG, 6 ZDA, 7 other/$PAIR) and the
+// last Airoha acknowledgements for $PAIR062 / $PAIR513 (0 = ok, -1 = none).
 //
-// Storage: two files on the secondary FS (/fm_gps0.log, /fm_gps1.log), 16 KB each
-// (~680 records), written in blocks of 8 records. When the current file is full the other
-// one is replaced, so the last ~1400 records (> 2 days) are kept.
+// Storage: two files on the secondary FS (/fm_gpsb0.log, /fm_gpsb1.log), 16 KB each
+// (512 records), written in blocks of 8 records. When the current file is full the other
+// one is replaced, so the last ~1000 records (> 30 h) are kept. Files of the older record
+// format (/fm_gps0.log, /fm_gps1.log) are deleted.
 //
 // USB serial commands (115200 baud, line end CR or LF):
 //   gpslog        print all records as CSV
@@ -40,7 +44,12 @@ public:
     uint16_t batt_mv;
     uint8_t  type;
     uint8_t  sats;
-  };   // 24 bytes
+    uint16_t gsv;             // GSV sentences during the search
+    uint8_t  best_snr;        // best SNR (dB-Hz) during the search
+    uint8_t  types;           // sentence types since the last wake
+    uint8_t  ack062, ack513;  // Airoha acknowledgements, 0xFF = none
+    uint8_t  reserved[2];
+  };   // 32 bytes
 
   static constexpr uint32_t FILE_MAX = 16384;
   static constexpr int BUF_RECS = 8;
@@ -78,7 +87,7 @@ private:
   char _line[24];
   uint8_t _line_len = 0;
 
-  static const char* fileName(uint8_t i) { return i ? "/fm_gps1.log" : "/fm_gps0.log"; }
+  static const char* fileName(uint8_t i) { return i ? "/fm_gpsb1.log" : "/fm_gpsb0.log"; }
 
   size_t fileSize(uint8_t i) {
     if (_fs == NULL || !_fs->exists(fileName(i))) return 0;
@@ -93,6 +102,8 @@ private:
   void init() {
     _init = true;
     if (_fs == NULL) return;
+    _fs->remove("/fm_gps0.log");   // older record format (24 bytes)
+    _fs->remove("/fm_gps1.log");
     size_t s0 = fileSize(0), s1 = fileSize(1);
     if (s0 >= FILE_MAX && s1 >= FILE_MAX) { _fs->remove(fileName(0)); _cur = 0; }
     else if (s0 >= FILE_MAX) _cur = 1;
@@ -113,6 +124,13 @@ private:
     r.sats      = pos ? gps.satellites() : ((t == T_FAIL || t == T_EXT) ? gps.searchMaxStrong() : 0);
     r.lat       = pos ? gps.latitude() : 0;
     r.lon       = pos ? gps.longitude() : 0;
+    bool search = (t == T_FIX || t == T_FAIL || t == T_EXT);
+    r.gsv       = search ? gps.searchGsvCount() : 0;
+    r.best_snr  = search ? gps.searchBestSnr() : 0;
+    r.types     = gps.sentenceTypes();
+    r.ack062    = gps.ack062();
+    r.ack513    = gps.ack513();
+    r.reserved[0] = r.reserved[1] = 0;
     if (Serial) printRec(r);
     if (++_n >= BUF_RECS) flush();
   }
@@ -144,11 +162,13 @@ private:
   }
 
   static void printRec(const Rec& r) {
-    char line[96];
-    snprintf(line, sizeof(line), "%lu,%lu,%s,%u.%u,%u.%u,%u,%.6f,%.6f,%u",
+    char line[128];
+    snprintf(line, sizeof(line), "%lu,%lu,%s,%u.%u,%u.%u,%u,%.6f,%.6f,%u,%u,%u,0x%02X,%d,%d",
       (unsigned long)r.unix_time, (unsigned long)r.uptime_s, typeName(r.type),
       r.search_ds / 10, r.search_ds % 10, r.pred_ds / 10, r.pred_ds % 10, r.sats,
-      r.lat / 1000000.0, r.lon / 1000000.0, r.batt_mv);
+      r.lat / 1000000.0, r.lon / 1000000.0, r.batt_mv,
+      r.gsv, r.best_snr, r.types,
+      r.ack062 == 0xFF ? -1 : (int)r.ack062, r.ack513 == 0xFF ? -1 : (int)r.ack513);
     Serial.println(line);
   }
 
@@ -164,7 +184,7 @@ private:
   void handleCommand() {
     if (strcmp(_line, "gpslog") == 0) {
       flush();
-      Serial.println("unix,uptime_s,event,search_s,pred_s,sats,lat,lon,batt_mv");
+      Serial.println("unix,uptime_s,event,search_s,pred_s,sats,lat,lon,batt_mv,gsv,best_snr,types,ack062,ack513");
       if (_fs != NULL) {
         dumpFile(_cur ^ 1);   // older file first
         dumpFile(_cur);

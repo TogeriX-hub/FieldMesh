@@ -8,7 +8,7 @@
 //   - the wake-up is moved forward by the learned search time (EWMA 0.2), so a new fix is
 //     available about every 2 min; no long back-off when there is no fix
 //   - search limits: first search after GPS start 180 s, then 30 s, after 3 failures 15 s;
-//     never less than twice the learned search time
+//     without GSV data never less than twice the learned search time
 //   - sky check from the GSV sentences: when the search time is up without fix but >= 4
 //     satellites with >= 25 dB-Hz are in view, the sky is there and only time is missing
 //     (e.g. ephemeris expired after hours indoors) -> extend the search up to 120 s. The
@@ -27,8 +27,12 @@
 // only tracks fix freshness and never sleeps.
 //
 // NMEA output is reduced to GGA + RMC + GSV (GSV for the sky check), only for the two known
-// receiver families: L76K ($PCAS03, after every GPS start - lost on reset) and Airoha
-// ($PAIR062, saved with $PAIR513, once per boot). Other receivers are left untouched.
+// receiver families: L76K ($PCAS03) and Airoha ($PAIR062, saved once per boot with $PAIR513).
+// Sent after every GPS start/wake as soon as the receiver talks (first valid sentence), not
+// relying on the receiver keeping it - field test T1000-E 21.10.: a once-per-boot command
+// never showed any GSV (receiver may have "GSV off" saved, e.g. by other firmware).
+// Airoha acknowledgements ($PAIR001) are kept for the diagnostic log.
+// Other receivers are left untouched.
 //
 // The cycle never changes prefs.gps_enabled itself, except for the M1 hardware GPS switch
 // (PIN_GPS_SWITCH): GPS only runs when switch AND setting are on; switching it on sets the
@@ -167,6 +171,7 @@ private:
           startSearch(now);          // woken from outside (e.g. app "gps:1")
         } else if (forced || (int32_t)(now - _wake_at) >= 0) {
           wake(sensors, loc);
+          if (_hard) scheduleNmeaConfig(now);   // receiver was powered down: configure again
           if (forced) { setState(AWAKE, now); _next_awake_ev = now; }
           else startSearch(now);
         }
@@ -216,6 +221,14 @@ public:
   uint8_t searchMaxStrong() const { return _search_max_strong; } // most strong sats seen in a search
   uint32_t searchElapsedMs() const { return _state == SEARCHING ? (uint32_t)(millis() - _since) : 0; }
   bool gsvAvailable() const { return _gsv_ever && (uint32_t)(millis() - _gsv_ms) < GSV_VALID_MS; }
+  // diagnostics (GpsLog): GSV sentences and best SNR in the current/last search, sentence types
+  // seen since the last wake (bit 0 GGA, 1 RMC, 2 GSV, 3 GSA, 4 GLL, 5 VTG, 6 ZDA, 7 other),
+  // last Airoha acknowledgements for $PAIR062 / $PAIR513 (0 = ok, 0xFF = none)
+  uint16_t searchGsvCount() const { return _search_gsv; }
+  uint8_t searchBestSnr() const { return _search_best_snr; }
+  uint8_t sentenceTypes() const { return _types; }
+  uint8_t ack062() const { return _ack062; }
+  uint8_t ack513() const { return _ack513; }
 
   static bool hardwareSwitchOn() {
 #ifdef PIN_GPS_SWITCH
@@ -250,8 +263,13 @@ private:
   uint8_t  _epoch_n = 0;           // strong satellites collected in the current epoch
   uint16_t _epoch_ids[24];         // (constellation, PRN) of those, to count each only once
   uint8_t  _cfg_step = 0;       // NMEA configuration: 0 = nothing to do
-  uint32_t _cfg_due = 0;
-  bool     _cfg_saved = false;  // Airoha: configuration saved in the receiver this boot
+  uint32_t _cfg_due = 0;        // fallback: send even without a sentence from the receiver
+  bool     _cfg_saved = false;  // Airoha: $PAIR513 sent this boot
+  bool     _talked = false;     // valid sentence received since the last start/wake
+  uint8_t  _types = 0;
+  uint8_t  _ack062 = 0xFF, _ack513 = 0xFF;
+  uint16_t _search_gsv = 0;
+  uint8_t  _search_best_snr = 0;
   int32_t  _lat = 0, _lon = 0;
   uint8_t  _sats = 0;
   uint8_t  _fail_count = 0;
@@ -284,8 +302,10 @@ private:
     else if (_fail_count >= 3) limit = SEARCH_SHORT_MS;
     else limit = SEARCH_MS;
     // receivers that need longer per fix (e.g. no backup power during hard sleep) get at
-    // least twice their learned search time, otherwise nearly every search would fail
-    if (limit < 2 * _predicted_ms) limit = 2 * _predicted_ms;
+    // least twice their learned search time, otherwise nearly every search would fail.
+    // With GSV the sky check extends searches that need longer, so short searches stay short
+    // indoors (field test: 24.8 s instead of 15 s kept the GPS on 36 % of the night)
+    if (!gsvAvailable() && limit < 2 * _predicted_ms) limit = 2 * _predicted_ms;
     return limit;
   }
 
@@ -293,6 +313,8 @@ private:
     _search_limit = searchLimit();
     _extended = false;
     _search_max_strong = 0;
+    _search_gsv = 0;
+    _search_best_snr = 0;
     setState(SEARCHING, now);
   }
 
@@ -329,7 +351,19 @@ private:
 
   void handleSentence(const char* s) {
     if (s[0] != '$' || strlen(s) < 7) return;
+    _talked = true;
+    if (strncmp(s, "$PAIR001,", 9) == 0) {       // Airoha acknowledgement: $PAIR001,<cmd>,<result>
+      int cmd = nmeaField(s, 1), res = nmeaField(s, 2);
+      if (cmd == 62) _ack062 = (uint8_t)res;
+      else if (cmd == 513) _ack513 = (uint8_t)res;
+      _types |= 0x80;
+      return;
+    }
     const char* type = &s[3];
+    static const char* const names[7] = { "GGA", "RMC", "GSV", "GSA", "GLL", "VTG", "ZDA" };
+    uint8_t bit = 0x80;
+    for (uint8_t i = 0; i < 7; i++) if (strncmp(type, names[i], 3) == 0) { bit = 1 << i; break; }
+    _types |= bit;
     if (strncmp(type, "GGA", 3) == 0) {          // GGA starts a new epoch (one per second)
       if (_epoch_n >= STRONG_MIN_SATS) _strong_ms = millis();
       if (_state == SEARCHING && _epoch_n > _search_max_strong) _search_max_strong = _epoch_n;
@@ -339,12 +373,14 @@ private:
     if (strncmp(type, "GSV", 3) != 0) return;
     _gsv_ever = true;
     _gsv_ms = millis();
+    if (_state == SEARCHING && _search_gsv < 0xFFFF) _search_gsv++;
     uint16_t sys = ((uint8_t)s[1] * 31u + (uint8_t)s[2]) & 0xFF;   // talker = constellation
     // satellites in groups of 4 fields from field 4: PRN, elevation, azimuth, SNR
     for (int g = 0; g < 4; g++) {
       int prn = nmeaField(s, 4 + g * 4);
       int snr = nmeaField(s, 7 + g * 4);
       if (prn < 0) break;
+      if (_state == SEARCHING && snr > _search_best_snr) _search_best_snr = (uint8_t)snr;
       if (snr < STRONG_SNR_DBHZ) continue;
       uint16_t id = (sys << 8) | (uint16_t)(prn & 0xFF);
       bool dup = false;
@@ -406,21 +442,25 @@ private:
     sensors.setSettingValue("gps", "1");  // board start_gps()
 #endif
     loc->drain();   // discard UART bytes from before the sleep
+    _talked = false;
+    _types = 0;
   }
 
   // NMEA reduction (Meshtastic GPS.cpp): GGA + RMC, plus GSV for the sky check.
-  // Sent ~2 s after GPS start so the receiver is ready to listen.
+  // Sent as soon as the receiver talks after start/wake (it listens then), at the latest 5 s
+  // after start.
   void scheduleNmeaConfig(uint32_t now) {
-#if defined(PIN_GPS_STANDBY)
-    _cfg_step = 1;                       // L76K: settings are lost on reset/power cycle
-#elif defined(GPS_VRTC_EN)
-    if (!_cfg_saved) _cfg_step = 1;      // Airoha: saved in the receiver, once per boot
+#if defined(PIN_GPS_STANDBY) || defined(GPS_VRTC_EN)
+    _cfg_step = 1;
 #endif
-    _cfg_due = now + 2000;
+    _talked = false;
+    _types = 0;
+    _cfg_due = now + 5000;
   }
 
   void runNmeaConfig(LocationProvider* loc, uint32_t now) {
-    if (_cfg_step == 0 || _state == SLEEPING || (int32_t)(now - _cfg_due) < 0) return;
+    if (_cfg_step == 0 || _state == SLEEPING) return;
+    if (!_talked && (int32_t)(now - _cfg_due) < 0) return;
 #if defined(PIN_GPS_STANDBY)
     loc->sendSentence("$PCAS03,1,0,0,1,1,0,0,0,0,0,,,0,0");   // L76K: GGA + GSV + RMC
     _cfg_step = 0;
@@ -433,10 +473,12 @@ private:
       loc->sendSentence("$PAIR062,4,1");   // RMC on
       loc->sendSentence("$PAIR062,5,0");   // VTG off
       loc->sendSentence("$PAIR062,6,0");   // ZDA off
+      if (_cfg_saved) { _cfg_step = 0; return; }
       _cfg_step = 2;
       _cfg_due = now + 300;
-    } else {
-      loc->sendSentence("$PAIR513");       // save configuration
+      _talked = false;   // step 2 waits only for the time below
+    } else if ((int32_t)(now - _cfg_due) >= 0) {
+      loc->sendSentence("$PAIR513");       // save configuration (once per boot)
       _cfg_step = 0;
       _cfg_saved = true;
     }
