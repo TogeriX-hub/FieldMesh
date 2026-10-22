@@ -43,6 +43,12 @@
 // relying on the receiver keeping it - field test T1000-E 21.10.: a once-per-boot command
 // never showed any GSV (receiver may have "GSV off" saved, e.g. by other firmware).
 // Airoha acknowledgements ($PAIR001) are kept for the diagnostic log.
+// All satellite systems the receiver can use are switched on (like Meshtastic):
+//   L76K   $PCAS04,7 = GPS + BeiDou + GLONASS (all it supports), once per GPS start
+//   Airoha $PAIR066,1,1,1,1,1,0 = GPS + GLONASS + Galileo + BeiDou + QZSS. The receiver
+//          restarts on this command, so it is only sent when the query $PAIR067 (once per
+//          boot) shows a system switched off; then saved with $PAIR513. Dual band (L1 + L5,
+//          e.g. MeshTracker X1) is the receiver's own default and is not touched.
 // Other receivers are left untouched.
 //
 // The cycle never changes prefs.gps_enabled itself, except for the M1 hardware GPS switch
@@ -274,6 +280,12 @@ public:
   uint8_t sentenceTypes() const { return _types; }
   uint8_t ack062() const { return _ack062; }
   uint8_t ack513() const { return _ack513; }
+  // receiver configuration for the diagnostic log: bit 0 $PAIR062 acknowledged ok,
+  // 1 $PAIR067 answered, 2 all satellite systems on, 3 $PAIR066 sent, 4 $PAIR066 ok,
+  // 5 $PAIR513 ok, 6 $PCAS04 sent (L76K)
+  uint8_t configFlags() const {
+    return (_ack062 == 0 ? 0x01 : 0) | _gnss_flags | (_ack066 == 0 ? 0x10 : 0) | (_ack513 == 0 ? 0x20 : 0);
+  }
 
   // can this board put its GPS to sleep at all (standby pin, enable/power pin, Airoha
   // backup, RAK WisBlock IO pin)? Pins defined as -1 do not count.
@@ -335,6 +347,8 @@ private:
   uint8_t  _cfg_step = 0;       // NMEA configuration: 0 = nothing to do
   uint32_t _cfg_due = 0;        // fallback: send even without a sentence from the receiver
   bool     _cfg_saved = false;  // Airoha: $PAIR513 sent this boot
+  uint8_t  _gnss_flags = 0;     // satellite systems: see configFlags()
+  uint8_t  _ack066 = 0xFF;
   bool     _talked = false;     // valid sentence received since the last start/wake
   uint8_t  _types = 0;
   uint8_t  _ack062 = 0xFF, _ack513 = 0xFF;
@@ -460,7 +474,19 @@ private:
     if (strncmp(s, "$PAIR001,", 9) == 0) {       // Airoha acknowledgement: $PAIR001,<cmd>,<result>
       int cmd = nmeaField(s, 1), res = nmeaField(s, 2);
       if (cmd == 62) _ack062 = (uint8_t)res;
+      else if (cmd == 66) _ack066 = (uint8_t)res;
       else if (cmd == 513) _ack513 = (uint8_t)res;
+      _types |= 0x80;
+      return;
+    }
+    if (strncmp(s, "$PAIR067,", 9) == 0) {       // Airoha satellite systems: GPS,GLONASS,Galileo,BDS,QZSS,..
+      _gnss_flags |= GNSS_ANSWERED;
+      bool all = true;
+      // QZSS (field 5) is not checked: some receivers keep it fixed, a mismatch there would
+      // restart the receiver on every boot
+      for (int i = 1; i <= 4; i++) if (nmeaField(s, i) <= 0) all = false;
+      if (all) _gnss_flags |= GNSS_ALL_ON;
+      else _gnss_flags &= ~GNSS_ALL_ON;
       _types |= 0x80;
       return;
     }
@@ -582,11 +608,16 @@ private:
     _cfg_due = now + 5000;
   }
 
+  enum : uint8_t { GNSS_ANSWERED = 0x02, GNSS_ALL_ON = 0x04, GNSS_SET_SENT = 0x08, GNSS_PCAS04 = 0x40 };
+
   void runNmeaConfig(LocationProvider* loc, uint32_t now) {
     if (_cfg_step == 0 || _state == SLEEPING) return;
     if (!_talked && (int32_t)(now - _cfg_due) < 0) return;
 #if defined(PIN_GPS_STANDBY)
+    // soft sleep keeps the receiver's settings: this runs once per GPS start
+    loc->sendSentence("$PCAS04,7");                            // L76K: GPS + BeiDou + GLONASS
     loc->sendSentence("$PCAS03,1,0,0,1,1,0,0,0,0,0,,,0,0");   // L76K: GGA + GSV + RMC
+    _gnss_flags |= GNSS_PCAS04;
     _cfg_step = 0;
 #elif defined(GPS_VRTC_EN)
     if (_cfg_step == 1) {
@@ -598,10 +629,23 @@ private:
       loc->sendSentence("$PAIR062,5,0");   // VTG off
       loc->sendSentence("$PAIR062,6,0");   // ZDA off
       if (_cfg_saved) { _cfg_step = 0; return; }
+      loc->sendSentence("$PAIR067");       // which satellite systems are on? (once per boot)
       _cfg_step = 2;
-      _cfg_due = now + 300;
-      _talked = false;   // step 2 waits only for the time below
-    } else if ((int32_t)(now - _cfg_due) >= 0) {
+      _cfg_due = now + 1000;               // answer or give up after 1 s
+      _talked = false;   // step 2 waits only for the answer / the time below
+    } else if (!(_gnss_flags & GNSS_ANSWERED) && (int32_t)(now - _cfg_due) < 0) {
+      return;                              // wait for the $PAIR067 answer
+    } else if ((_gnss_flags & GNSS_ANSWERED) && !(_gnss_flags & GNSS_ALL_ON)
+               && !(_gnss_flags & GNSS_SET_SENT)) {
+      // switch everything on - the receiver restarts, so configure the output again once it
+      // talks (step 1), then check once more and save. Sent at most once per boot.
+      loc->sendSentence("$PAIR066,1,1,1,1,1,0");   // GPS, GLONASS, Galileo, BeiDou, QZSS
+      _gnss_flags |= GNSS_SET_SENT;
+      _gnss_flags &= ~GNSS_ANSWERED;
+      _cfg_step = 1;
+      _cfg_due = now + 5000;
+      _talked = false;
+    } else {
       loc->sendSentence("$PAIR513");       // save configuration (once per boot)
       _cfg_step = 0;
       _cfg_saved = true;

@@ -14,7 +14,9 @@
 // Each record carries UTC time (RTC), uptime and the battery voltage, plus receiver
 // diagnostics: GSV sentences and best SNR during the search, NMEA sentence types seen since
 // the last wake (bit 0 GGA, 1 RMC, 2 GSV, 3 GSA, 4 GLL, 5 VTG, 6 ZDA, 7 other/$PAIR) and the
-// last Airoha acknowledgement for $PAIR062 (0 = ok, -1 = none).
+// receiver configuration flags (cfg, GpsCycle::configFlags(): 0x01 $PAIR062 ok, 0x02 $PAIR067
+// answered, 0x04 all satellite systems on, 0x08 $PAIR066 sent, 0x10 $PAIR066 ok, 0x20 $PAIR513
+// ok, 0x40 $PCAS04 sent).
 //
 // Storage: two files on the secondary FS (/fm_gpsb0.log, /fm_gpsb1.log), 16 KB each
 // (512 records), written in blocks of 8 records. When the current file is full the other
@@ -49,7 +51,8 @@ public:
     uint16_t gsv;             // GSV sentences during the search
     uint8_t  best_snr;        // best SNR (dB-Hz) during the search
     uint8_t  types;           // sentence types since the last wake
-    uint8_t  ack062;          // Airoha acknowledgement of $PAIR062, 0xFF = none
+    uint8_t  cfg;             // receiver configuration (GpsCycle::configFlags()); was the
+                              // $PAIR062 acknowledgement before 22.10.
     uint8_t  usable;          // most satellites >= 20 dB-Hz in one epoch (FAIL/EXT); was the
                               // $PAIR513 acknowledgement before 22.10. (always 0 in the tests)
     uint8_t  good;            // most satellites >= 30 dB-Hz in one epoch (FAIL/EXT)
@@ -133,7 +136,7 @@ private:
     r.gsv       = search ? gps.searchGsvCount() : 0;
     r.best_snr  = search ? gps.searchBestSnr() : 0;
     r.types     = gps.sentenceTypes();
-    r.ack062    = gps.ack062();
+    r.cfg       = gps.configFlags();
     r.usable    = (t == T_FAIL || t == T_EXT) ? gps.searchMaxUsable() : 0;
     r.good      = (t == T_FAIL || t == T_EXT) ? gps.searchMaxGood() : 0;
     r.reason    = (t == T_FAIL) ? gps.endReason() : 0;
@@ -182,12 +185,12 @@ private:
 
   static void printRec(const Rec& r) {
     char line[128];
-    snprintf(line, sizeof(line), "%lu,%lu,%s,%u.%u,%u.%u,%u,%.6f,%.6f,%u,%u,%u,0x%02X,%d,%d,%u,%s",
+    snprintf(line, sizeof(line), "%lu,%lu,%s,%u.%u,%u.%u,%u,%.6f,%.6f,%u,%u,%u,0x%02X,0x%02X,%d,%u,%s",
       (unsigned long)r.unix_time, (unsigned long)r.uptime_s, typeName(r.type),
       r.search_ds / 10, r.search_ds % 10, r.pred_ds / 10, r.pred_ds % 10, r.sats,
       r.lat / 1000000.0, r.lon / 1000000.0, r.batt_mv,
       r.gsv, r.best_snr, r.types,
-      r.ack062 == 0xFF ? -1 : (int)r.ack062, (int)r.usable,
+      r.cfg, (int)r.usable,
       r.good, reasonName(r.type, r.reason));
     Serial.println(line);
   }
@@ -204,7 +207,7 @@ private:
   void handleCommand() {
     if (strcmp(_line, "gpslog") == 0) {
       flush();
-      Serial.println("unix,uptime_s,event,search_s,pred_s,sats,lat,lon,batt_mv,gsv,best_snr,types,ack062,s20,s30,reason");
+      Serial.println("unix,uptime_s,event,search_s,pred_s,sats,lat,lon,batt_mv,gsv,best_snr,types,cfg,s20,s30,reason");
       if (_fs != NULL) {
         dumpFile(_cur ^ 1);   // older file first
         dumpFile(_cur);
