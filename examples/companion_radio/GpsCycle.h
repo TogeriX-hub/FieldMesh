@@ -14,12 +14,16 @@
 //       1..3 strong                          -> up to 30 s (a fix needs 4; 3 such searches
 //                                               in a row, then 15 s - window case)
 //       >= 4 strong at any time of the search -> up to 120 s: the sky is there and only
-//                                               time is missing (expired ephemeris needs
-//                                               18..50 s of uninterrupted reception)
+//       and >= 2 of them >= 30 dB-Hz            time is missing (expired ephemeris needs
+//                                               18..50 s of uninterrupted reception, and
+//                                               decoding gets unreliable below ~27 dB-Hz)
 //     A longer search ends at once with the fix, or when no strong satellite was seen for
 //     15 s (back indoors). After a failed 120 s search the next one is allowed after 4, then
 //     8, then 16 min (back to 4 after a fix or 30 min without failed 120 s search); in
-//     between >= 4 strong is handled like 1..3.
+//     between >= 4 strong is handled like 1..3. The count of 30 s searches is only cleared
+//     by a fix or after 30 min.
+//     Field test T1000-E 22.10. at an office window: 4..5 satellites with 25..32 dB-Hz (at
+//     most 1 >= 30) never gave a fix, but the 120 s stage kept the GPS on ~65 % of the time.
 //     Field test T1000-E 22.10. (urban canyon): 15 s searches with 4..11 strong satellites
 //     never gave a fix, the first one came after 1 h 48 min.
 //   - without GSV data: 30 s, after 3 failures 15 s, never less than twice the learned
@@ -91,7 +95,8 @@ public:
   static constexpr uint32_t POLL_MS            = 250;
   static constexpr uint8_t  STRONG_SNR_DBHZ    = 25;      // signal good enough to decode data
   static constexpr uint8_t  STRONG_MIN_SATS    = 4;
-  static constexpr uint8_t  GOOD_SNR_DBHZ      = 30;      // diagnostics only (log column s30)
+  static constexpr uint8_t  GOOD_SNR_DBHZ      = 30;      // decodes new ephemeris reliably
+  static constexpr uint8_t  GOOD_MIN_SATS      = 2;       // needed in one epoch for the 120 s stage
   static constexpr uint8_t  USABLE_SNR_DBHZ    = 20;      // diagnostics only (log column s20): enough
                                                           // for a fix with valid ephemeris?
   static constexpr uint32_t EXT_LOST_MS        = 15000;   // end a longer search when no strong satellite
@@ -426,7 +431,8 @@ private:
     if ((uint32_t)(now - _any_strong_ms) > EXT_LOST_MS) return STAGE_NONE;   // sky gone again
     if (_ext_level > 0 && (uint32_t)(now - _ext_fail_ms) > BACKOFF_RESET_MS) _ext_level = 0;
     if (_mid_count > 0 && (uint32_t)(now - _mid_fail_ms) > BACKOFF_RESET_MS) _mid_count = 0;
-    if (_search_max_strong >= STRONG_MIN_SATS && _search_limit < SEARCH_LONG_MS
+    if (_search_max_strong >= STRONG_MIN_SATS && _search_max_good >= GOOD_MIN_SATS
+        && _search_limit < SEARCH_LONG_MS
         && (_ext_level == 0 || (int32_t)(now - _ext_block_until) >= 0))
       return STAGE_LONG;
     if (!_mid && _search_limit < SEARCH_MID_MS && _mid_count < MID_MAX) return STAGE_MID;
@@ -444,7 +450,6 @@ private:
       if (_ext_level < EXT_BLOCK_STEPS) _ext_level++;
       _ext_block_until = now + (EXT_BLOCK_MIN_MS << (_ext_level - 1));
       _ext_fail_ms = now;
-      _mid_count = 0;
     } else if (_mid) {
       if (_mid_count < 255) _mid_count++;
       _mid_fail_ms = now;
