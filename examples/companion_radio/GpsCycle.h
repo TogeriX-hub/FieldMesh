@@ -349,6 +349,7 @@ private:
     _search_max_strong = 0;
     _search_gsv = 0;
     _search_best_snr = 0;
+    _epoch_n = 0;   // do not carry the last epoch of the previous search over
     setState(SEARCHING, now);
   }
 
