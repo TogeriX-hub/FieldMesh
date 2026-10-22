@@ -109,6 +109,14 @@ private:
     }
 
     if (_state == OFF) {   // GPS (re)started: boot, UI, app or switch already woke it
+#ifdef PIN_GPS_STANDBY
+      // boards with a standby pin separate from the power/enable pin (ThinkNode M6/M8/M9,
+      // Heltec Tower V2, T-Echo Lite/Card, SenseCAP Solar): the board's start_gps() only
+      // switches power, so a standby pin left in sleep (GPS switched off while the cycle
+      // slept, or a variant init) would keep the receiver asleep for good
+      pinMode(PIN_GPS_STANDBY, OUTPUT);
+      digitalWrite(PIN_GPS_STANDBY, HIGH);
+#endif
       _first_search = true;
       _fail_count = 0;
       startSearch(now);
