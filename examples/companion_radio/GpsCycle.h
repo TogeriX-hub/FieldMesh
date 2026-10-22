@@ -127,6 +127,7 @@ private:
       case SEARCHING:
         if (new_fix) {
           _last_search_ms = now - _since;
+          snapshotSearch();
           // a search after failures (e.g. new ephemeris after hours indoors) is no typical
           // search time - learning it would make every following search longer. Exception:
           // nothing learned yet (receivers that always need long, e.g. without backup power)
@@ -218,14 +219,15 @@ public:
   uint32_t predictedSearchMs() const { return _predicted_ms; }
   uint8_t failCount() const { return _fail_count; }
   uint32_t lastSearchMs() const { return _last_search_ms; }   // duration of the last search
-  uint8_t searchMaxStrong() const { return _search_max_strong; } // most strong sats seen in a search
+  uint8_t searchMaxStrong() const { return _state == SEARCHING && _extended ? _search_max_strong : _done_max_strong; }
   uint32_t searchElapsedMs() const { return _state == SEARCHING ? (uint32_t)(millis() - _since) : 0; }
   bool gsvAvailable() const { return _gsv_ever && (uint32_t)(millis() - _gsv_ms) < GSV_VALID_MS; }
   // diagnostics (GpsLog): GSV sentences and best SNR in the current/last search, sentence types
   // seen since the last wake (bit 0 GGA, 1 RMC, 2 GSV, 3 GSA, 4 GLL, 5 VTG, 6 ZDA, 7 other),
   // last Airoha acknowledgements for $PAIR062 / $PAIR513 (0 = ok, 0xFF = none)
-  uint16_t searchGsvCount() const { return _search_gsv; }
-  uint8_t searchBestSnr() const { return _search_best_snr; }
+  // values of the search that just ended (FIX/FAIL), or of the running one (EXT)
+  uint16_t searchGsvCount() const { return _state == SEARCHING && _extended ? _search_gsv : _done_gsv; }
+  uint8_t searchBestSnr() const { return _state == SEARCHING && _extended ? _search_best_snr : _done_best_snr; }
   uint8_t sentenceTypes() const { return _types; }
   uint8_t ack062() const { return _ack062; }
   uint8_t ack513() const { return _ack513; }
@@ -270,6 +272,11 @@ private:
   uint8_t  _ack062 = 0xFF, _ack513 = 0xFF;
   uint16_t _search_gsv = 0;
   uint8_t  _search_best_snr = 0;
+  // snapshot at the end of a search: a failed search >= 2 min restarts the next one at once,
+  // which resets the running counters before the log reads them
+  uint16_t _done_gsv = 0;
+  uint8_t  _done_best_snr = 0, _done_max_strong = 0;
+  void snapshotSearch() { _done_gsv = _search_gsv; _done_best_snr = _search_best_snr; _done_max_strong = _search_max_strong; }
   int32_t  _lat = 0, _lon = 0;
   uint8_t  _sats = 0;
   uint8_t  _fail_count = 0;
@@ -327,6 +334,7 @@ private:
   // search ended without fix: keep trying every 2 min, counted from the start of this search
   uint8_t failSearch(SensorManager& sensors, LocationProvider* loc, uint32_t now, bool forced) {
     _last_search_ms = now - _since;
+    snapshotSearch();
     _fail_count++;
     _first_search = false;
     if (_extended) _ext_block_until = now + EXT_BLOCK_MS;   // sky but no fix -> pause extensions
