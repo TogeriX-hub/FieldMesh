@@ -86,6 +86,8 @@ public:
   static constexpr uint8_t  STRONG_SNR_DBHZ    = 25;      // signal good enough to decode data
   static constexpr uint8_t  STRONG_MIN_SATS    = 4;
   static constexpr uint8_t  GOOD_SNR_DBHZ      = 30;      // diagnostics only (log column s30)
+  static constexpr uint8_t  USABLE_SNR_DBHZ    = 20;      // diagnostics only (log column s20): enough
+                                                          // for a fix with valid ephemeris?
   static constexpr uint32_t EXT_LOST_MS        = 15000;   // end a longer search when no strong satellite
   static constexpr uint32_t EXT_BLOCK_MIN_MS   = 240000;  // after a failed 120 s search: 4, 8, 16 min
   static constexpr uint8_t  EXT_BLOCK_STEPS    = 3;
@@ -259,6 +261,7 @@ public:
   uint32_t lastSearchMs() const { return _last_search_ms; }   // duration of the last search
   uint8_t searchMaxStrong() const { return _state == SEARCHING && _extended ? _search_max_strong : _done_max_strong; }
   uint8_t searchMaxGood() const { return _state == SEARCHING && _extended ? _search_max_good : _done_max_good; }   // >= 30 dB-Hz
+  uint8_t searchMaxUsable() const { return _state == SEARCHING && _extended ? _search_max_usable : _done_max_usable; }   // >= 20 dB-Hz
   uint8_t endReason() const { return _end_reason; }   // EndReason of the last search
   uint32_t searchElapsedMs() const { return _state == SEARCHING ? (uint32_t)(millis() - _since) : 0; }
   bool gsvAvailable() const { return _gsv_ever && (uint32_t)(millis() - _gsv_ms) < GSV_VALID_MS; }
@@ -325,9 +328,10 @@ private:
   uint8_t  _end_reason = END_FIX;
   uint8_t  _search_max_strong = 0;
   uint8_t  _search_max_good = 0;
-  uint8_t  _epoch_n = 0;           // strong satellites collected in the current epoch
-  uint8_t  _epoch_good = 0;        // of those >= GOOD_SNR_DBHZ
-  uint16_t _epoch_ids[24];         // (constellation, PRN) of those, to count each only once
+  uint8_t  _search_max_usable = 0;
+  uint8_t  _epoch_n = 0;           // satellites >= USABLE_SNR_DBHZ collected in the current epoch
+  uint16_t _epoch_ids[32];         // (constellation, PRN) of those, to count each only once
+  uint8_t  _epoch_snr[32];         // their best SNR in this epoch
   uint8_t  _cfg_step = 0;       // NMEA configuration: 0 = nothing to do
   uint32_t _cfg_due = 0;        // fallback: send even without a sentence from the receiver
   bool     _cfg_saved = false;  // Airoha: $PAIR513 sent this boot
@@ -339,10 +343,11 @@ private:
   // snapshot at the end of a search: a failed search >= 2 min restarts the next one at once,
   // which resets the running counters before the log reads them
   uint16_t _done_gsv = 0;
-  uint8_t  _done_best_snr = 0, _done_max_strong = 0, _done_max_good = 0;
+  uint8_t  _done_best_snr = 0, _done_max_strong = 0, _done_max_good = 0, _done_max_usable = 0;
   void snapshotSearch() {
     _done_gsv = _search_gsv; _done_best_snr = _search_best_snr;
     _done_max_strong = _search_max_strong; _done_max_good = _search_max_good;
+    _done_max_usable = _search_max_usable;
   }
   int32_t  _lat = 0, _lon = 0;
   uint8_t  _sats = 0;
@@ -391,10 +396,10 @@ private:
     _mid = false;
     _search_max_strong = 0;
     _search_max_good = 0;
+    _search_max_usable = 0;
     _search_gsv = 0;
     _search_best_snr = 0;
     _epoch_n = 0;   // do not carry the last epoch of the previous search over
-    _epoch_good = 0;
     _any_strong_ms = now;   // "no strong satellite for 15 s" counts from the start
     setState(SEARCHING, now);
   }
@@ -466,12 +471,17 @@ private:
     _types |= bit;
     if (strncmp(type, "GGA", 3) == 0) {          // GGA starts a new epoch (one per second)
       if (_state == SEARCHING) {
-        if (_epoch_n > 0) _any_strong_ms = millis();
-        if (_epoch_n > _search_max_strong) _search_max_strong = _epoch_n;
-        if (_epoch_good > _search_max_good) _search_max_good = _epoch_good;
+        uint8_t strong = 0, good = 0;
+        for (uint8_t k = 0; k < _epoch_n; k++) {
+          if (_epoch_snr[k] >= STRONG_SNR_DBHZ) strong++;
+          if (_epoch_snr[k] >= GOOD_SNR_DBHZ) good++;
+        }
+        if (strong > 0) _any_strong_ms = millis();
+        if (strong > _search_max_strong) _search_max_strong = strong;
+        if (good > _search_max_good) _search_max_good = good;
+        if (_epoch_n > _search_max_usable) _search_max_usable = _epoch_n;
       }
       _epoch_n = 0;
-      _epoch_good = 0;
       return;
     }
     if (strncmp(type, "GSV", 3) != 0) return;
@@ -485,13 +495,20 @@ private:
       int snr = nmeaField(s, 7 + g * 4);
       if (prn < 0) break;
       if (_state == SEARCHING && snr > _search_best_snr) _search_best_snr = (uint8_t)snr;
-      if (snr < STRONG_SNR_DBHZ) continue;
+      if (snr < USABLE_SNR_DBHZ) continue;
+      // a satellite can be listed more than once (several signals): count it once, best SNR
       uint16_t id = (sys << 8) | (uint16_t)(prn & 0xFF);
       bool dup = false;
-      for (uint8_t k = 0; k < _epoch_n; k++) if (_epoch_ids[k] == id) { dup = true; break; }
+      for (uint8_t k = 0; k < _epoch_n; k++) {
+        if (_epoch_ids[k] == id) {
+          if (snr > _epoch_snr[k]) _epoch_snr[k] = (uint8_t)snr;
+          dup = true;
+          break;
+        }
+      }
       if (!dup && _epoch_n < sizeof(_epoch_ids) / sizeof(_epoch_ids[0])) {
-        _epoch_ids[_epoch_n++] = id;
-        if (snr >= GOOD_SNR_DBHZ) _epoch_good++;
+        _epoch_ids[_epoch_n] = id;
+        _epoch_snr[_epoch_n++] = (uint8_t)(snr > 255 ? 255 : snr);
       }
     }
   }
