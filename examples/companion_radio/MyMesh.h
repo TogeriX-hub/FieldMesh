@@ -333,6 +333,9 @@ public:
 
   // V3: SOS-Nachricht in den SOS-Channel senden
   bool sendSOS();
+  // v6.1: SOS channel = name contains "sos" (case-insensitive, e.g. "SOS", "#sos").
+  // Used for sending and for the alarm: "!SOS" only raises the alarm in such a channel.
+  static bool isSosChannel(const char* name);
 
   // Enable/disable GPS sharing and auto-advert together (called from UI button)
   void setGPSAdvertEnabled(bool enabled) {

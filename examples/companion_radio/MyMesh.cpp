@@ -1155,15 +1155,20 @@ void MyMesh::toggleOffGrid() {
 
 // V3: SOS-Nachricht in den SOS-Channel senden
 // Searches for a channel named "SOS" and sends "!SOS <pos>" or "!SOS no GPS"
+bool MyMesh::isSosChannel(const char* name) {
+  if (name == NULL) return false;
+  // Case-insensitive: accept "SOS", "sos", "#sos" etc.
+  for (const char* p = name; p[0] && p[1] && p[2]; p++) {
+    if (tolower(p[0]) == 's' && tolower(p[1]) == 'o' && tolower(p[2]) == 's') return true;
+  }
+  return false;
+}
+
 bool MyMesh::sendSOS() {
   for (int i = 0; i < MAX_GROUP_CHANNELS; i++) {
     ChannelDetails ch;
     if (!getChannel(i, ch)) continue;
-    // Case-insensitive: accept "SOS", "sos", "#sos" etc.
-    char name_lower[33];
-    for (int j = 0; j < 32 && ch.name[j]; j++) name_lower[j] = tolower(ch.name[j]);
-    name_lower[32] = 0;
-    if (strstr(name_lower, "sos") == NULL) continue;
+    if (!isSosChannel(ch.name)) continue;
 
     // Nachrichtentext zusammenbauen
     char text[80];

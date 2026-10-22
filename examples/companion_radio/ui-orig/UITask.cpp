@@ -174,7 +174,8 @@ void UITask::onMessageRecv(mesh::Packet *pkt, const ContactInfo &from, uint8_t t
 void UITask::onChannelMessageRecv(mesh::Packet *pkt, ChannelDetails& channel_details, const char* text) {
   // V5: SOS-Erkennung — "!SOS" irgendwo im Text (MeshCore stellt Node-Name voran)
   // V6: moved here from MyMesh::onChannelMessageRecv() (listener architecture)
-  if (strstr(text, "!SOS") != NULL) {
+  // v6.1: only in the SOS channel (where sendSOS() sends) - "!SOS" in Public etc. is a normal message
+  if (strstr(text, "!SOS") != NULL && MyMesh::isSosChannel(channel_details.name)) {
     triggerSOS(channel_details.name, text);
     return;
   }

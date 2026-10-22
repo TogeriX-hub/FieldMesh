@@ -2151,7 +2151,8 @@ void UITask::onChannelMessageRecv(mesh::Packet *pkt, ChannelDetails& channel_det
   }
 
   // V3: SOS-Erkennung — "!SOS" irgendwo im Text (MeshCore stellt Node-Name voran)
-  if (strstr(text, "!SOS") != NULL) {
+  // v6.1: only in the SOS channel (where sendSOS() sends) - "!SOS" in Public etc. is a normal message
+  if (strstr(text, "!SOS") != NULL && MyMesh::isSosChannel(channel_name)) {
     triggerSOS(channel_name, text);
     return;  // do not call newMsg() — SOSAlertScreen takes priority
   }
