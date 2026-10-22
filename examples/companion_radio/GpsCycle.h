@@ -60,7 +60,8 @@ public:
   static constexpr uint32_t INTERVAL_MS        = 120000;  // fix every 2 min (Meshtastic default)
   static constexpr uint32_t HOLD_MS            = 20000;   // keep running 20 s after a fix
   static constexpr uint32_t MAX_FIX_AGE_MS     = 120000;  // never use an older position
-  static constexpr uint32_t WAKE_MARGIN_MS     = 5000;    // wake a bit early -> fix age stays < 2 min
+  // wake a bit early -> fix age stays < 2 min (field logs with 5 s: 102..126 s before the next fix)
+  static constexpr uint32_t WAKE_MARGIN_MS     = 12000;
   static constexpr uint32_t SEARCH_FIRST_MS    = 180000;  // first search after GPS start
   static constexpr uint32_t SEARCH_MS          = 30000;
   static constexpr uint32_t SEARCH_SHORT_MS    = 15000;   // after 3 failed searches

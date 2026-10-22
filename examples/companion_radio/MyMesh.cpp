@@ -2603,7 +2603,7 @@ void MyMesh::loop() {
   if (isAutoAdvertEnabled() && _gps_cycle.state() != GpsCycle::OFF) {
     if (!_tracking_active) { _track.reset(millis()); _tracking_active = true; }
     if (_track.poll(millis(), (gps_ev & GpsCycle::EV_FIX) != 0, _gps_cycle.latitude(),
-                    _gps_cycle.longitude(), _gps_cycle.satellites()) != TrackScheduler::NONE) {
+                    _gps_cycle.longitude(), _gps_cycle.satellites(), _gps_cycle.hasFreshFix()) != TrackScheduler::NONE) {
       bool with_pos = _gps_cycle.hasFreshFix();   // advert() uses the same check
       advert();
       _track.sent(millis(), with_pos, _gps_cycle.latitude(), _gps_cycle.longitude());
