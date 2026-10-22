@@ -23,8 +23,10 @@
 //   otherwise               -> hard sleep: the board's own stop_gps()/start_gps() via the
 //                              "gps" setting (Airoha RTC backup on T1000-E/X1, power off on
 //                              Heltec T1)
-// Board files are not modified. If neither works (no provider / no "gps" setting) the cycle
-// only tracks fix freshness and never sleeps.
+// Boards that cannot switch their GPS off (no standby/enable pin, e.g. T-Beam with PMU,
+// T-Deck, Station G2/G3, XIAO C3) keep it running as in v6.0; the cycle then only tracks
+// fix freshness and reports a position about every 2 min.
+// Board files are not modified. Without provider or "gps" setting the cycle stays off.
 //
 // NMEA output is reduced to GGA + RMC + GSV (GSV for the sky check), only for the two known
 // receiver families: L76K ($PCAS03) and Airoha ($PAIR062, saved once per boot with $PAIR513).
@@ -125,7 +127,7 @@ private:
     runNmeaConfig(loc, now);
 
     bool new_fix = pollFix(loc, now);
-    bool forced = (int32_t)(_awake_until - now) > 0;
+    bool forced = (int32_t)(_awake_until - now) > 0 || !canSleep();
 
     if (_sos_pending) {
       if (new_fix) { ev |= EV_SOS_RESEND; _sos_pending = false; }
@@ -240,6 +242,22 @@ public:
   uint8_t sentenceTypes() const { return _types; }
   uint8_t ack062() const { return _ack062; }
   uint8_t ack513() const { return _ack513; }
+
+  // can this board put its GPS to sleep at all (standby pin, enable/power pin, Airoha
+  // backup, RAK WisBlock IO pin)? Pins defined as -1 do not count.
+  static bool canSleep() {
+#if defined(PIN_GPS_STANDBY) || defined(GPS_VRTC_EN) || defined(RAK_WISBLOCK_GPS)
+    return true;
+#else
+    int en = -1;
+  #if defined(PIN_GPS_EN)
+    en = (int)(PIN_GPS_EN);
+  #elif defined(GPS_EN)
+    en = (int)(GPS_EN);
+  #endif
+    return en >= 0;
+#endif
+  }
 
   static bool hardwareSwitchOn() {
 #ifdef PIN_GPS_SWITCH
