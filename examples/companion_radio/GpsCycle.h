@@ -7,14 +7,23 @@
 //   - every 2 min a search for a fix, then the fix is held for 20 s, then the GPS sleeps
 //   - the wake-up is moved forward by the learned search time (EWMA 0.2), so a new fix is
 //     available about every 2 min; no long back-off when there is no fix
-//   - search limits: first search after GPS start 180 s, then 30 s, after 3 failures 15 s;
-//     without GSV data never less than twice the learned search time
-//   - sky check from the GSV sentences: when the search time is up without fix but >= 4
-//     satellites with >= 25 dB-Hz are in view, the sky is there and only time is missing
-//     (e.g. ephemeris expired after hours indoors) -> extend the search up to 120 s. The
-//     extension ends early when the strong satellites are gone for 15 s; after a failed
-//     extension there is none for 10 min (window case: signal but no fix possible).
-//     Receivers without GSV data fall back to a blind 120 s search on every 5th failure.
+//   - search limits: first search after GPS start 180 s, after a fix 30 s
+//   - with GSV data (sky check) the search after a failure is graded by what the receiver
+//     sees - "strong" = satellite with >= 25 dB-Hz, counted per one-second epoch:
+//       no strong satellite                  -> 15 s, then give up (indoors)
+//       1..3 strong                          -> up to 30 s (a fix needs 4; 3 such searches
+//                                               in a row, then 15 s - window case)
+//       >= 4 strong at any time of the search -> up to 120 s: the sky is there and only
+//                                               time is missing (expired ephemeris needs
+//                                               18..50 s of uninterrupted reception)
+//     A longer search ends at once with the fix, or when no strong satellite was seen for
+//     15 s (back indoors). After a failed 120 s search the next one is allowed after 4, then
+//     8, then 16 min (back to 4 after a fix or 30 min without failed 120 s search); in
+//     between >= 4 strong is handled like 1..3.
+//     Field test T1000-E 22.10. (urban canyon): 15 s searches with 4..11 strong satellites
+//     never gave a fix, the first one came after 1 h 48 min.
+//   - without GSV data: 30 s, after 3 failures 15 s, never less than twice the learned
+//     search time, a blind 120 s search on every 5th failure
 //   - "keep awake" requests (GPS/Tracking page on screen, SOS) keep the GPS running
 //
 // Sleep mode is chosen centrally from the board defines, like Meshtastic:
@@ -66,18 +75,25 @@ public:
   static constexpr uint32_t WAKE_MARGIN_MS     = 12000;
   static constexpr uint32_t SEARCH_FIRST_MS    = 180000;  // first search after GPS start
   static constexpr uint32_t SEARCH_MS          = 30000;
-  static constexpr uint32_t SEARCH_SHORT_MS    = 15000;   // after 3 failed searches
-  static constexpr uint32_t SEARCH_LONG_MS     = 120000;  // every 5th failed search
+  static constexpr uint32_t SEARCH_SHORT_MS    = 15000;   // after a failure (without GSV: after 3)
+  static constexpr uint32_t SEARCH_MID_MS      = 30000;   // 1..3 strong satellites seen
+  static constexpr uint8_t  MID_MAX            = 3;       // 30 s searches in a row without fix
+  static constexpr uint32_t SEARCH_LONG_MS     = 120000;  // >= 4 strong (without GSV: every 5th)
   static constexpr uint32_t MAX_PREDICTED_MS   = 60000;   // cap of the learned search time
   static constexpr uint32_t KEEP_AWAKE_PAGE_MS = 60000;   // GPS/Tracking page: +60 s after leaving
   static constexpr uint32_t KEEP_AWAKE_SOS_MS  = 600000;  // 10 min after sending SOS
   static constexpr uint32_t POLL_MS            = 250;
   static constexpr uint8_t  STRONG_SNR_DBHZ    = 25;      // signal good enough to decode data
   static constexpr uint8_t  STRONG_MIN_SATS    = 4;
-  static constexpr uint32_t STRONG_RECENT_MS   = 3000;    // "sky visible now"
-  static constexpr uint32_t EXT_LOST_MS        = 15000;   // end an extension when sky is gone
-  static constexpr uint32_t EXT_BLOCK_MS       = 600000;  // no extension 10 min after a failed one
+  static constexpr uint8_t  GOOD_SNR_DBHZ      = 30;      // diagnostics only (log column s30)
+  static constexpr uint32_t EXT_LOST_MS        = 15000;   // end a longer search when no strong satellite
+  static constexpr uint32_t EXT_BLOCK_MIN_MS   = 240000;  // after a failed 120 s search: 4, 8, 16 min
+  static constexpr uint8_t  EXT_BLOCK_STEPS    = 3;
+  static constexpr uint32_t BACKOFF_RESET_MS   = 1800000; // forget the back-off after 30 min
   static constexpr uint32_t GSV_VALID_MS       = 900000;  // GSV seen recently -> sky check usable
+
+  // why the last search ended (diagnostics)
+  enum EndReason : uint8_t { END_FIX = 0, END_LIMIT, END_MID, END_LONG, END_LOST };
 
   GpsCycle() { }
 
@@ -142,21 +158,32 @@ private:
           // a search after failures (e.g. new ephemeris after hours indoors) is no typical
           // search time - learning it would make every following search longer. Exception:
           // nothing learned yet (receivers that always need long, e.g. without backup power)
-          if (_fail_count == 0 && !_extended) learnSearchTime(_last_search_ms);
+          if (_fail_count == 0 && !_extended && !_mid) learnSearchTime(_last_search_ms);
           else if (_predicted_ms == 0) learnSearchTime(_last_search_ms);
           _fail_count = 0;
           _first_search = false;
+          _ext_level = 0;      // the sky works here again: no back-off
+          _mid_count = 0;
+          _end_reason = END_FIX;
           setState(HOLDING, now);
         } else if (now - _since >= _search_limit) {
-          if (canExtend(now)) {
-            _extended = true;
-            _search_limit = SEARCH_LONG_MS;
-            ev |= EV_SEARCH_EXTENDED;
-          } else {
-            ev |= failSearch(sensors, loc, now, forced);
+          switch (nextStage(now)) {
+            case STAGE_LONG:
+              _extended = true;
+              _search_limit = SEARCH_LONG_MS;
+              ev |= EV_SEARCH_EXTENDED;
+              break;
+            case STAGE_MID:
+              _mid = true;
+              _search_limit = SEARCH_MID_MS;
+              break;
+            default:
+              ev |= failSearch(sensors, loc, now, forced,
+                               _extended ? END_LONG : (_mid ? END_MID : END_LIMIT));
+              break;
           }
-        } else if (_extended && (uint32_t)(now - _strong_ms) > EXT_LOST_MS) {
-          ev |= failSearch(sensors, loc, now, forced);   // sky gone again (back indoors)
+        } else if ((_extended || _mid) && (uint32_t)(now - _any_strong_ms) > EXT_LOST_MS) {
+          ev |= failSearch(sensors, loc, now, forced, END_LOST);   // sky gone again (back indoors)
         }
         break;
 
@@ -231,6 +258,8 @@ public:
   uint8_t failCount() const { return _fail_count; }
   uint32_t lastSearchMs() const { return _last_search_ms; }   // duration of the last search
   uint8_t searchMaxStrong() const { return _state == SEARCHING && _extended ? _search_max_strong : _done_max_strong; }
+  uint8_t searchMaxGood() const { return _state == SEARCHING && _extended ? _search_max_good : _done_max_good; }   // >= 30 dB-Hz
+  uint8_t endReason() const { return _end_reason; }   // EndReason of the last search
   uint32_t searchElapsedMs() const { return _state == SEARCHING ? (uint32_t)(millis() - _since) : 0; }
   bool gsvAvailable() const { return _gsv_ever && (uint32_t)(millis() - _gsv_ms) < GSV_VALID_MS; }
   // diagnostics (GpsLog): GSV sentences and best SNR in the current/last search, sentence types
@@ -284,12 +313,20 @@ private:
   // GSV sky check
   bool     _cb_set = false;
   bool     _gsv_ever = false;
-  bool     _extended = false;      // current search was extended
+  bool     _extended = false;      // current search was extended to SEARCH_LONG_MS
+  bool     _mid = false;           // current search was extended to SEARCH_MID_MS
   uint32_t _gsv_ms = 0;            // last GSV sentence
-  uint32_t _strong_ms = 0;         // last epoch with >= STRONG_MIN_SATS strong satellites
+  uint32_t _any_strong_ms = 0;     // last epoch with at least one strong satellite
   uint32_t _ext_block_until = 0;
+  uint32_t _ext_fail_ms = 0;       // last failed 120 s search
+  uint32_t _mid_fail_ms = 0;       // last failed 30 s search
+  uint8_t  _ext_level = 0;         // failed 120 s searches in a row (back-off 4/8/16 min)
+  uint8_t  _mid_count = 0;         // failed 30 s searches in a row
+  uint8_t  _end_reason = END_FIX;
   uint8_t  _search_max_strong = 0;
+  uint8_t  _search_max_good = 0;
   uint8_t  _epoch_n = 0;           // strong satellites collected in the current epoch
+  uint8_t  _epoch_good = 0;        // of those >= GOOD_SNR_DBHZ
   uint16_t _epoch_ids[24];         // (constellation, PRN) of those, to count each only once
   uint8_t  _cfg_step = 0;       // NMEA configuration: 0 = nothing to do
   uint32_t _cfg_due = 0;        // fallback: send even without a sentence from the receiver
@@ -302,8 +339,11 @@ private:
   // snapshot at the end of a search: a failed search >= 2 min restarts the next one at once,
   // which resets the running counters before the log reads them
   uint16_t _done_gsv = 0;
-  uint8_t  _done_best_snr = 0, _done_max_strong = 0;
-  void snapshotSearch() { _done_gsv = _search_gsv; _done_best_snr = _search_best_snr; _done_max_strong = _search_max_strong; }
+  uint8_t  _done_best_snr = 0, _done_max_strong = 0, _done_max_good = 0;
+  void snapshotSearch() {
+    _done_gsv = _search_gsv; _done_best_snr = _search_best_snr;
+    _done_max_strong = _search_max_strong; _done_max_good = _search_max_good;
+  }
   int32_t  _lat = 0, _lon = 0;
   uint8_t  _sats = 0;
   uint8_t  _fail_count = 0;
@@ -330,6 +370,8 @@ private:
 
   uint32_t searchLimit() const {
     if (_first_search) return SEARCH_FIRST_MS;
+    // with GSV: short after a failure, nextStage() makes it longer when there is signal
+    if (gsvAvailable()) return _fail_count == 0 ? SEARCH_MS : SEARCH_SHORT_MS;
     uint32_t limit;
     if (_fail_count == 0) limit = SEARCH_MS;
     else if (_fail_count % 5 == 0 && !gsvAvailable()) limit = SEARCH_LONG_MS;   // blind fallback
@@ -337,35 +379,57 @@ private:
     else limit = SEARCH_MS;
     // receivers that need longer per fix (e.g. no backup power during hard sleep) get at
     // least twice their learned search time, otherwise nearly every search would fail.
-    // With GSV the sky check extends searches that need longer, so short searches stay short
-    // indoors (field test: 24.8 s instead of 15 s kept the GPS on 36 % of the night)
-    if (!gsvAvailable() && limit < 2 * _predicted_ms) limit = 2 * _predicted_ms;
+    // (With GSV the graded search below decides instead - field test: 24.8 s instead of 15 s
+    // kept the GPS on 36 % of a night indoors.)
+    if (limit < 2 * _predicted_ms) limit = 2 * _predicted_ms;
     return limit;
   }
 
   void startSearch(uint32_t now) {
     _search_limit = searchLimit();
     _extended = false;
+    _mid = false;
     _search_max_strong = 0;
+    _search_max_good = 0;
     _search_gsv = 0;
     _search_best_snr = 0;
     _epoch_n = 0;   // do not carry the last epoch of the previous search over
+    _epoch_good = 0;
+    _any_strong_ms = now;   // "no strong satellite for 15 s" counts from the start
     setState(SEARCHING, now);
   }
 
-  bool canExtend(uint32_t now) const {
-    return !_extended && _search_limit < SEARCH_LONG_MS
-        && _strong_ms != 0 && (uint32_t)(now - _strong_ms) < STRONG_RECENT_MS
-        && (int32_t)(now - _ext_block_until) >= 0;
+  enum Stage : uint8_t { STAGE_NONE = 0, STAGE_MID, STAGE_LONG };
+
+  // search time is up without fix: search longer? (only with GSV data)
+  Stage nextStage(uint32_t now) {
+    if (_extended || !gsvAvailable() || _search_max_strong == 0) return STAGE_NONE;
+    if ((uint32_t)(now - _any_strong_ms) > EXT_LOST_MS) return STAGE_NONE;   // sky gone again
+    if (_ext_level > 0 && (uint32_t)(now - _ext_fail_ms) > BACKOFF_RESET_MS) _ext_level = 0;
+    if (_mid_count > 0 && (uint32_t)(now - _mid_fail_ms) > BACKOFF_RESET_MS) _mid_count = 0;
+    if (_search_max_strong >= STRONG_MIN_SATS && _search_limit < SEARCH_LONG_MS
+        && (_ext_level == 0 || (int32_t)(now - _ext_block_until) >= 0))
+      return STAGE_LONG;
+    if (!_mid && _search_limit < SEARCH_MID_MS && _mid_count < MID_MAX) return STAGE_MID;
+    return STAGE_NONE;
   }
 
   // search ended without fix: keep trying every 2 min, counted from the start of this search
-  uint8_t failSearch(SensorManager& sensors, LocationProvider* loc, uint32_t now, bool forced) {
+  uint8_t failSearch(SensorManager& sensors, LocationProvider* loc, uint32_t now, bool forced, uint8_t reason) {
     _last_search_ms = now - _since;
     snapshotSearch();
     _fail_count++;
     _first_search = false;
-    if (_extended) _ext_block_until = now + EXT_BLOCK_MS;   // sky but no fix -> pause extensions
+    _end_reason = reason;
+    if (_extended) {   // sky but no fix after up to 120 s -> back-off 4, 8, 16 min
+      if (_ext_level < EXT_BLOCK_STEPS) _ext_level++;
+      _ext_block_until = now + (EXT_BLOCK_MIN_MS << (_ext_level - 1));
+      _ext_fail_ms = now;
+      _mid_count = 0;
+    } else if (_mid) {
+      if (_mid_count < 255) _mid_count++;
+      _mid_fail_ms = now;
+    }
     uint32_t elapsed = now - _since;
     uint32_t wait = (elapsed < INTERVAL_MS) ? INTERVAL_MS - elapsed : 0;
     goSleep(sensors, loc, now, forced, wait);
@@ -401,9 +465,13 @@ private:
     for (uint8_t i = 0; i < 7; i++) if (strncmp(type, names[i], 3) == 0) { bit = 1 << i; break; }
     _types |= bit;
     if (strncmp(type, "GGA", 3) == 0) {          // GGA starts a new epoch (one per second)
-      if (_epoch_n >= STRONG_MIN_SATS) _strong_ms = millis();
-      if (_state == SEARCHING && _epoch_n > _search_max_strong) _search_max_strong = _epoch_n;
+      if (_state == SEARCHING) {
+        if (_epoch_n > 0) _any_strong_ms = millis();
+        if (_epoch_n > _search_max_strong) _search_max_strong = _epoch_n;
+        if (_epoch_good > _search_max_good) _search_max_good = _epoch_good;
+      }
       _epoch_n = 0;
+      _epoch_good = 0;
       return;
     }
     if (strncmp(type, "GSV", 3) != 0) return;
@@ -421,7 +489,10 @@ private:
       uint16_t id = (sys << 8) | (uint16_t)(prn & 0xFF);
       bool dup = false;
       for (uint8_t k = 0; k < _epoch_n; k++) if (_epoch_ids[k] == id) { dup = true; break; }
-      if (!dup && _epoch_n < sizeof(_epoch_ids) / sizeof(_epoch_ids[0])) _epoch_ids[_epoch_n++] = id;
+      if (!dup && _epoch_n < sizeof(_epoch_ids) / sizeof(_epoch_ids[0])) {
+        _epoch_ids[_epoch_n++] = id;
+        if (snr >= GOOD_SNR_DBHZ) _epoch_good++;
+      }
     }
   }
 

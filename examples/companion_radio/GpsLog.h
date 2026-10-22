@@ -6,7 +6,8 @@
 // One record per cycle event, only while GPS is enabled:
 //   ON     GPS enabled (boot or switched on)        OFF    GPS disabled
 //   FIX    end of a hold phase: search time, satellites, position
-//   FAIL   search ended without fix (search time = limit), sats = most strong satellites seen
+//   FAIL   search ended without fix, sats = most strong satellites (>= 25 dB-Hz) in one epoch,
+//          s30 = the same >= 30 dB-Hz, reason = limit / mid / long / lost (see reasonName())
 //   EXT    search extended (sky visible, no fix yet), sats = most strong satellites seen
 //   AWAKE  kept running (GPS/Tracking page, SOS)     SLEEP  back to the normal cycle
 // Each record carries UTC time (RTC), uptime and the battery voltage, plus receiver
@@ -48,7 +49,8 @@ public:
     uint8_t  best_snr;        // best SNR (dB-Hz) during the search
     uint8_t  types;           // sentence types since the last wake
     uint8_t  ack062, ack513;  // Airoha acknowledgements, 0xFF = none
-    uint8_t  reserved[2];
+    uint8_t  good;            // most satellites >= 30 dB-Hz in one epoch (FAIL/EXT)
+    uint8_t  reason;          // FAIL: why the search ended (GpsCycle::EndReason)
   };   // 32 bytes
 
   static constexpr uint32_t FILE_MAX = 16384;
@@ -130,7 +132,8 @@ private:
     r.types     = gps.sentenceTypes();
     r.ack062    = gps.ack062();
     r.ack513    = gps.ack513();
-    r.reserved[0] = r.reserved[1] = 0;
+    r.good      = (t == T_FAIL || t == T_EXT) ? gps.searchMaxGood() : 0;
+    r.reason    = (t == T_FAIL) ? gps.endReason() : 0;
     if (Serial) printRec(r);
     if (++_n >= BUF_RECS) flush();
   }
@@ -161,14 +164,28 @@ private:
     }
   }
 
+  // FAIL: limit = 15/30 s search time up, mid = 30 s (1..3 strong) up, long = 120 s up,
+  // lost = no strong satellite for 15 s during a longer search
+  static const char* reasonName(uint8_t type, uint8_t reason) {
+    if (type != T_FAIL) return "";
+    switch (reason) {
+      case GpsCycle::END_LIMIT: return "limit";
+      case GpsCycle::END_MID:   return "mid";
+      case GpsCycle::END_LONG:  return "long";
+      case GpsCycle::END_LOST:  return "lost";
+      default: return "?";
+    }
+  }
+
   static void printRec(const Rec& r) {
     char line[128];
-    snprintf(line, sizeof(line), "%lu,%lu,%s,%u.%u,%u.%u,%u,%.6f,%.6f,%u,%u,%u,0x%02X,%d,%d",
+    snprintf(line, sizeof(line), "%lu,%lu,%s,%u.%u,%u.%u,%u,%.6f,%.6f,%u,%u,%u,0x%02X,%d,%d,%u,%s",
       (unsigned long)r.unix_time, (unsigned long)r.uptime_s, typeName(r.type),
       r.search_ds / 10, r.search_ds % 10, r.pred_ds / 10, r.pred_ds % 10, r.sats,
       r.lat / 1000000.0, r.lon / 1000000.0, r.batt_mv,
       r.gsv, r.best_snr, r.types,
-      r.ack062 == 0xFF ? -1 : (int)r.ack062, r.ack513 == 0xFF ? -1 : (int)r.ack513);
+      r.ack062 == 0xFF ? -1 : (int)r.ack062, r.ack513 == 0xFF ? -1 : (int)r.ack513,
+      r.good, reasonName(r.type, r.reason));
     Serial.println(line);
   }
 
@@ -184,7 +201,7 @@ private:
   void handleCommand() {
     if (strcmp(_line, "gpslog") == 0) {
       flush();
-      Serial.println("unix,uptime_s,event,search_s,pred_s,sats,lat,lon,batt_mv,gsv,best_snr,types,ack062,ack513");
+      Serial.println("unix,uptime_s,event,search_s,pred_s,sats,lat,lon,batt_mv,gsv,best_snr,types,ack062,ack513,s30,reason");
       if (_fs != NULL) {
         dumpFile(_cur ^ 1);   // older file first
         dumpFile(_cur);
