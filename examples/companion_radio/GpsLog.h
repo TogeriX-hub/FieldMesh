@@ -18,9 +18,13 @@
 // answered, 0x04 all satellite systems on, 0x08 $PAIR066 sent, 0x10 $PAIR066 ok, 0x20 $PAIR513
 // ok, 0x40 $PCAS04 sent).
 //
-// Storage: two files on the secondary FS (/fm_gpsb0.log, /fm_gpsb1.log), 16 KB each
-// (512 records), written in blocks of 8 records. When the current file is full the other
-// one is replaced, so the last ~1000 records (> 30 h) are kept. Files of the older record
+// Storage: two files on the secondary FS (/fm_gpsb0.log, /fm_gpsb1.log), 6 KB each
+// (192 records), written in blocks of 8 records. When the current file is full the other
+// one is replaced, so the last ~380 records (~12 h) are kept. The secondary FS also holds
+// contacts, channels and advert blobs (T1000-E: 100 KB in internal flash) - field test
+// 22./23.10. with 2 x 16 KB: the log stopped after ~20 h, most likely the FS was full.
+// Failed writes are counted; "gpslog" ends with the FS usage and the files on it.
+// Files of the older record
 // format (/fm_gps0.log, /fm_gps1.log) are deleted.
 //
 // USB serial commands (115200 baud, line end CR or LF):
@@ -34,6 +38,10 @@
 #include <helpers/IdentityStore.h>   // FILESYSTEM
 #include <MeshCore.h>
 #include "GpsCycle.h"
+
+#if defined(NRF52_PLATFORM)
+lfs_ssize_t _getLfsUsedBlockCount(FILESYSTEM* fs);   // DataStore.cpp
+#endif
 
 class GpsLog {
 public:
@@ -59,7 +67,7 @@ public:
     uint8_t  reason;          // FAIL: why the search ended (GpsCycle::EndReason)
   };   // 32 bytes
 
-  static constexpr uint32_t FILE_MAX = 16384;
+  static constexpr uint32_t FILE_MAX = 6144;
   static constexpr int BUF_RECS = 8;
 
   void loop(GpsCycle& gps, uint32_t unix_time, mesh::MainBoard& board, FILESYSTEM* fs) {
@@ -91,6 +99,8 @@ private:
   int  _n = 0;
   uint8_t _cur = 0;          // file being filled
   bool _init = false;
+  uint16_t _write_errors = 0;
+  uint32_t _first_error = 0;   // unix time of the first failed write
   GpsCycle::State _last_state = GpsCycle::OFF;
   char _line[24];
   uint8_t _line_len = 0;
@@ -112,6 +122,8 @@ private:
     if (_fs == NULL) return;
     _fs->remove("/fm_gps0.log");   // older record format (24 bytes)
     _fs->remove("/fm_gps1.log");
+    if (fileSize(0) > FILE_MAX) _fs->remove(fileName(0));   // files of the larger 16 KB size
+    if (fileSize(1) > FILE_MAX) _fs->remove(fileName(1));
     size_t s0 = fileSize(0), s1 = fileSize(1);
     if (s0 >= FILE_MAX && s1 >= FILE_MAX) { _fs->remove(fileName(0)); _cur = 0; }
     else if (s0 >= FILE_MAX) _cur = 1;
@@ -153,11 +165,36 @@ private:
       _fs->remove(fileName(_cur));
     }
     File f = _fs->open(fileName(_cur), FILE_O_WRITE);   // appends
+    size_t want = _n * sizeof(Rec), done = 0;
     if (f) {
-      f.write((const uint8_t*)_buf, _n * sizeof(Rec));
+      done = f.write((const uint8_t*)_buf, want);
       f.close();
     }
+    if (done != want) {
+      if (_write_errors == 0) _first_error = _buf[0].unix_time;
+      if (_write_errors < 0xFFFF) _write_errors++;
+    }
     _n = 0;
+  }
+
+  // end of the "gpslog" output: secondary FS usage, its files and the failed log writes
+  void printStorage() {
+#if defined(NRF52_PLATFORM)
+    const lfs_config* cfg = _fs->_getFS()->cfg;
+    unsigned long used = (unsigned long)_getLfsUsedBlockCount(_fs) * cfg->block_size;
+    Serial.printf("# fs used %lu of %lu bytes\n", used, (unsigned long)(cfg->block_size * cfg->block_count));
+#endif
+    File root = _fs->open("/", FILE_O_READ);
+    if (root) {
+      File file = root.openNextFile();
+      while (file) {
+        Serial.printf("# file %s %lu\n", file.name(), (unsigned long)file.size());
+        file.close();
+        file = root.openNextFile();
+      }
+      root.close();
+    }
+    Serial.printf("# log write errors %u, first at %lu\n", _write_errors, (unsigned long)_first_error);
   }
 
   static const char* typeName(uint8_t t) {
@@ -211,6 +248,7 @@ private:
       if (_fs != NULL) {
         dumpFile(_cur ^ 1);   // older file first
         dumpFile(_cur);
+        printStorage();
       }
       Serial.println("# end");
     } else if (strcmp(_line, "gpslog clear") == 0) {
