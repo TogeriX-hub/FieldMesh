@@ -1181,6 +1181,21 @@ bool MyMesh::sendSOS() {
     } else {
       strncpy(text, "!SOS no GPS", sizeof(text));
     }
+    // FieldMesh v6.1: battery level, same scale as the battery icon of the UI
+#ifndef BATT_MIN_MILLIVOLTS
+  #define BATT_MIN_MILLIVOLTS 3000
+#endif
+#ifndef BATT_MAX_MILLIVOLTS
+  #define BATT_MAX_MILLIVOLTS 4200
+#endif
+    int mv = board.getBattMilliVolts();
+    if (mv > 0) {
+      int pct = ((mv - BATT_MIN_MILLIVOLTS) * 100) / (BATT_MAX_MILLIVOLTS - BATT_MIN_MILLIVOLTS);
+      if (pct < 0) pct = 0;
+      if (pct > 100) pct = 100;
+      size_t n = strlen(text);
+      snprintf(&text[n], sizeof(text) - n, " bat%d%%", pct);
+    }
 
     uint32_t ts = getRTCClock()->getCurrentTimeUnique();
     bool sent = sendGroupMessage(ts, ch.channel, _prefs.node_name, text, strlen(text));
