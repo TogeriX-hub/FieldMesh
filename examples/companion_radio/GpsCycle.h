@@ -28,6 +28,9 @@
 //     never gave a fix, the first one came after 1 h 48 min.
 //   - without GSV data: 30 s, after 3 failures 15 s, never less than twice the learned
 //     search time, a blind 120 s search on every 5th failure
+//   - fast movement (decided 23.10.): a fix with >= 30 km/h (RMC speed over ground) makes the
+//     cycle measure every 60 s instead of 120 s, for 3 min after the last such fix (traffic
+//     lights, short stops). Applies whenever GPS is on; tracking then also sends every 60 s.
 //   - "keep awake" requests (GPS/Tracking page on screen, SOS) keep the GPS running
 //
 // Sleep mode is chosen centrally from the board defines, like Meshtastic:
@@ -79,6 +82,9 @@ public:
   };
 
   static constexpr uint32_t INTERVAL_MS        = 120000;  // fix every 2 min (Meshtastic default)
+  static constexpr uint32_t FAST_INTERVAL_MS   = 60000;   // while moving fast
+  static constexpr uint16_t FAST_KMH           = 30;      // speed over ground that counts as fast
+  static constexpr uint32_t FAST_KEEP_MS       = 180000;  // stay fast this long after the last fast fix
   static constexpr uint32_t HOLD_MS            = 20000;   // keep running 20 s after a fix
   static constexpr uint32_t MAX_FIX_AGE_MS     = 120000;  // never use an older position
   // wake a bit early -> fix age stays < 2 min (field logs with 5 s: 102..126 s before the next fix)
@@ -210,7 +216,7 @@ private:
       case AWAKE:   // kept running by a keep-awake request
         if (new_fix && (int32_t)(now - _next_awake_ev) >= 0) {
           ev |= EV_FIX;   // give tracking a position every 2 min while kept awake
-          _next_awake_ev = now + INTERVAL_MS;
+          _next_awake_ev = now + interval();
         }
         if (!forced) {
           if (hasFreshFix()) goSleep(sensors, loc, now, false, nextSleepMs());
@@ -274,6 +280,10 @@ public:
   uint8_t searchMaxGood() const { return _state == SEARCHING && _extended ? _search_max_good : _done_max_good; }   // >= 30 dB-Hz
   uint8_t searchMaxUsable() const { return _state == SEARCHING && _extended ? _search_max_usable : _done_max_usable; }   // >= 20 dB-Hz
   uint8_t endReason() const { return _end_reason; }   // EndReason of the last search
+  // moving fast (a fix with >= FAST_KMH within the last FAST_KEEP_MS): measure every 60 s
+  bool isFast() const { return _fast_until != 0 && (int32_t)(_fast_until - millis()) > 0; }
+  uint32_t interval() const { return isFast() ? FAST_INTERVAL_MS : INTERVAL_MS; }
+  uint16_t lastSpeedKmh() const { return _speed_kmh; }   // of the last valid RMC sentence
   uint32_t searchElapsedMs() const { return _state == SEARCHING ? (uint32_t)(millis() - _since) : 0; }
   bool gsvAvailable() const { return _gsv_ever && (uint32_t)(millis() - _gsv_ms) < GSV_VALID_MS; }
   // diagnostics (GpsLog): GSV sentences and best SNR in the current/last search, sentence types
@@ -343,6 +353,8 @@ private:
   uint8_t  _ext_level = 0;         // failed 120 s searches in a row (back-off 4/8/16 min)
   uint8_t  _mid_count = 0;         // failed 30 s searches in a row
   uint8_t  _end_reason = END_FIX;
+  uint32_t _fast_until = 0;        // millis until which the cycle counts as moving fast
+  uint16_t _speed_kmh = 0;
   uint8_t  _search_max_strong = 0;
   uint8_t  _search_max_good = 0;
   uint8_t  _search_max_usable = 0;
@@ -455,7 +467,7 @@ private:
       _mid_fail_ms = now;
     }
     uint32_t elapsed = now - _since;
-    uint32_t wait = (elapsed < INTERVAL_MS) ? INTERVAL_MS - elapsed : 0;
+    uint32_t wait = (elapsed < interval()) ? interval() - elapsed : 0;
     goSleep(sensors, loc, now, forced, wait);
     return EV_SEARCH_FAILED;
   }
@@ -515,6 +527,7 @@ private:
       _epoch_n = 0;
       return;
     }
+    if (strncmp(type, "RMC", 3) == 0) { handleRmc(s); return; }
     if (strncmp(type, "GSV", 3) != 0) return;
     _gsv_ever = true;
     _gsv_ms = millis();
@@ -544,6 +557,31 @@ private:
     }
   }
 
+  // $xxRMC,time,status,lat,N,lon,E,speed(knots),course,... - only with status A (valid fix)
+  void handleRmc(const char* s) {
+    const char* p = s;
+    int field = 0;
+    char status = 0;
+    while (*p && *p != '*') {
+      if (*p == ',') {
+        field++;
+        if (field == 2) status = p[1];
+        else if (field == 7) break;
+      }
+      p++;
+    }
+    if (field != 7 || status != 'A') return;
+    p++;   // speed over ground in knots, e.g. "45.3"
+    uint32_t tenths = 0;
+    bool any = false;
+    while (*p >= '0' && *p <= '9') { tenths = tenths * 10 + (*p - '0'); p++; any = true; }
+    tenths *= 10;
+    if (*p == '.' && p[1] >= '0' && p[1] <= '9') tenths += p[1] - '0';
+    if (!any || tenths > 20000) return;   // > 2000 kn: garbage
+    _speed_kmh = (uint16_t)((tenths * 1852UL + 5000) / 10000);   // 1 kn = 1.852 km/h
+    if (_speed_kmh >= FAST_KMH) _fast_until = millis() + FAST_KEEP_MS;
+  }
+
   // Meshtastic: EWMA 0.2, first sample (cold start) discarded, failures not counted
   void learnSearchTime(uint32_t ms) {
     if (_samples++ == 0) return;
@@ -551,10 +589,10 @@ private:
     _predicted_ms = (_predicted_ms == 0) ? ms : (_predicted_ms * 4 + ms) / 5;
   }
 
-  // sleep time after a hold so that the next fix arrives about INTERVAL_MS after this one
+  // sleep time after a hold so that the next fix arrives about interval() after this one
   uint32_t nextSleepMs() const {
     uint32_t early = _predicted_ms + WAKE_MARGIN_MS;
-    return (INTERVAL_MS > early) ? INTERVAL_MS - early : 0;
+    return (interval() > early) ? interval() - early : 0;
   }
 
   bool pollFix(LocationProvider* loc, uint32_t now) {
@@ -574,7 +612,7 @@ private:
   }
 
   void goSleep(SensorManager& sensors, LocationProvider* loc, uint32_t now, bool forced, uint32_t sleep_ms) {
-    if (forced) { setState(AWAKE, now); _next_awake_ev = now + INTERVAL_MS; return; }
+    if (forced) { setState(AWAKE, now); _next_awake_ev = now + interval(); return; }
     if (sleep_ms < 1000) { startSearch(now); return; }   // no time to sleep
 #ifdef PIN_GPS_STANDBY
     pinMode(PIN_GPS_STANDBY, OUTPUT);

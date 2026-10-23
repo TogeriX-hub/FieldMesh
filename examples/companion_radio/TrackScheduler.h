@@ -4,6 +4,7 @@
 // issue #28). Smart-position idea from Meshtastic, values decided in PLAN_v6.1.md:
 //   - first send at the first usable fix after tracking/GPS was switched on
 //   - moved >= min_dist since the last sent position and >= min_interval since the last send
+//     (>= 60 s while moving fast, see GpsCycle::isFast(); decided 23.10.)
 //   - otherwise a heartbeat every heartbeat_ms; when no fresh fix (<= 2 min) is available at
 //     that moment it waits for the next fix (at most HEARTBEAT_WAIT_MS), then sends with or
 //     without position
@@ -21,6 +22,7 @@ class TrackScheduler {
 public:
   static constexpr uint16_t DEFAULT_MIN_DIST_M      = 100;
   static constexpr uint32_t DEFAULT_MIN_INTERVAL_MS = 120000;   // 2 min
+  static constexpr uint32_t FAST_MIN_INTERVAL_MS    = 60000;    // while moving fast
   static constexpr uint32_t DEFAULT_HEARTBEAT_MS    = 900000;   // 15 min
   static constexpr uint8_t  MIN_SATS                = 4;
   // fixes arrive about every 115 s (GpsCycle wakes a bit early) - without slack a moving
@@ -50,15 +52,18 @@ public:
   // call every loop while tracking is active.
   // fix_event: a settled position is available now (lat/lon in degrees * 1e6, sats)
   // fresh: a position <= 2 min old is available (it would be sent with the heartbeat)
+  // fast: moving fast -> movement sends every 60 s instead of min_interval
   // returns why a send is due now (NONE = nothing to send)
-  Reason poll(uint32_t now, bool fix_event, int32_t lat, int32_t lon, uint8_t sats, bool fresh) {
+  Reason poll(uint32_t now, bool fix_event, int32_t lat, int32_t lon, uint8_t sats, bool fresh,
+              bool fast = false) {
+    uint32_t min_interval = (fast && FAST_MIN_INTERVAL_MS < _min_interval_ms) ? FAST_MIN_INTERVAL_MS : _min_interval_ms;
     bool usable = fix_event && sats >= MIN_SATS;
     uint32_t since = now - _last_sent_ms;
 
     if (usable) {
       if (!_have_sent || !_have_sent_pos) return FIRST;
       _last_dist_m = distanceM(_sent_lat, _sent_lon, lat, lon);
-      if (_last_dist_m >= _min_dist_m && since + INTERVAL_SLACK_MS >= _min_interval_ms) return MOVED;
+      if (_last_dist_m >= _min_dist_m && since + INTERVAL_SLACK_MS >= min_interval) return MOVED;
     }
     // also without a usable fix: report presence once per heartbeat - with position if one is
     // fresh now, otherwise after the next fix or at the latest HEARTBEAT_WAIT_MS later

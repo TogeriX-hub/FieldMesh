@@ -8,7 +8,8 @@
 //   FIX    end of a hold phase: search time, satellites, position
 //   FAIL   search ended without fix, sats = most strong satellites (>= 25 dB-Hz) in one epoch,
 //          s20 / s30 = the same >= 20 / >= 30 dB-Hz,
-//          reason = limit / mid / long / lost (see reasonName())
+//          reason = limit / mid / long / lost (see reasonName()); "fast" (FIX) or "/fast" (FAIL)
+//          while the cycle runs every 60 s because of fast movement
 //   EXT    search extended (sky visible, no fix yet), sats = most strong satellites seen
 //   AWAKE  kept running (GPS/Tracking page, SOS)     SLEEP  back to the normal cycle
 // Each record carries UTC time (RTC), uptime and the battery voltage, plus receiver
@@ -63,7 +64,7 @@ public:
     uint8_t  usable;          // most satellites >= 20 dB-Hz in one epoch (FAIL/EXT); was the
                               // $PAIR513 acknowledgement before 22.10. (always 0 in the tests)
     uint8_t  good;            // most satellites >= 30 dB-Hz in one epoch (FAIL/EXT)
-    uint8_t  reason;          // FAIL: why the search ended (GpsCycle::EndReason)
+    uint8_t  reason;          // FAIL: why the search ended (GpsCycle::EndReason); bit 7 = fast
   };   // 32 bytes
 
   static constexpr uint16_t RING_RECS = 384;
@@ -168,6 +169,7 @@ private:
     r.usable    = (t == T_FAIL || t == T_EXT) ? gps.searchMaxUsable() : 0;
     r.good      = (t == T_FAIL || t == T_EXT) ? gps.searchMaxGood() : 0;
     r.reason    = (t == T_FAIL) ? gps.endReason() : 0;
+    if (gps.isFast()) r.reason |= 0x80;   // moving fast: 60 s cycle
     if (Serial) printRec(r);
     if (++_n >= BUF_RECS) flush();
   }
@@ -236,7 +238,7 @@ private:
   // lost = no strong satellite for 15 s during a longer search
   static const char* reasonName(uint8_t type, uint8_t reason) {
     if (type != T_FAIL) return "";
-    switch (reason) {
+    switch (reason & 0x7F) {
       case GpsCycle::END_LIMIT: return "limit";
       case GpsCycle::END_MID:   return "mid";
       case GpsCycle::END_LONG:  return "long";
@@ -247,13 +249,14 @@ private:
 
   static void printRec(const Rec& r) {
     char line[128];
-    snprintf(line, sizeof(line), "%lu,%lu,%s,%u.%u,%u.%u,%u,%.6f,%.6f,%u,%u,%u,0x%02X,0x%02X,%d,%u,%s",
+    snprintf(line, sizeof(line), "%lu,%lu,%s,%u.%u,%u.%u,%u,%.6f,%.6f,%u,%u,%u,0x%02X,0x%02X,%d,%u,%s%s",
       (unsigned long)r.unix_time, (unsigned long)r.uptime_s, typeName(r.type),
       r.search_ds / 10, r.search_ds % 10, r.pred_ds / 10, r.pred_ds % 10, r.sats,
       r.lat / 1000000.0, r.lon / 1000000.0, r.batt_mv,
       r.gsv, r.best_snr, r.types,
       r.cfg, (int)r.usable,
-      r.good, reasonName(r.type, r.reason));
+      r.good, reasonName(r.type, r.reason),
+      (r.reason & 0x80) ? (r.type == T_FAIL ? "/fast" : "fast") : "");
     Serial.println(line);
   }
 
