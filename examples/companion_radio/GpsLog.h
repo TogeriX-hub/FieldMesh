@@ -18,14 +18,13 @@
 // answered, 0x04 all satellite systems on, 0x08 $PAIR066 sent, 0x10 $PAIR066 ok, 0x20 $PAIR513
 // ok, 0x40 $PCAS04 sent).
 //
-// Storage: two files on the secondary FS (/fm_gpsb0.log, /fm_gpsb1.log), 6 KB each
-// (192 records), written in blocks of 8 records. When the current file is full the other
-// one is replaced, so the last ~380 records (~12 h) are kept. The secondary FS also holds
-// contacts, channels and advert blobs (T1000-E: 100 KB in internal flash) - field test
-// 22./23.10. with 2 x 16 KB: the log stopped after ~20 h, most likely the FS was full.
-// Failed writes are counted; "gpslog" ends with the FS usage and the files on it.
-// Files of the older record
-// format (/fm_gps0.log, /fm_gps1.log) are deleted.
+// Storage: ring buffer of 384 records (12 KB, ~12.5 h at one record per 2 min cycle) in
+// /fm_gpsr.log on the secondary FS, written in blocks of 8 records; the oldest records are
+// overwritten one by one. /fm_gpsr.idx holds the next write position and the count. The
+// secondary FS also holds contacts, channels and advert blobs (T1000-E: 100 KB in internal
+// flash, ~81 KB used with 350 contacts) - field test 22./23.10. with 2 x 16 KB files: the log
+// stopped after ~20 h because the FS was full. Failed writes are counted; "gpslog" ends with
+// the FS usage and the files on it. Files of older log versions are deleted at boot.
 //
 // USB serial commands (115200 baud, line end CR or LF):
 //   gpslog        print all records as CSV
@@ -67,7 +66,7 @@ public:
     uint8_t  reason;          // FAIL: why the search ended (GpsCycle::EndReason)
   };   // 32 bytes
 
-  static constexpr uint32_t FILE_MAX = 6144;
+  static constexpr uint16_t RING_RECS = 384;
   static constexpr int BUF_RECS = 8;
 
   void loop(GpsCycle& gps, uint32_t unix_time, mesh::MainBoard& board, FILESYSTEM* fs) {
@@ -97,7 +96,8 @@ private:
   mesh::MainBoard* _board = NULL;
   Rec  _buf[BUF_RECS];
   int  _n = 0;
-  uint8_t _cur = 0;          // file being filled
+  uint16_t _next = 0;        // ring position of the next record
+  uint16_t _count = 0;       // records in the ring
   bool _init = false;
   uint16_t _write_errors = 0;
   uint32_t _first_error = 0;   // unix time of the first failed write
@@ -105,30 +105,46 @@ private:
   char _line[24];
   uint8_t _line_len = 0;
 
-  static const char* fileName(uint8_t i) { return i ? "/fm_gpsb1.log" : "/fm_gpsb0.log"; }
+  static constexpr const char* LOG_FILE = "/fm_gpsr.log";
+  static constexpr const char* IDX_FILE = "/fm_gpsr.idx";
 
-  size_t fileSize(uint8_t i) {
-    if (_fs == NULL || !_fs->exists(fileName(i))) return 0;
-    File f = _fs->open(fileName(i), FILE_O_READ);
+  size_t logSize() {
+    if (_fs == NULL || !_fs->exists(LOG_FILE)) return 0;
+    File f = _fs->open(LOG_FILE, FILE_O_READ);
     if (!f) return 0;
     size_t n = f.size();
     f.close();
     return n;
   }
 
-  // the file being filled is the one that is not full (see header)
   void init() {
     _init = true;
     if (_fs == NULL) return;
-    _fs->remove("/fm_gps0.log");   // older record format (24 bytes)
-    _fs->remove("/fm_gps1.log");
-    if (fileSize(0) > FILE_MAX) _fs->remove(fileName(0));   // files of the larger 16 KB size
-    if (fileSize(1) > FILE_MAX) _fs->remove(fileName(1));
-    size_t s0 = fileSize(0), s1 = fileSize(1);
-    if (s0 >= FILE_MAX && s1 >= FILE_MAX) { _fs->remove(fileName(0)); _cur = 0; }
-    else if (s0 >= FILE_MAX) _cur = 1;
-    else if (s1 >= FILE_MAX) _cur = 0;
-    else _cur = (s1 > 0 && s0 == 0) ? 1 : 0;
+    static const char* const old_files[4] = { "/fm_gps0.log", "/fm_gps1.log", "/fm_gpsb0.log", "/fm_gpsb1.log" };
+    for (int i = 0; i < 4; i++) _fs->remove(old_files[i]);
+    size_t recs = logSize() / sizeof(Rec);
+    if (recs > RING_RECS) { _fs->remove(LOG_FILE); recs = 0; }
+    _count = recs;
+    _next = recs % RING_RECS;
+    File f = _fs->open(IDX_FILE, FILE_O_READ);
+    if (f) {
+      uint16_t idx[2];
+      if (f.read((uint8_t*)idx, sizeof(idx)) == sizeof(idx) && idx[1] <= recs && idx[0] < RING_RECS
+          && (idx[1] == RING_RECS || idx[0] == idx[1])) {
+        _next = idx[0];
+        _count = idx[1];
+      }
+      f.close();
+    }
+  }
+
+  void saveIndex() {
+    _fs->remove(IDX_FILE);
+    File f = _fs->open(IDX_FILE, FILE_O_WRITE);
+    if (!f) return;
+    uint16_t idx[2] = { _next, _count };
+    f.write((const uint8_t*)idx, sizeof(idx));
+    f.close();
   }
 
   void add(Type t, GpsCycle& gps, uint32_t unix_time, bool with_pos) {
@@ -158,22 +174,31 @@ private:
 
   static uint16_t clamp16(uint32_t v) { return v > 65535 ? 65535 : (uint16_t)v; }
 
+  // write the buffered records at the ring position: appended while the ring is filling,
+  // afterwards in place over the oldest records (split at the end of the ring)
   void flush() {
     if (_n == 0 || _fs == NULL) { _n = 0; return; }
-    if (fileSize(_cur) + _n * sizeof(Rec) > FILE_MAX) {   // switch: replace the older file
-      _cur ^= 1;
-      _fs->remove(fileName(_cur));
+    File f = _fs->open(LOG_FILE, FILE_O_WRITE);
+    bool ok = (bool)f;
+    int done = 0;
+    while (ok && done < _n) {
+      int part = RING_RECS - _next;
+      if (part > _n - done) part = _n - done;
+      size_t bytes = part * sizeof(Rec);
+      ok = f.seek((uint32_t)_next * sizeof(Rec))
+           && f.write((const uint8_t*)&_buf[done], bytes) == bytes;
+      if (ok) {
+        done += part;
+        _next = (_next + part) % RING_RECS;
+        _count = (_count + part > RING_RECS) ? RING_RECS : _count + part;
+      }
     }
-    File f = _fs->open(fileName(_cur), FILE_O_WRITE);   // appends
-    size_t want = _n * sizeof(Rec), done = 0;
-    if (f) {
-      done = f.write((const uint8_t*)_buf, want);
-      f.close();
-    }
-    if (done != want) {
+    if (f) f.close();
+    if (!ok) {
       if (_write_errors == 0) _first_error = _buf[0].unix_time;
       if (_write_errors < 0xFFFF) _write_errors++;
     }
+    if (done > 0) saveIndex();
     _n = 0;
   }
 
@@ -232,12 +257,18 @@ private:
     Serial.println(line);
   }
 
-  void dumpFile(uint8_t i) {
-    if (!_fs->exists(fileName(i))) return;
-    File f = _fs->open(fileName(i), FILE_O_READ);
+  // oldest record first
+  void dumpRing() {
+    if (_count == 0) return;
+    File f = _fs->open(LOG_FILE, FILE_O_READ);
     if (!f) return;
+    uint16_t pos = (_count < RING_RECS) ? 0 : _next;
     Rec r;
-    while (f.read((uint8_t*)&r, sizeof(r)) == sizeof(r)) printRec(r);
+    for (uint16_t i = 0; i < _count; i++) {
+      if (!f.seek((uint32_t)pos * sizeof(Rec)) || f.read((uint8_t*)&r, sizeof(r)) != sizeof(r)) break;
+      printRec(r);
+      pos = (pos + 1) % RING_RECS;
+    }
     f.close();
   }
 
@@ -246,15 +277,15 @@ private:
       flush();
       Serial.println("unix,uptime_s,event,search_s,pred_s,sats,lat,lon,batt_mv,gsv,best_snr,types,cfg,s20,s30,reason");
       if (_fs != NULL) {
-        dumpFile(_cur ^ 1);   // older file first
-        dumpFile(_cur);
+        dumpRing();
         printStorage();
       }
       Serial.println("# end");
     } else if (strcmp(_line, "gpslog clear") == 0) {
       _n = 0;
-      if (_fs != NULL) { _fs->remove(fileName(0)); _fs->remove(fileName(1)); }
-      _cur = 0;
+      if (_fs != NULL) { _fs->remove(LOG_FILE); _fs->remove(IDX_FILE); }
+      _next = 0;
+      _count = 0;
       Serial.println("# gpslog cleared");
     }
   }
