@@ -24,6 +24,11 @@
 //     by a fix or after 30 min.
 //     Field test T1000-E 22.10. at an office window: 4..5 satellites with 25..32 dB-Hz (at
 //     most 1 >= 30) never gave a fix, but the 120 s stage kept the GPS on ~65 % of the time.
+//     Clear sky (>= 4 satellites >= 30 dB-Hz in one epoch, never seen at a window): never
+//     only 15 s (at least 30 s, also when the 30 s budget is used up), and when the previous
+//     search also had clear sky without fix, up to 240 s even during the back-off - at most
+//     once per 30 min (field test 23.10.: walking after 3 h indoors, jacket pocket, 14..20
+//     strong satellites, two 120 s searches without fix while new ephemeris was needed).
 //     Field test T1000-E 22.10. (urban canyon): 15 s searches with 4..11 strong satellites
 //     never gave a fix, the first one came after 1 h 48 min.
 //   - without GSV data: 30 s, after 3 failures 15 s, never less than twice the learned
@@ -110,6 +115,9 @@ public:
   static constexpr uint8_t  EXT_BLOCK_STEPS    = 3;
   static constexpr uint32_t BACKOFF_RESET_MS   = 1800000; // forget the back-off after 30 min
   static constexpr uint32_t GSV_VALID_MS       = 900000;  // GSV seen recently -> sky check usable
+  static constexpr uint8_t  CLEAR_MIN_GOOD     = 4;        // >= 4 satellites >= 30 dB-Hz: clearly outdoors
+  static constexpr uint32_t SEARCH_CLEAR_MS    = 240000;   // 2nd clear-sky search in a row without fix
+  static constexpr uint32_t CLEAR_EVERY_MS     = 1800000;  // ... at most once per 30 min
 
   // why the last search ended (diagnostics)
   enum EndReason : uint8_t { END_FIX = 0, END_LIMIT, END_MID, END_LONG, END_LOST };
@@ -183,6 +191,7 @@ private:
           _first_search = false;
           _ext_level = 0;      // the sky works here again: no back-off
           _mid_count = 0;
+          _clear_streak = 0;
           _end_reason = END_FIX;
           setState(HOLDING, now);
         } else if (now - _since >= _search_limit) {
@@ -190,6 +199,11 @@ private:
             case STAGE_LONG:
               _extended = true;
               _search_limit = SEARCH_LONG_MS;
+              ev |= EV_SEARCH_EXTENDED;
+              break;
+            case STAGE_CLEAR:
+              _extended = true;
+              _search_limit = SEARCH_CLEAR_MS;
               ev |= EV_SEARCH_EXTENDED;
               break;
             case STAGE_MID:
@@ -353,6 +367,9 @@ private:
   uint8_t  _ext_level = 0;         // failed 120 s searches in a row (back-off 4/8/16 min)
   uint8_t  _mid_count = 0;         // failed 30 s searches in a row
   uint8_t  _end_reason = END_FIX;
+  uint8_t  _clear_streak = 0;      // failed searches in a row with clear sky (>= 4 x 30 dB-Hz)
+  uint32_t _clear_used_ms = 0;     // last 240 s search
+  bool     _clear_used = false;
   uint32_t _fast_until = 0;        // millis until which the cycle counts as moving fast
   uint16_t _speed_kmh = 0;
   uint8_t  _search_max_strong = 0;
@@ -435,18 +452,28 @@ private:
     setState(SEARCHING, now);
   }
 
-  enum Stage : uint8_t { STAGE_NONE = 0, STAGE_MID, STAGE_LONG };
+  enum Stage : uint8_t { STAGE_NONE = 0, STAGE_MID, STAGE_LONG, STAGE_CLEAR };
 
   // search time is up without fix: search longer? (only with GSV data)
   Stage nextStage(uint32_t now) {
-    if (_extended || !gsvAvailable() || _search_max_strong == 0) return STAGE_NONE;
+    if (!gsvAvailable() || _search_max_strong == 0) return STAGE_NONE;
     if ((uint32_t)(now - _any_strong_ms) > EXT_LOST_MS) return STAGE_NONE;   // sky gone again
+    bool clear = _search_max_good >= CLEAR_MIN_GOOD;
+    if (clear && _clear_streak >= 1 && _search_limit < SEARCH_CLEAR_MS
+        && (!_clear_used || (uint32_t)(now - _clear_used_ms) > CLEAR_EVERY_MS)) {
+      _clear_used = true; _clear_used_ms = now;
+      return STAGE_CLEAR;
+    }
+    if (_extended) return STAGE_NONE;
     if (_ext_level > 0 && (uint32_t)(now - _ext_fail_ms) > BACKOFF_RESET_MS) _ext_level = 0;
     if (_mid_count > 0 && (uint32_t)(now - _mid_fail_ms) > BACKOFF_RESET_MS) _mid_count = 0;
     if (_search_max_strong >= STRONG_MIN_SATS && _search_max_good >= GOOD_MIN_SATS
         && _search_limit < SEARCH_LONG_MS
         && (_ext_level == 0 || (int32_t)(now - _ext_block_until) >= 0))
       return STAGE_LONG;
+    // under clear sky never only 15 s, even when the 30 s budget is used up (field test 23.10.:
+    // walking back with 18 strong satellites the search ended after 15 s)
+    if (clear && !_mid && _search_limit < SEARCH_MID_MS) return STAGE_MID;
     if (!_mid && _search_limit < SEARCH_MID_MS && _mid_count < MID_MAX) return STAGE_MID;
     return STAGE_NONE;
   }
@@ -458,6 +485,7 @@ private:
     _fail_count++;
     _first_search = false;
     _end_reason = reason;
+    if (_search_max_good >= CLEAR_MIN_GOOD) { if (_clear_streak < 255) _clear_streak++; } else _clear_streak = 0;
     if (_extended) {   // sky but no fix after up to 120 s -> back-off 4, 8, 16 min
       if (_ext_level < EXT_BLOCK_STEPS) _ext_level++;
       _ext_block_until = now + (EXT_BLOCK_MIN_MS << (_ext_level - 1));

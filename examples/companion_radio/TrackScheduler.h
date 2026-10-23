@@ -5,7 +5,7 @@
 //   - first send at the first usable fix after tracking/GPS was switched on
 //   - moved >= min_dist since the last sent position and >= min_interval since the last send
 //     (>= 60 s while moving fast, see GpsCycle::isFast(); decided 23.10.)
-//   - otherwise a heartbeat every heartbeat_ms; when no fresh fix (<= 2 min) is available at
+//   - otherwise a heartbeat every heartbeat_ms (10 min); when no fresh fix (<= 2 min) is available at
 //     that moment it waits for the next fix (at most HEARTBEAT_WAIT_MS), then sends with or
 //     without position
 // Positions are evaluated at the end of a GPS hold phase (GpsCycle::EV_FIX), when the
@@ -23,7 +23,7 @@ public:
   static constexpr uint16_t DEFAULT_MIN_DIST_M      = 100;
   static constexpr uint32_t DEFAULT_MIN_INTERVAL_MS = 120000;   // 2 min
   static constexpr uint32_t FAST_MIN_INTERVAL_MS    = 60000;    // while moving fast
-  static constexpr uint32_t DEFAULT_HEARTBEAT_MS    = 900000;   // 15 min
+  static constexpr uint32_t DEFAULT_HEARTBEAT_MS    = 600000;   // 10 min (decided 23.10., was 15)
   static constexpr uint8_t  MIN_SATS                = 4;
   // fixes arrive about every 115 s (GpsCycle wakes a bit early) - without slack a moving
   // node would only send every second fix
