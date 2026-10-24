@@ -18,7 +18,7 @@
 //                                               18..50 s of uninterrupted reception, and
 //                                               decoding gets unreliable below ~27 dB-Hz)
 //     A longer search ends at once with the fix, or when no strong satellite was seen for
-//     15 s (back indoors). After a failed 120 s search the next one is allowed after 4, then
+//     15 s (back indoors - no back-off then). After a failed 120 s search the next one is allowed after 4, then
 //     8, then 16 min (back to 4 after a fix or 30 min without failed 120 s search); in
 //     between >= 4 strong is handled like 1..3. The count of 30 s searches is only cleared
 //     by a fix or after 30 min.
@@ -486,7 +486,11 @@ private:
     _first_search = false;
     _end_reason = reason;
     if (_search_max_good >= CLEAR_MIN_GOOD) { if (_clear_streak < 255) _clear_streak++; } else _clear_streak = 0;
-    if (_extended) {   // sky but no fix after up to 120 s -> back-off 4, 8, 16 min
+    if (reason == END_LOST) {
+      // the sky went away (back indoors): says nothing about a hopeless sky - no back-off, the
+      // 30 s budget is not used up (field test 24.10.: balcony, back in, out of the front door -
+      // the block from the balcony made the search outside only 30 s, fix ~2 min later)
+    } else if (_extended) {   // sky but no fix after the whole long search -> back-off 4, 8, 16 min
       if (_ext_level < EXT_BLOCK_STEPS) _ext_level++;
       _ext_block_until = now + (EXT_BLOCK_MIN_MS << (_ext_level - 1));
       _ext_fail_ms = now;
