@@ -139,6 +139,15 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   unsigned long _room_posts_dirty_at, _room_clients_dirty_at;   // lazy saving
   RateLimiter _room_bot_limiter;
 
+  // channels the box listens to + last SOS (FieldMeshChannels.cpp)
+  FmChannel _fm_channels[FM_MAX_CHANNELS];
+  int _fm_num_channels;
+  FmSosEntry _fm_sos[FM_MAX_SOS];
+  int _fm_sos_next;
+  void fmChannelsLoad();
+  void fmChannelsSave();
+  bool fmChannelsHandleCommand(const char* command, char* reply);
+
   bool fmRoomActive() const { return _fm.room_enabled && _room_id_loaded; }
   bool fmRoomLoadIdentity(bool create);
   void fmRoomPrepare(mesh::Packet* pkt);   // set the room identity as sender (src hash)
@@ -227,6 +236,8 @@ protected:
   void onControlDataRecv(mesh::Packet* packet) override;
 #ifdef FIELDMESH_REPEATER
   void onAckRecv(mesh::Packet* packet, uint32_t ack_crc) override;   // ACKs for room post pushes
+  int searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel channels[], int max_matches) override;   // channel list of the box
+  void onGroupDataRecv(mesh::Packet* packet, uint8_t type, const mesh::GroupChannel& channel, uint8_t* data, size_t len) override;   // SOS -> board
 #endif
 
   void sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);

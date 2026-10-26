@@ -765,6 +765,7 @@ bool MyMesh::fmRoomBot(mesh::Packet* pkt, ClientInfo* client, uint32_t sender_ti
     if (is_admin) {
       fmRoomQueuePrivate(client, "Admin: /set offgrid on|off, /set roomserver <name>|on|off, /set room.pass <pw>, /get roomserver");
       fmRoomQueuePrivate(client, "Admin: /room.clear posts|users|pass|name|all - any repeater command works with /, e.g. /get radio");
+      fmRoomQueuePrivate(client, "Admin: /channel.add #name or <name> <hexkey>, /channel.del <name>, /get channels, /get sos");
     }
     return true;
   }

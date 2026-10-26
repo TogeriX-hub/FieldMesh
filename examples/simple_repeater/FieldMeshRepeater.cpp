@@ -24,6 +24,7 @@ void MyMesh::fmBegin() {
     _fm.room_enabled = 0;   // identity file missing (e.g. erased): room stays off until 'set roomserver'
   }
   fmRoomBootPost();   // "Box started (...)" on the board, if the room is on
+  fmChannelsLoad();   // channels the box listens to (SOS)
 }
 
 bool MyMesh::fmSavePrefs() {
@@ -153,6 +154,8 @@ bool MyMesh::fmHandleCommand(uint32_t sender_timestamp, const char* command, cha
     sprintf(reply, "> %s", _fm.room_pass[0] ? _fm.room_pass : "(none)");
     return true;
   }
+  if (fmChannelsHandleCommand(command, reply)) return true;   // channel.add / channel.del / get channels / get sos
+
   if (memcmp(command, "room.clear", 10) == 0 && (command[10] == 0 || command[10] == ' ')) {
     const char* what = &command[10];
     while (*what == ' ') what++;

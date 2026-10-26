@@ -8,6 +8,7 @@
 
 #include <Arduino.h>
 #include <Identity.h>
+#include <Mesh.h>
 #include <helpers/ConfigSerializer.h>
 #include "../companion_radio/OffGrid.h"   // shared Off-Grid parameters (EU/US chosen from the normal frequency)
 
@@ -31,6 +32,23 @@ struct FmRoomPost {
 struct FmRoomPrivate {
   mesh::Identity to;
   FmRoomPost post;
+};
+
+// Channels the box listens to (P4). A channel with "sos" in its name is an SOS channel.
+#define FM_CHANNELS_FILE        "/fm_channels"
+#define FM_MAX_CHANNELS         8
+#define FM_CHANNEL_KEY_LEN      16                   // 128-bit channel key (hashtag and private channels)
+struct FmChannel {
+  char name[32];
+  mesh::GroupChannel channel;   // secret (zero padded) + 1-byte hash
+};
+
+#define FM_MAX_SOS              8                    // last SOS heard (for 'get sos' and the dashboard)
+struct FmSosEntry {
+  char sender[32];
+  char info[64];               // e.g. "48.7636,9.1621 bat78%"
+  uint32_t heard_at;           // by OUR clock
+  unsigned long heard_millis;  // 0 = empty
 };
 
 #define FM_ROOM_POSTS_FILE      "/fm_room_posts"     // board survives a reboot
