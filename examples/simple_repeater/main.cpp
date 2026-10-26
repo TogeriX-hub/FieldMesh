@@ -108,6 +108,9 @@ void setup() {
 
 #ifdef DISPLAY_CLASS
   ui_task.begin(the_mesh.getNodePrefs(), FIRMWARE_BUILD_DATE, FIRMWARE_VERSION);
+#ifdef FIELDMESH_REPEATER
+  ui_task.setFieldMeshHost(&the_mesh);   // FieldMesh menu actions (Off-Grid ...)
+#endif
 #endif
 
 #ifdef ETHERNET_ENABLED
