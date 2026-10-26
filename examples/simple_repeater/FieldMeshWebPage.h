@@ -137,9 +137,9 @@ nav .bdg{position:absolute;top:6px;right:calc(50% - 20px);width:8px;height:8px;b
 <a id="sosban" class="sosban" href="#" data-go="sos" hidden><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><span><b id="sosbt"></b><small id="sosbs"></small></span></a>
 <p id="roomoff" class="hint card" hidden>The board is off. The admin can turn the room server on under Setup.</p>
 <form id="pform" class="card col" autocomplete="off">
-<label for="pname">Your name</label><input id="pname" maxlength="24" placeholder="e.g. Anna">
+<label for="pname">Your name</label><input id="pname" maxlength="24" placeholder="z. B. Anna">
 <label for="ptext">Message to the board</label>
-<div style="display:flex;gap:8px"><input id="ptext" maxlength="120" placeholder="Meeting at the tent at 8"><button class="btn" type="submit">Post</button></div>
+<div style="display:flex;gap:8px"><input id="ptext" maxlength="120" placeholder="z. B. Treffpunkt 20 Uhr am Zelt"><button class="btn" type="submit">Post</button></div>
 <p id="pmsg" class="msg" hidden></p></form>
 <div id="posts" class="list"></div>
 <p id="noposts" class="hint" hidden>No posts yet.</p>
@@ -175,7 +175,7 @@ nav .bdg{position:absolute;top:6px;right:calc(50% - 20px);width:8px;height:8px;b
 <div class="ln" style="left:149px;top:0;width:1px;height:300px"></div><div class="ln" style="left:0;top:149px;width:300px;height:1px"></div>
 <span class="lb" style="left:146px;top:0">N</span><span class="lb" id="r-out" style="left:252px;top:134px"></span><span class="lb" id="r-half" style="left:186px;top:134px"></span>
 <div class="me"></div><div id="rnodes"></div></div>
-<div class="zoom"><button type="button" data-act="zin" aria-label="Zoom in">+</button><span id="r-range"></span><button type="button" data-act="zout" aria-label="Zoom out">&minus;</button></div>
+<div class="zoom"><button type="button" data-act="zout" aria-label="Zoom out">&minus;</button><span id="r-range"></span><button type="button" data-act="zin" aria-label="Zoom in">+</button></div>
 <p class="hint" style="text-align:center" id="r-hint"></p></div>
 </div>
 
@@ -210,7 +210,7 @@ nav .bdg{position:absolute;top:6px;right:calc(50% - 20px);width:8px;height:8px;b
 <section class="card col" style="padding:14px;gap:10px"><h2>Room / board</h2>
 <div class="setrow"><span><b>Room server</b><small id="s-rd">-</small></span><button type="button" class="tgl" id="s-room" data-act="room">-</button></div>
 <label for="s-rn">Name</label><input id="s-rn" maxlength="31">
-<label for="s-rp">Room password (empty = open)</label><input id="s-rp" maxlength="15" placeholder="open" autocomplete="off">
+<label for="s-rp">Room password (empty = open)</label><input id="s-rp" maxlength="15" placeholder="leer = offen" autocomplete="off">
 <button type="button" class="btn ghost" data-act="rsave">Save room settings</button>
 <button type="button" class="btn plain" id="s-reset" data-act="rreset">Reset room…</button>
 <span class="small">Reset deletes posts, users and password. Name stays. Changing the password logs everyone out. Turning the room on or off and renaming it changes the WiFi name: connect again afterwards.</span>
@@ -219,10 +219,18 @@ nav .bdg{position:absolute;top:6px;right:calc(50% - 20px);width:8px;height:8px;b
 <section class="card col" style="padding:14px;gap:10px"><h2>SOS channels</h2>
 <div id="s-ch"></div>
 <label for="s-chn">Channel name (#name for hashtag channels)</label><input id="s-chn" maxlength="31" placeholder="#sos" autocapitalize="none">
-<label for="s-chk">Key (private channels only, 32 hex)</label><input id="s-chk" class="mono" maxlength="32" placeholder="not shown again after saving" autocapitalize="none" autocomplete="off">
+<label for="s-chk">Key (private channels only, 32 hex)</label><input id="s-chk" class="mono" maxlength="32" placeholder="32 Hex-Zeichen" autocapitalize="none" autocomplete="off">
 <button type="button" class="btn ghost" data-act="chadd">Add channel</button>
 <span class="small">A channel whose name contains "sos" is an SOS channel: "!SOS" messages there show up under SOS and on the board.</span>
 <p id="s-chm" class="msg" hidden></p></section>
+
+<section class="card col" style="padding:14px;gap:10px"><h2>Box position</h2>
+<div class="setrow"><span><b id="s-pos">-</b><small id="s-posd">used for distances and the radar</small></span><a id="s-posmap" class="btn plain" style="height:40px;line-height:40px;font-size:14px;text-decoration:none;padding:0 12px;flex-shrink:0" hidden>Map</a></div>
+<label for="s-pin">Paste coordinates or a map link</label><input id="s-pin" placeholder="z. B. 48,70315° N, 9,01809° O" autocapitalize="none" autocomplete="off">
+<p id="s-pres" class="msg" hidden></p>
+<div style="display:flex;gap:8px"><a id="s-pchk" class="btn plain" style="flex:1;display:flex;align-items:center;justify-content:center;text-decoration:none;white-space:nowrap;font-size:15px;padding:0 10px" hidden>Check on map</a><button type="button" class="btn ghost" id="s-psave" data-act="psave" style="flex:1" disabled>Save position</button></div>
+<span class="small">Next to the box: Apple Maps → blue dot → share or copy the coordinates, then paste here. Google Maps links work too, short links do not.</span>
+<p id="s-pm" class="msg" hidden></p></section>
 
 <section class="card col" style="padding:14px;gap:10px"><h2>Team</h2><span class="hint" style="font-size:14px" id="s-team"></span></section>
 
@@ -433,6 +441,43 @@ function renderNet(){
  sync($('n-feed'),(W.feed||[]).map((f,i)=>({k:f.t+'|'+f.y+'|'+f.n+'|'+f.s+'|'+f.h,c:'feed',
   h:'<span><b>'+(TN[f.y]||'?')+' · '+esc(f.n||'-')+'</b><small>'+(okClock(f.t)?hms(f.t):'-')+' · '+(f.f?'flood '+f.h:'direct')+'</small></span><span class="mono">SNR '+f.s.toFixed(1)+'</span>'})));}
 
+// ---- position input: all WGS84, only the notation differs ----
+function num(x){return parseFloat(String(x).replace(',','.'));}
+function parsePos(t){
+ t=String(t||'').trim();if(!t)return null;
+ let m=/[?&](?:ll|q|sll|coordinate|daddr|center|query)=(-?\d+(?:\.\d+)?)\s*(?:,|%2C)\s*(-?\d+(?:\.\d+)?)/i.exec(t)
+  ||/@(-?\d+\.\d+),(-?\d+\.\d+)/.exec(t)||/^geo:(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/i.exec(t);
+ if(m)return chkPos(num(m[1]),num(m[2]));
+ if(/^https?:|maps\.app|goo\.gl/i.test(t))return{err:'No position in this link (short link?). Copy the coordinates instead.'};
+ const s=t.toUpperCase().replace(/[″”“]/g,'"').replace(/[′’‘]/g,"'").replace(/''/g,'"');
+ const N='(\\d+(?:[.,]\\d+)?)',P=N+'\\s*°?\\s*(?:'+N+"\\s*'\\s*)?(?:"+N+'\\s*"\\s*)?';
+ const lead=/^[NSEOW]/.test(s);
+ const re=lead?new RegExp('([NSEOW])\\s*'+P,'g'):new RegExp('(-?)'+P+'([NSEOW])?','g');
+ const parts=[];let x;
+ while((x=re.exec(s))&&parts.length<3){
+  const L=lead?x[1]:x[5],neg=!lead&&x[1]==='-';
+  let v=num(x[2])+(x[3]?num(x[3])/60:0)+(x[4]?num(x[4])/3600:0);
+  if(neg||L==='S'||L==='W')v=-v;
+  parts.push({v:v,l:L||''});}
+ if(parts.length!==2)return{err:'Not recognised. Example: 48,70315° N, 9,01809° O'};
+ let a=parts[0],b=parts[1];
+ if(/[EOW]/.test(a.l)||/[NS]/.test(b.l)){const c=a;a=b;b=c;}   // longitude given first
+ return chkPos(a.v,b.v);}
+function chkPos(la,lo){
+ if(!isFinite(la)||!isFinite(lo)||Math.abs(la)>90||Math.abs(lo)>180)return{err:'Out of range. Check the numbers.'};
+ if(la===0&&lo===0)return{err:'0, 0 is not a real position.'};
+ return{la:Math.round(la*1e5)/1e5,lo:Math.round(lo*1e5)/1e5};}
+let posIn=null;
+function renderPosIn(){
+ const r=posIn,res=$('s-pres');
+ show('s-pchk',!!(r&&!r.err));$('s-psave').disabled=!(r&&!r.err);
+ if(!r){show(res,false);return;}
+ if(r.err){res.className='msg err';setT(res,r.err);show(res,true);return;}
+ const g=geo(r.la,r.lo);
+ res.className='msg';setT(res,'Recognised: '+r.la.toFixed(5)+', '+r.lo.toFixed(5)+(g?' · '+distTxt(g.d)+' '+compass(g.b)+' of the current position':''));show(res,true);
+ $('s-pchk').href=mapUrl(r.la,r.lo,'Box position (new)');}
+$('s-pin').addEventListener('input',e=>{posIn=parsePos(e.target.value);renderPosIn();});
+
 // ---- setup ----
 function fill(id,v){const e=$(id);if(document.activeElement!==e&&!e._dirty&&e.value!==v)e.value=v;}
 ['s-rn','s-rp','s-chn','s-chk'].forEach(id=>$(id).addEventListener('input',e=>{e.target._dirty=true;}));
@@ -440,9 +485,12 @@ function renderSetup(){
  show('lform',!tok);show('adm',!!tok);
  if(!tok)return;
  if(S){setT('s-team',S.team?S.team+(S.team===1?' team member.':' team members.')+' Tap the star next to a node in Mesh to add or remove it.':'No team members yet. Tap the star next to a node in Mesh to add it.');
+  const hasPos=S.lat!=null;setT('s-pos',hasPos?S.lat.toFixed(5)+', '+S.lon.toFixed(5):'No position set');
+  show('s-posmap',hasPos);if(hasPos)$('s-posmap').href=mapUrl(S.lat,S.lon,S.name);
   setT('s-clock',okClock(S.time)?'Box clock: '+new Date(boxNow()*1000).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})+'. Phones that open this page set it (forward only).':'Box clock not set yet.');}
  if(!SET)return;
  const og=$('s-og');setT(og,SET.og?'On':'Off');og.setAttribute('aria-pressed',!!SET.og);
+ setT('s-posd',SET.lp===0?'only used here: adverts carry no position ("gps advert prefs" shares it)':SET.lp===1?'adverts use the GPS position, not this one':'shared in adverts, used for distances and the radar');
  setT('s-ogd',SET.og?'Active on '+SET.of.toFixed(3)+' MHz, normal '+SET.nf.toFixed(3)+' MHz':'Normal '+SET.nf.toFixed(3)+' MHz, Off-Grid '+SET.of.toFixed(3)+' MHz');
  const rb=$('s-room');setT(rb,SET.room?'On':'Off');rb.setAttribute('aria-pressed',!!SET.room);
  setT('s-rd',SET.room?(SET.rp?'password set':'open, no password'):'off · repeater only');
@@ -559,6 +607,8 @@ document.addEventListener('click',e=>{
   if(/\s/.test(n)){msg('s-chm','No spaces in the channel name.',true);return;}
   if(n[0]!=='#'&&!/^[0-9a-fA-F]{32}$/.test(k)){msg('s-chm','A private channel needs its key (32 hex characters).',true);return;}
   run('s-chm',['channel.add '+n+(n[0]==='#'?'':' '+k)]).then(r=>{if(!/^Err/.test(r||'')){const a1=$('s-chn'),a2=$('s-chk');a1.value=a2.value='';a1._dirty=a2._dirty=false;}});}
+ else if(act==='psave'&&posIn&&!posIn.err){
+  const p=posIn;run('s-pm',['set lat '+p.la,'set lon '+p.lo],'Position saved: '+p.la.toFixed(5)+', '+p.lo.toFixed(5)).then(r=>{if(!/^Err/.test(r||'')){$('s-pin').value='';posIn=null;renderPosIn();}});}
  else if(act==='chdel'&&SET){const c=SET.ch[parseInt(a.dataset.i)];if(c!=null)run('s-chm',['channel.del '+c]);}
  else if(act==='wifi')arm('s-wifi','Tap again: WiFi off','Turn WiFi off…',()=>{msg('s-bm','WiFi turns off. Turn it on again in the box menu or with "set wifi on".');adm('set wifi off').catch(()=>{});});
  else if(act==='logout'){post('/api/logout',{k:tok}).catch(()=>{});logoutLocal();}});

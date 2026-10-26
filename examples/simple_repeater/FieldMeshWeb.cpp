@@ -465,6 +465,7 @@ void MyMesh::fmWebBuildSetup(FmJson& j) {
   j.str(_fm.room_pass);
   j.raw(",\"rep\":");
   j.str(_prefs.node_name);
+  j.f(",\"lp\":%u", (unsigned)_prefs.advert_loc_policy);   // 0 none, 1 share (GPS), 2 prefs (set lat/lon)
   j.raw(",\"ch\":[");
   for (int i = 0; i < _fm_num_channels; i++) {
     if (i) j.raw(",");
