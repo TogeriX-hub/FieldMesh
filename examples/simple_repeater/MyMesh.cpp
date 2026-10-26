@@ -879,6 +879,9 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   next_local_advert = next_flood_advert = 0;
   dirty_contacts_expiry = 0;
   set_radio_at = revert_radio_at = 0;
+#ifdef FIELDMESH_REPEATER
+  _fm_advert_after_radio = false;
+#endif
   _logging = false;
   region_load_active = false;
   recv_pkt_region = NULL;
@@ -947,6 +950,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
   _fs = fs;
   // load persisted prefs
   _cli.loadPrefs(_fs);
+#ifdef FIELDMESH_REPEATER
+  fmBegin();   // FieldMesh prefs (Off-Grid state) from their own file
+#endif
   acl.load(_fs, self_id);
   // TODO: key_store.begin();
   region_map.load(_fs);
@@ -1281,6 +1287,10 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
       sendNodeDiscoverReq();
       strcpy(reply, "OK - Discover sent");
     }
+#ifdef FIELDMESH_REPEATER
+  } else if (fmHandleCommand(sender_timestamp, command, reply)) {
+    // FieldMesh command handled
+#endif
   } else{
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
   }
@@ -1311,6 +1321,12 @@ void MyMesh::loop() {
     set_radio_at = 0;                                     // clear timer
     radio_driver.setParams(pending_freq, pending_bw, pending_sf, pending_cr);
     MESH_DEBUG_PRINTLN("Temp radio params");
+#ifdef FIELDMESH_REPEATER
+    if (_fm_advert_after_radio) {   // Off-Grid switch: normal TX->RX cycle on the new params
+      _fm_advert_after_radio = false;
+      sendSelfAdvertisement(500, false);
+    }
+#endif
   }
 
   if (revert_radio_at && millisHasNowPassed(revert_radio_at)) { // revert radio params to orig

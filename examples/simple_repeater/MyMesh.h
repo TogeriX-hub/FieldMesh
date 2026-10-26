@@ -36,6 +36,7 @@
 #include <helpers/RegionMap.h>
 #include <helpers/RoutingPolicy.h>
 #include "RateLimiter.h"
+#include "FieldMeshRepeater.h"   // FieldMesh (only active with FIELDMESH_REPEATER)
 
 #ifdef WITH_BRIDGE
 extern AbstractBridge* bridge;
@@ -78,7 +79,11 @@ struct NeighbourInfo {
 
 #define PACKET_LOG_FILE  "/packet_log"
 
-class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
+class MyMesh : public mesh::Mesh, public CommonCLICallbacks
+#ifdef FIELDMESH_REPEATER
+  , public FieldMeshUIHost
+#endif
+{
   FILESYSTEM* _fs;
   uint32_t last_millis;
   uint64_t uptime_millis;
@@ -110,6 +115,14 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint8_t pending_sf;
   uint8_t pending_cr;
   int  matching_peer_indexes[MAX_CLIENTS];
+#ifdef FIELDMESH_REPEATER
+  FieldMeshRepeaterPrefs _fm;
+  bool _fm_advert_after_radio;   // send a zero-hop advert right after the pending radio params are applied
+
+  void fmBegin();
+  bool fmSavePrefs();
+  bool fmHandleCommand(uint32_t sender_timestamp, const char* command, char* reply);
+#endif
 #if defined(WITH_RS232_BRIDGE)
   RS232Bridge bridge;
 #elif defined(WITH_ESPNOW_BRIDGE)
@@ -253,6 +266,12 @@ public:
   bool hasPendingWork() const;
 
   bool setRxBoostedGain(bool enable) override;
+
+#ifdef FIELDMESH_REPEATER
+  // FieldMeshUIHost
+  bool fmIsOffGrid() const override { return _fm.offgrid != 0; }
+  void fmSetOffGrid(bool on, char* reply) override;
+#endif
 
   #if defined(USE_LR2021)
   virtual bool configSideDetectors(const uint8_t sideDetSFs[], uint8_t num, float bw) override;
