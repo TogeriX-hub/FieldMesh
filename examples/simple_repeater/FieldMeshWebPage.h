@@ -235,6 +235,7 @@ nav .bdg{position:absolute;top:6px;right:calc(50% - 20px);width:8px;height:8px;b
 <section class="card col" style="padding:14px;gap:10px"><h2>Team</h2><span class="hint" style="font-size:14px" id="s-team"></span></section>
 
 <section class="card col" style="padding:14px;gap:10px"><h2>Box</h2><span class="hint" style="font-size:14px" id="s-clock"></span>
+<a class="btn plain" href="/update" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Firmware update</a>
 <button type="button" class="btn plain" id="s-wifi" data-act="wifi">Turn WiFi off…</button>
 <button type="button" class="btn grey" data-act="logout">Log out</button>
 <p id="s-bm" class="msg" hidden></p></section>

@@ -15,7 +15,8 @@
 #include <ESPmDNS.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#include <AsyncElegantOTA.h>
+#include <Update.h>
+#include <elegantWebpage.h>   // ELEGANT_HTML: the upstream update page (AsyncElegantOTA), reused as is
 #include "FieldMeshWebPage.h"   // FM_PAGE: the dashboard (HTML/CSS/JS in one string)
 
 #define FM_WEB_SNAPSHOT_INTERVAL  2000
@@ -109,9 +110,27 @@ static String fmParam(AsyncWebServerRequest* request, const char* name) {
   return String("");
 }
 
+// firmware update from the dashboard (Setup > Firmware update), see fmWebSetupRoutes()
+static volatile unsigned long fm_restart_at = 0;   // set by the web task, done by loop()
+enum { FM_OTA_RUNNING = 1, FM_OTA_FAILED = 2 };
+
+static bool fmTokenCheck(const String& k);
+
 // valid admin token (body/query "k")? extends it. Caller holds no lock.
 static bool fmTokenOk(AsyncWebServerRequest* request) {
-  String k = fmParam(request, "k");
+  return fmTokenCheck(fmParam(request, "k"));
+}
+
+// admin token in the cookie (set at login): the update page is a normal link, no own login
+static bool fmCookieOk(AsyncWebServerRequest* request) {
+  if (!request->hasHeader("Cookie")) return false;
+  String c = request->getHeader("Cookie")->value();
+  int i = c.indexOf("fmtok=");
+  if (i < 0) return false;
+  return fmTokenCheck(c.substring(i + 6, i + 6 + 32));
+}
+
+static bool fmTokenCheck(const String& k) {
   if (k.length() != 32) return false;
   bool ok = false;
   if (xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -212,7 +231,9 @@ static void fmWebSetupRoutes() {
       xSemaphoreGive(fm_snap_mutex);
     }
     if (!ok) { request->send(403); return; }
-    request->send(200, "application/json", String("{\"token\":\"") + token + "\"}");
+    AsyncWebServerResponse* res = request->beginResponse(200, "application/json", String("{\"token\":\"") + token + "\"}");
+    res->addHeader("Set-Cookie", String("fmtok=") + token + "; Path=/; HttpOnly; SameSite=Strict");
+    request->send(res);
   });
   fm_server->on("/api/logout", HTTP_POST, [](AsyncWebServerRequest* request) {
     String k = fmParam(request, "k");
@@ -222,7 +243,51 @@ static void fmWebSetupRoutes() {
       }
       xSemaphoreGive(fm_snap_mutex);
     }
-    request->send(204);
+    AsyncWebServerResponse* res = request->beginResponse(204);
+    res->addHeader("Set-Cookie", "fmtok=; Path=/; Max-Age=0");
+    request->send(res);
+  });
+  // Firmware update (same page and protocol as upstream AsyncElegantOTA, but only for a logged-in
+  // admin: checked once when the upload starts, so nothing is written to flash without login).
+  // Only the app ("firmware"), never the file system (settings, room, identity).
+  fm_server->on("/update", HTTP_GET, [](AsyncWebServerRequest* request) {
+    if (!fmCookieOk(request)) {
+      request->send(403, "text/html", "<meta name=viewport content='width=device-width'><p style='font-family:sans-serif'>Log in under Setup first, then tap Firmware update. <a href='/'>Back</a></p>");
+      return;
+    }
+    AsyncWebServerResponse* res = request->beginResponse(200, "text/html", ELEGANT_HTML, ELEGANT_HTML_SIZE);
+    res->addHeader("Content-Encoding", "gzip");
+    request->send(res);
+  });
+  fm_server->on("/update/identity", HTTP_GET, [](AsyncWebServerRequest* request) {
+    if (!fmCookieOk(request)) { request->send(403); return; }
+    request->send(200, "application/json", String("{\"id\": \"") + fm_web_ssid + "\", \"hardware\": \"ESP32\"}");
+  });
+  fm_server->on("/update", HTTP_POST, [](AsyncWebServerRequest* request) {
+    uint8_t* st = (uint8_t*)request->_tempObject;
+    if (st == NULL) { request->send(403, "text/plain", "Log in under Setup first"); return; }
+    bool ok = *st == FM_OTA_RUNNING && !Update.hasError() && Update.isFinished();
+    AsyncWebServerResponse* res = request->beginResponse(ok ? 200 : 500, "text/plain", ok ? "OK" : "FAIL");
+    res->addHeader("Connection", "close");
+    request->send(res);
+    if (ok) fm_restart_at = (millis() + 2000) | 1;   // restart into the new firmware (loop saves data first)
+  }, [](AsyncWebServerRequest* request, const String& filename, size_t index, uint8_t* data, size_t len, bool final) {
+    if (index == 0) {
+      if (!fmCookieOk(request)) return;   // no state -> 403, nothing written
+      uint8_t* st = (uint8_t*)malloc(1);  // freed with the request
+      if (st == NULL) return;
+      *st = FM_OTA_FAILED;
+      request->_tempObject = st;
+      if (filename == "filesystem") return;   // would wipe settings, room and identity
+      if (Update.isRunning()) Update.abort();
+      if (request->hasParam("MD5", true) && !Update.setMD5(request->getParam("MD5", true)->value().c_str())) return;
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) return;
+      *st = FM_OTA_RUNNING;
+    }
+    uint8_t* st = (uint8_t*)request->_tempObject;
+    if (st == NULL || *st != FM_OTA_RUNNING) return;
+    if (len && Update.write(data, len) != len) { Update.abort(); *st = FM_OTA_FAILED; return; }
+    if (final && !Update.end(true)) *st = FM_OTA_FAILED;
   });
   // setup actions = normal CLI commands, run by loop() like a remote admin CLI
   fm_server->on("/api/admin", HTTP_POST, [](AsyncWebServerRequest* request) {
@@ -512,20 +577,10 @@ bool MyMesh::fmWebStart() {
   return true;
 }
 
-// 'start ota' while the dashboard runs: same update page as upstream (AsyncElegantOTA), but on
-// the dashboard's own server and network. The WiFi is shared with guests, so the page asks
-// for user "admin" and the repeater admin password. Stays until the next restart (as upstream).
+// 'start ota' while the dashboard runs: the update is part of the dashboard (Setup > log in >
+// Firmware update), same page as upstream, no separate network or login.
 void MyMesh::fmWebStartOta(char* reply) {
-  static bool ota_routes = false;
-  if (!ota_routes) {
-    static char id_buf[60];
-    snprintf(id_buf, sizeof(id_buf), "%s (%s)", _prefs.node_name, board.getManufacturerName());
-    AsyncElegantOTA.setID(id_buf);
-    AsyncElegantOTA.begin(fm_server, "admin", _prefs.password);
-    ota_routes = true;
-  }
-  board.setInhibitSleep(true);   // as upstream: no sleep during the update
-  snprintf(reply, 150, "Started: http://192.168.4.1/update (WiFi '%s', login admin + admin password)", fm_web_ssid);
+  snprintf(reply, 150, "Use the dashboard: WiFi '%s', Setup > log in > Firmware update", fm_web_ssid);
 }
 
 void MyMesh::fmWebStop() {
@@ -597,6 +652,13 @@ void MyMesh::fmWebSsid(char* dest, size_t sz) {
 }
 
 void MyMesh::fmWebLoop() {
+  if (fm_restart_at && millisHasNowPassed(fm_restart_at)) {   // after a firmware update
+    if (_fm_team_dirty) fmTeamSave();
+    if (_room_posts_dirty_at) _room_posts_dirty_at = millis();       // pending lazy writes: now
+    if (_room_clients_dirty_at) _room_clients_dirty_at = millis();
+    fmRoomSaveData();
+    ESP.restart();
+  }
   if (!fm_web_running) return;
   fm_dns->processNextRequest();
 
