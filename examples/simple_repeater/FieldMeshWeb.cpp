@@ -250,6 +250,11 @@ static void fmWebSetupRoutes() {
   // Firmware update (same page and protocol as upstream AsyncElegantOTA, but only for a logged-in
   // admin: checked once when the upload starts, so nothing is written to flash without login).
   // Only the app ("firmware"), never the file system (settings, room, identity).
+  // before "/update": a handler for "/update" also takes "/update/..." (ESPAsyncWebServer)
+  fm_server->on("/update/identity", HTTP_GET, [](AsyncWebServerRequest* request) {
+    if (!fmCookieOk(request)) { request->send(403); return; }
+    request->send(200, "application/json", String("{\"id\": \"") + fm_web_ssid + "\", \"hardware\": \"ESP32\"}");
+  });
   fm_server->on("/update", HTTP_GET, [](AsyncWebServerRequest* request) {
     if (!fmCookieOk(request)) {
       request->send(403, "text/html", "<meta name=viewport content='width=device-width'><p style='font-family:sans-serif'>Log in under Setup first, then tap Firmware update. <a href='/'>Back</a></p>");
@@ -258,10 +263,6 @@ static void fmWebSetupRoutes() {
     AsyncWebServerResponse* res = request->beginResponse(200, "text/html", ELEGANT_HTML, ELEGANT_HTML_SIZE);
     res->addHeader("Content-Encoding", "gzip");
     request->send(res);
-  });
-  fm_server->on("/update/identity", HTTP_GET, [](AsyncWebServerRequest* request) {
-    if (!fmCookieOk(request)) { request->send(403); return; }
-    request->send(200, "application/json", String("{\"id\": \"") + fm_web_ssid + "\", \"hardware\": \"ESP32\"}");
   });
   fm_server->on("/update", HTTP_POST, [](AsyncWebServerRequest* request) {
     uint8_t* st = (uint8_t*)request->_tempObject;
