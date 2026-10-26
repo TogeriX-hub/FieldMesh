@@ -210,8 +210,14 @@ bool MyMesh::fmHandleCommand(uint32_t sender_timestamp, const char* command, cha
     return true;
   }
   if (memcmp(command, "start ota", 9) == 0 && fmWebIsOn()) {
-    fmWebStop();   // OTA brings its own access point and web server on port 80
-    return false;  // upstream CLI starts the OTA update
+    // WiFi dashboard is running: add the update page to it instead of the upstream
+    // "MeshCore-OTA" access point (switching networks while the dashboard runs failed)
+    fmWebStartOta(reply);
+    return true;
+  }
+  if (memcmp(command, "start ota", 9) == 0) {
+    fmWebNoteUpstreamOta();   // upstream OTA owns WiFi + port 80 now: dashboard stays off until restart
+    return false;             // upstream CLI starts the OTA update
   }
 
   if (strcmp(command, "room.reset") == 0) {   // same as the menu: posts, users, password; name stays

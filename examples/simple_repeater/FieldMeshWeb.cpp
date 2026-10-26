@@ -15,6 +15,7 @@
 #include <ESPmDNS.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include <AsyncElegantOTA.h>
 #include "FieldMeshWebPage.h"   // FM_PAGE: the dashboard (HTML/CSS/JS in one string)
 
 #define FM_WEB_SNAPSHOT_INTERVAL  2000
@@ -29,6 +30,7 @@ static SemaphoreHandle_t fm_snap_mutex = NULL;
 static char fm_snap[1024] = "{}";
 static volatile uint32_t fm_pending_time = 0;   // phone clock, handed over to loop()
 static bool fm_web_running = false;
+static bool fm_upstream_ota = false;   // upstream 'start ota' ran (own AP + server on port 80)
 static char fm_web_ssid[33] = "";
 static char fm_web_host[64] = "";   // mDNS name without ".local", made from the public name ("BaseCamp" -> "basecamp")
 static unsigned long fm_next_snapshot = 0;
@@ -471,8 +473,13 @@ void MyMesh::fmWebBuildSetup(FmJson& j) {
   j.raw("]}");
 }
 
+void MyMesh::fmWebNoteUpstreamOta() {
+  fm_upstream_ota = true;
+}
+
 bool MyMesh::fmWebStart() {
   if (fm_web_running) return true;
+  if (fm_upstream_ota) return false;   // until restart
   if (fm_snap_mutex == NULL) fm_snap_mutex = xSemaphoreCreateMutex();
   fmSnapAlloc(fm_snap_nodes);
   fmSnapAlloc(fm_snap_net);
@@ -502,6 +509,22 @@ bool MyMesh::fmWebStart() {
   fm_web_running = true;
   fm_next_snapshot = 0;
   return true;
+}
+
+// 'start ota' while the dashboard runs: same update page as upstream (AsyncElegantOTA), but on
+// the dashboard's own server and network. The WiFi is shared with guests, so the page asks
+// for user "admin" and the repeater admin password. Stays until the next restart (as upstream).
+void MyMesh::fmWebStartOta(char* reply) {
+  static bool ota_routes = false;
+  if (!ota_routes) {
+    static char id_buf[60];
+    snprintf(id_buf, sizeof(id_buf), "%s (%s)", _prefs.node_name, board.getManufacturerName());
+    AsyncElegantOTA.setID(id_buf);
+    AsyncElegantOTA.begin(fm_server, "admin", _prefs.password);
+    ota_routes = true;
+  }
+  board.setInhibitSleep(true);   // as upstream: no sleep during the update
+  snprintf(reply, 150, "Started: http://192.168.4.1/update (WiFi '%s', login admin + admin password)", fm_web_ssid);
 }
 
 void MyMesh::fmWebStop() {
@@ -712,14 +735,16 @@ void MyMesh::fmSetWifi(bool on, char* reply) {
     if (fmWebStart()) {
       snprintf(tmp, sizeof(tmp), "OK - WiFi '%s' on, http://%s.local", fm_web_ssid, fm_web_host);
     } else {
-      strcpy(tmp, "Err - WiFi could not start");
+      strcpy(tmp, fm_upstream_ota ? "Err - OTA update running, restart first" : "Err - WiFi could not start");
     }
   } else {
     fmWebStop();
     strcpy(tmp, "OK - WiFi off");
   }
-  _fm.wifi_enabled = on && fm_web_running ? 1 : 0;
-  fmSavePrefs();
+  if (!(on && fm_upstream_ota)) {   // refused during an OTA update: keep the saved setting
+    _fm.wifi_enabled = on && fm_web_running ? 1 : 0;
+    fmSavePrefs();
+  }
   if (reply) strcpy(reply, tmp);
 }
 
@@ -727,6 +752,8 @@ void MyMesh::fmSetWifi(bool on, char* reply) {
 // not ESP32: no WiFi dashboard
 bool MyMesh::fmWebStart() { return false; }
 void MyMesh::fmWebStop() { }
+void MyMesh::fmWebStartOta(char* reply) { if (reply) reply[0] = 0; }
+void MyMesh::fmWebNoteUpstreamOta() { }
 bool MyMesh::fmWebIsOn() const { return false; }
 int MyMesh::fmWebStations() const { return 0; }
 const char* MyMesh::fmWebCurrentSsid() const { return ""; }

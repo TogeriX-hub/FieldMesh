@@ -164,6 +164,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void fmWebBuildSetup(struct FmJson& j);
   bool fmWebStart();
   void fmWebStop();
+  void fmWebStartOta(char* reply);
+  void fmWebNoteUpstreamOta();
   bool fmWebIsOn() const;
   int  fmWebStations() const;
   const char* fmWebCurrentSsid() const;
