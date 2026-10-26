@@ -477,6 +477,9 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 }
 
 void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
+#ifdef FIELDMESH_REPEATER
+  fmStatsRx(pkt);   // dashboard counters (FieldMeshStats.cpp)
+#endif
 #ifdef WITH_BRIDGE
   if (_prefs.bridge_pkt_src == 1) {
     bridge.sendPacket(pkt);
@@ -503,6 +506,9 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
 }
 
 void MyMesh::logTx(mesh::Packet *pkt, int len) {
+#ifdef FIELDMESH_REPEATER
+  fmStatsTx(pkt);
+#endif
 #ifdef WITH_BRIDGE
   if (_prefs.bridge_pkt_src == 0) {
     bridge.sendPacket(pkt);
@@ -653,6 +659,9 @@ static bool isShare(const mesh::Packet *packet) {
 void MyMesh::onAdvertRecv(mesh::Packet *packet, const mesh::Identity &id, uint32_t timestamp,
                           const uint8_t *app_data, size_t app_data_len) {
   mesh::Mesh::onAdvertRecv(packet, id, timestamp, app_data, app_data_len); // chain to super impl
+#ifdef FIELDMESH_REPEATER
+  fmNodeHeard(packet, id, app_data, app_data_len);   // dashboard node table (FieldMeshStats.cpp)
+#endif
 
   // if this a zero hop advert (and not via 'Share'), add it to neighbours
   if (packet->getPathHashCount() == 0 && !isShare(packet)) {
@@ -899,6 +908,20 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _fm_num_channels = 0;
   _fm_clock_saved = 0;
   _fm_clock_next_save = 0;
+  _fm_nodes = NULL;
+  _fm_max_nodes = 0;
+  _fm_num_team = 0;
+  memset(_fm_act, 0, sizeof(_fm_act));
+  _fm_act_idx = 0;
+  _fm_act_next = 0;
+  _fm_act_air_mark = 0;
+  memset(_fm_type_counts, 0, sizeof(_fm_type_counts));
+  memset(_fm_feed, 0, sizeof(_fm_feed));
+  _fm_feed_next = 0;
+  _fm_env_temp = _fm_env_hum = 0;
+  _fm_env_flags = 0;
+  _fm_env_next = 0;
+  _fm_boot_reason = NULL;
   memset(_fm_sos, 0, sizeof(_fm_sos));
   _fm_sos_next = 0;
 #endif
@@ -1372,6 +1395,7 @@ void MyMesh::loop() {
 
 #ifdef FIELDMESH_REPEATER
   fmRoomLoop();   // push new room posts to logged-in clients
+  fmStatsLoop();  // dashboard data: activity buckets, box sensor
   fmWebLoop();    // WiFi dashboard: captive DNS, snapshot, phone clock
 #endif
 

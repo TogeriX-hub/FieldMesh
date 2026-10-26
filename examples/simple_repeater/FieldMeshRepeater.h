@@ -51,6 +51,44 @@ struct FmSosEntry {
   unsigned long heard_millis;  // 0 = empty
 };
 
+// ---- dashboard data (P5b, FieldMeshStats.cpp) ----
+#define FM_MAX_NODES            300                  // nodes heard (adverts); PSRAM, oldest non-team node replaced
+#define FM_MAX_NODES_NO_PSRAM   60
+struct FmNode {
+  uint8_t  pub_key[PUB_KEY_SIZE];
+  char     name[32];
+  uint8_t  type;          // ADV_TYPE_*
+  uint8_t  hops;          // path length of the advert (0 = direct)
+  int8_t   snr4;          // SNR x 4 of the advert
+  uint8_t  has_pos;
+  int32_t  lat, lon;      // x 1e6
+  uint32_t heard_at;      // our clock (0 = empty slot)
+  uint32_t pos_at;        // our clock, when the last position came in
+  uint16_t adverts;       // adverts heard since start
+};
+
+#define FM_TEAM_FILE            "/fm_team"           // team members (favourites), set by the admin
+#define FM_MAX_TEAM             32
+
+#define FM_ACT_BUCKETS          30                   // activity: 30 x 2 min = last hour
+#define FM_ACT_BUCKET_MS        120000
+struct FmActBucket {
+  uint16_t rx, tx;
+  uint32_t tx_air_ms;     // own transmit time in this bucket (duty cycle)
+};
+
+#define FM_FEED_SIZE            30                   // last packets (live list)
+struct FmFeedEntry {
+  uint32_t at;            // our clock (0 = empty)
+  uint8_t  type;          // PAYLOAD_TYPE_*
+  uint8_t  flood;         // 1 = flood, 0 = direct
+  uint8_t  hops;
+  int8_t   snr4;
+  uint8_t  src_hash;      // sender hash if the type has one
+  uint8_t  has_src;
+  uint8_t  advert_key[4]; // advert: first bytes of the sender key (name looked up later)
+};
+
 #define FM_CLOCK_FILE           "/fm_clock"          // clock high-water mark (no battery-backed clock on the G2)
 #define FM_CLOCK_SAVE_INTERVAL  300000               // 5 min
 

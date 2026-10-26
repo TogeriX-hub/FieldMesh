@@ -31,6 +31,70 @@ static bool fm_web_running = false;
 static char fm_web_ssid[33] = "";
 static char fm_web_host[64] = "";   // mDNS name without ".local", made from the public name ("BaseCamp" -> "basecamp")
 static unsigned long fm_next_snapshot = 0;
+static unsigned long fm_next_big_snapshot = 0;
+
+// bigger snapshots (P5c), in PSRAM (malloc > 4 KB goes to PSRAM on the G2)
+struct FmSnap { char* buf; size_t cap; size_t len; };
+static FmSnap fm_snap_nodes = { NULL, 48000, 0 };
+static FmSnap fm_snap_net   = { NULL, 8000, 0 };
+static FmSnap fm_snap_board = { NULL, 12000, 0 };
+#define FM_WEB_BIG_SNAPSHOT_INTERVAL  5000
+#define FM_WEB_NODES_MAX_AGE          86400   // s: nodes not heard for a day are left out
+#define FM_WEB_POST_NAME_MAX          24
+#define FM_WEB_POST_TEXT_MAX          120
+
+// post from the WiFi page, handed over to loop()
+static char fm_post_name[FM_WEB_POST_NAME_MAX + 1];
+static char fm_post_text[FM_WEB_POST_TEXT_MAX + 1];
+static bool fm_post_pending = false;   // guarded by fm_snap_mutex
+
+// small JSON writer (bounded, never overflows)
+struct FmJson {
+  char* dp; char* end;
+  FmJson(char* buf, size_t cap) : dp(buf), end(buf + cap - 1) { }
+  void raw(const char* s) { while (*s && dp < end) *dp++ = *s++; }
+  void f(const char* fmt, ...) {
+    if (dp >= end) return;
+    va_list ap; va_start(ap, fmt);
+    int n = vsnprintf(dp, end - dp + 1, fmt, ap);
+    va_end(ap);
+    if (n > 0) dp = (dp + n > end) ? end : dp + n;
+  }
+  void str(const char* s) {
+    if (dp < end) *dp++ = '"';
+    for (; *s && dp < end - 7; s++) {
+      unsigned char c = (unsigned char)*s;
+      if (c == '"' || c == '\\') { *dp++ = '\\'; *dp++ = c; }
+      else if (c < 0x20) { dp += snprintf(dp, end - dp, "\\u%04x", c); }
+      else *dp++ = c;
+    }
+    if (dp < end) *dp++ = '"';
+  }
+  size_t done(char* buf) { *dp = 0; return dp - buf; }
+};
+
+static void fmSendSnap(AsyncWebServerRequest* request, FmSnap& snap) {
+  String body;
+  if (fm_snap_mutex && xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    if (snap.buf && snap.len) body = snap.buf; else body = "{}";
+    xSemaphoreGive(fm_snap_mutex);
+  } else {
+    body = "{}";
+  }
+  AsyncWebServerResponse* res = request->beginResponse(200, "application/json", body);
+  res->addHeader("Cache-Control", "no-store");
+  request->send(res);
+}
+
+static void fmCleanInput(char* dest, size_t sz, const String& src) {
+  size_t n = 0;
+  for (size_t i = 0; i < src.length() && n + 1 < sz; i++) {
+    unsigned char c = (unsigned char)src[i];
+    dest[n++] = (c < 0x20) ? ' ' : c;   // no control characters (newlines) on the board
+  }
+  dest[n] = 0;
+  while (n > 0 && dest[n - 1] == ' ') dest[--n] = 0;
+}
 
 // ---- the page (P5a: status only; full dashboard in P5e) ----
 static const char FM_PAGE[] PROGMEM = R"HTML(<!doctype html>
@@ -124,6 +188,27 @@ static void fmWebSetupRoutes() {
     res->addHeader("Cache-Control", "no-store");
     request->send(res);
   });
+  fm_server->on("/api/nodes", HTTP_GET, [](AsyncWebServerRequest* request) { fmSendSnap(request, fm_snap_nodes); });
+  fm_server->on("/api/network", HTTP_GET, [](AsyncWebServerRequest* request) { fmSendSnap(request, fm_snap_net); });
+  fm_server->on("/api/board", HTTP_GET, [](AsyncWebServerRequest* request) { fmSendSnap(request, fm_snap_board); });
+  fm_server->on("/api/post", HTTP_POST, [](AsyncWebServerRequest* request) {
+    if (!request->hasParam("t", true)) { request->send(400); return; }
+    char name[FM_WEB_POST_NAME_MAX + 1], text[FM_WEB_POST_TEXT_MAX + 1];
+    fmCleanInput(text, sizeof(text), request->getParam("t", true)->value());
+    fmCleanInput(name, sizeof(name), request->hasParam("n", true) ? request->getParam("n", true)->value() : String(""));
+    if (text[0] == 0) { request->send(400); return; }
+    bool ok = false;
+    if (fm_snap_mutex && xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+      if (!fm_post_pending) {
+        strcpy(fm_post_name, name);
+        strcpy(fm_post_text, text);
+        fm_post_pending = true;
+        ok = true;
+      }
+      xSemaphoreGive(fm_snap_mutex);
+    }
+    request->send(ok ? 202 : 429);   // 429: previous post not taken over yet, try again
+  });
   fm_server->on("/api/ping", HTTP_GET, [](AsyncWebServerRequest* request) {
     AsyncWebServerResponse* res = request->beginResponse(204);
     res->addHeader("Access-Control-Allow-Origin", "*");   // reachability check from the IP address
@@ -144,9 +229,187 @@ static void fmWebSetupRoutes() {
   });
 }
 
+static void fmSnapAlloc(FmSnap& s) {
+  if (s.buf == NULL) {
+    s.buf = (char*)malloc(s.cap);   // > 4 KB: PSRAM
+    if (s.buf) { s.buf[0] = 0; s.len = 0; }
+  }
+}
+
+// ---- snapshot builders (run in loop(), mesh data only read here) ----
+
+static const char* fmHex3(const uint8_t* k) {
+  static char tmp[8];
+  snprintf(tmp, sizeof(tmp), "%02X%02X%02X", k[0], k[1], k[2]);
+  return tmp;
+}
+
+void MyMesh::fmWebBuildNodes(FmJson& j) {
+  uint32_t now = getRTCClock()->getCurrentTime();
+  j.f("{\"now\":%lu,\"nodes\":[", (unsigned long)now);
+  bool first = true;
+  for (int i = 0; i < _fm_max_nodes; i++) {
+    FmNode& n = _fm_nodes[i];
+    if (n.heard_at == 0) continue;
+    bool team = fmTeamHas(n.pub_key);
+    if (!team && now > n.heard_at + FM_WEB_NODES_MAX_AGE) continue;
+    if (j.dp > j.end - 200) break;   // full: rest left out
+    if (!first) j.raw(",");
+    first = false;
+    j.f("{\"k\":\"%02x%02x%02x%02x%02x%02x\",\"n\":", n.pub_key[0], n.pub_key[1], n.pub_key[2], n.pub_key[3], n.pub_key[4], n.pub_key[5]);
+    j.str(n.name[0] ? n.name : fmHex3(n.pub_key));
+    j.f(",\"y\":%u,\"h\":%u,\"s\":%.1f,\"a\":%lu,\"c\":%u,\"tm\":%d",
+        (unsigned)n.type, (unsigned)n.hops, n.snr4 / 4.0f, (unsigned long)n.heard_at, (unsigned)n.adverts, team ? 1 : 0);
+    if (n.has_pos) {
+      j.f(",\"la\":%.6f,\"lo\":%.6f,\"pa\":%lu", n.lat / 1e6, n.lon / 1e6, (unsigned long)n.pos_at);
+    }
+    j.raw("}");
+  }
+  j.raw("]}");
+}
+
+void MyMesh::fmWebBuildNetwork(FmJson& j) {
+  j.f("{\"now\":%lu,\"act\":[", (unsigned long)getRTCClock()->getCurrentTime());
+  for (int k = 1; k <= FM_ACT_BUCKETS; k++) {   // oldest first, current bucket last
+    FmActBucket& b = _fm_act[(_fm_act_idx + k) % FM_ACT_BUCKETS];
+    j.f("%s[%u,%u]", k > 1 ? "," : "", (unsigned)b.rx, (unsigned)b.tx);
+  }
+  j.f("],\"duty_ms\":%lu,\"types\":[", (unsigned long)fmDutyMillisLastHour());
+  for (int t = 0; t < 16; t++) j.f("%s%lu", t ? "," : "", (unsigned long)_fm_type_counts[t]);
+  j.raw("],\"feed\":[");
+  bool first = true;
+  for (int k = 1; k <= FM_FEED_SIZE; k++) {   // newest first
+    FmFeedEntry& e = _fm_feed[(_fm_feed_next - k + FM_FEED_SIZE) % FM_FEED_SIZE];
+    if (e.at == 0) continue;
+    if (!first) j.raw(",");
+    first = false;
+    j.f("{\"t\":%lu,\"y\":%u,\"f\":%u,\"h\":%u,\"s\":%.1f,\"n\":", (unsigned long)e.at, (unsigned)e.type,
+        (unsigned)e.flood, (unsigned)e.hops, e.snr4 / 4.0f);
+    char hex[8] = "";
+    const char* name = NULL;
+    if (e.has_src == 1) {
+      name = fmNodeNameByHash(e.src_hash);
+      snprintf(hex, sizeof(hex), "%02X", e.src_hash);
+    } else if (e.has_src == 2) {
+      FmNode* n = fmNodeFind(e.advert_key, sizeof(e.advert_key));
+      if (n && n->name[0]) name = n->name;
+      snprintf(hex, sizeof(hex), "%02X%02X", e.advert_key[0], e.advert_key[1]);
+    }
+    j.str(name ? name : hex);
+    j.raw("}");
+  }
+  j.raw("],\"nb\":[");
+  first = true;
+#if MAX_NEIGHBOURS
+  for (int i = 0; i < MAX_NEIGHBOURS; i++) {
+    NeighbourInfo& nb = neighbours[i];
+    if (nb.heard_timestamp == 0) continue;
+    if (!first) j.raw(",");
+    first = false;
+    FmNode* n = fmNodeFind(nb.id.pub_key, PUB_KEY_SIZE);
+    j.raw("{\"n\":");
+    j.str(n && n->name[0] ? n->name : fmHex3(nb.id.pub_key));
+    j.f(",\"s\":%.1f,\"a\":%lu}", nb.snr / 4.0f, (unsigned long)nb.heard_timestamp);
+  }
+#endif
+  j.raw("],\"col\":[");   // hash collisions: nodes sharing the 1-byte ID
+  int groups = 0;
+  for (int i = 0; i < _fm_max_nodes && groups < 5; i++) {
+    FmNode& a = _fm_nodes[i];
+    if (a.heard_at == 0) continue;
+    bool seen_before = false;
+    for (int k = 0; k < i; k++) {
+      if (_fm_nodes[k].heard_at && _fm_nodes[k].pub_key[0] == a.pub_key[0]) { seen_before = true; break; }
+    }
+    if (seen_before) continue;
+    int count = 0;
+    for (int k = i + 1; k < _fm_max_nodes; k++) {
+      if (_fm_nodes[k].heard_at && _fm_nodes[k].pub_key[0] == a.pub_key[0]) count++;
+    }
+    if (count == 0) continue;
+    j.f("%s{\"id\":\"%02X\",\"n\":[", groups ? "," : "", a.pub_key[0]);
+    j.str(a.name);
+    int listed = 1;
+    for (int k = i + 1; k < _fm_max_nodes && listed < 4; k++) {
+      if (_fm_nodes[k].heard_at && _fm_nodes[k].pub_key[0] == a.pub_key[0]) {
+        j.raw(",");
+        j.str(_fm_nodes[k].name);
+        listed++;
+      }
+    }
+    j.raw("]}");
+    groups++;
+  }
+  j.f("],\"st\":{\"rx\":%lu,\"tx\":%lu,\"rf\":%lu,\"rd\":%lu,\"sf\":%lu,\"sd\":%lu,\"df\":%lu,\"dd\":%lu"
+      ",\"err\":%lu,\"rxair\":%lu,\"txair\":%lu,\"snr\":%.1f,\"rssi\":%d}}",
+      (unsigned long)radio_driver.getPacketsRecv(), (unsigned long)radio_driver.getPacketsSent(),
+      (unsigned long)getNumRecvFlood(), (unsigned long)getNumRecvDirect(),
+      (unsigned long)getNumSentFlood(), (unsigned long)getNumSentDirect(),
+      (unsigned long)((SimpleMeshTables *)getTables())->getNumFloodDups(), (unsigned long)((SimpleMeshTables *)getTables())->getNumDirectDups(),
+      (unsigned long)radio_driver.getPacketsRecvErrors(), (unsigned long)(getReceiveAirTime() / 1000), (unsigned long)(getTotalAirTime() / 1000),
+      radio_driver.getLastSNR(), (int)radio_driver.getLastRSSI());
+}
+
+void MyMesh::fmWebBuildBoard(FmJson& j) {
+  j.f("{\"now\":%lu,\"room\":%s,\"posts\":[", (unsigned long)getRTCClock()->getCurrentTime(), fmRoomActive() ? "true" : "false");
+  bool first = true;
+  for (int k = 1; k <= FM_ROOM_MAX_POSTS; k++) {   // newest first
+    FmRoomPost& p = _room_posts[(_room_next_post_idx - k + FM_ROOM_MAX_POSTS) % FM_ROOM_MAX_POSTS];
+    if (p.post_timestamp == 0) continue;
+    if (!first) j.raw(",");
+    first = false;
+    char author[48];
+    const char* text = p.text;
+    char kind = 'p';   // p = post from the mesh, w = WiFi, s = SOS, y = box (system)
+    if (_room_id_loaded && p.author.matches(_room_id)) {
+      const char* wifi = strstr(p.text, " (WiFi): ");
+      if (memcmp(p.text, "SOS from ", 9) == 0) {
+        kind = 's';
+        StrHelper::strncpy(author, fmRoomName(), sizeof(author));
+      } else if (wifi) {
+        kind = 'w';
+        int n = wifi - p.text + 7;   // "Name (WiFi)"
+        if (n > (int)sizeof(author) - 1) n = sizeof(author) - 1;
+        memcpy(author, p.text, n);
+        author[n] = 0;
+        text = wifi + 9;
+      } else {
+        kind = 'y';
+        StrHelper::strncpy(author, fmRoomName(), sizeof(author));
+      }
+    } else {
+      FmNode* n = fmNodeFind(p.author.pub_key, PUB_KEY_SIZE);
+      if (n && n->name[0]) StrHelper::strncpy(author, n->name, sizeof(author));
+      else snprintf(author, sizeof(author), "user %s", fmHex3(p.author.pub_key));
+    }
+    j.f("{\"k\":\"%c\",\"t\":%lu,\"a\":", kind, (unsigned long)p.post_timestamp);
+    j.str(author);
+    j.raw(",\"x\":");
+    j.str(text);
+    j.raw("}");
+  }
+  j.raw("],\"sos\":[");
+  first = true;
+  for (int k = 1; k <= FM_MAX_SOS; k++) {   // newest first
+    FmSosEntry& e = _fm_sos[(_fm_sos_next - k + FM_MAX_SOS) % FM_MAX_SOS];
+    if (e.heard_millis == 0) continue;
+    if (!first) j.raw(",");
+    first = false;
+    j.raw("{\"s\":");
+    j.str(e.sender);
+    j.raw(",\"i\":");
+    j.str(e.info);
+    j.f(",\"t\":%lu}", (unsigned long)e.heard_at);
+  }
+  j.raw("]}");
+}
+
 bool MyMesh::fmWebStart() {
   if (fm_web_running) return true;
   if (fm_snap_mutex == NULL) fm_snap_mutex = xSemaphoreCreateMutex();
+  fmSnapAlloc(fm_snap_nodes);
+  fmSnapAlloc(fm_snap_net);
+  fmSnapAlloc(fm_snap_board);
 
   fmWebSsid(fm_web_ssid, sizeof(fm_web_ssid));
   WiFi.mode(WIFI_AP);
@@ -256,8 +519,45 @@ void MyMesh::fmWebLoop() {
     }
   }
 
+  // post from the WiFi page -> room board, as "Name (WiFi): text" by the room itself
+  if (xSemaphoreTake(fm_snap_mutex, 0) == pdTRUE) {
+    if (fm_post_pending) {
+      if (fmRoomActive()) {
+        char msg[FM_ROOM_POST_TEXT_LEN + 1];
+        snprintf(msg, sizeof(msg), "%s (WiFi): %s", fm_post_name[0] ? fm_post_name : "Guest", fm_post_text);
+        fmRoomStorePost(_room_id, msg);
+        fm_next_snapshot = 0;   // show it right away
+      }
+      fm_post_pending = false;
+    }
+    xSemaphoreGive(fm_snap_mutex);
+  }
+
   if (fm_next_snapshot && !millisHasNowPassed(fm_next_snapshot)) return;
   fm_next_snapshot = futureMillis(FM_WEB_SNAPSHOT_INTERVAL);
+
+  bool viewers = fmWebStations() > 0;
+  if (viewers && fm_snap_board.buf && xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+    FmJson j(fm_snap_board.buf, fm_snap_board.cap);
+    fmWebBuildBoard(j);
+    fm_snap_board.len = j.done(fm_snap_board.buf);
+    xSemaphoreGive(fm_snap_mutex);
+  }
+  if (viewers && (fm_next_big_snapshot == 0 || millisHasNowPassed(fm_next_big_snapshot))) {
+    fm_next_big_snapshot = futureMillis(FM_WEB_BIG_SNAPSHOT_INTERVAL);
+    if (fm_snap_nodes.buf && xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+      FmJson j(fm_snap_nodes.buf, fm_snap_nodes.cap);
+      fmWebBuildNodes(j);
+      fm_snap_nodes.len = j.done(fm_snap_nodes.buf);
+      xSemaphoreGive(fm_snap_mutex);
+    }
+    if (fm_snap_net.buf && xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+      FmJson j(fm_snap_net.buf, fm_snap_net.cap);
+      fmWebBuildNetwork(j);
+      fm_snap_net.len = j.done(fm_snap_net.buf);
+      xSemaphoreGive(fm_snap_mutex);
+    }
+  }
 
   // public name changed (room renamed / switched, repeater renamed): restart the access point
   char want[33];
@@ -278,12 +578,24 @@ void MyMesh::fmWebLoop() {
   dp += snprintf(dp, end - dp,
     ",\"offgrid\":%s,\"freq\":%.4f,\"sf\":%u,\"bw\":%.1f,\"cr\":%u"
     ",\"room\":%s,\"posts\":%d,\"users\":%d,\"stations\":%d"
-    ",\"uptime\":%lu,\"time\":%lu,\"noise\":%d,\"rx\":%lu,\"tx\":%lu,\"airtime\":%lu}",
+    ",\"uptime\":%lu,\"time\":%lu,\"noise\":%d,\"rx\":%lu,\"tx\":%lu,\"airtime\":%lu",
     _fm.offgrid ? "true" : "false", _prefs.freq, (unsigned)_prefs.sf, _prefs.bw, (unsigned)_prefs.cr,
     fmRoomActive() ? "true" : "false", fmRoomNumPosts(), _room_acl.getNumClients(), fmWebStations(),
     (unsigned long)(uptime_millis / 1000), (unsigned long)getRTCClock()->getCurrentTime(),
     (int)_radio->getNoiseFloor(), (unsigned long)radio_driver.getPacketsRecv(),
     (unsigned long)radio_driver.getPacketsSent(), (unsigned long)(getTotalAirTime() / 1000));
+  {
+    // box position (distances/radar on the page), sensor, duty cycle, team size, start reason
+    double lat = _prefs.advert_loc_policy == ADVERT_LOC_SHARE ? sensors.node_lat : _prefs.node_lat;
+    double lon = _prefs.advert_loc_policy == ADVERT_LOC_SHARE ? sensors.node_lon : _prefs.node_lon;
+    if (lat != 0.0 || lon != 0.0) dp += snprintf(dp, end - dp, ",\"lat\":%.6f,\"lon\":%.6f", lat, lon);
+    if (_fm_env_flags & 1) dp += snprintf(dp, end - dp, ",\"temp\":%.1f", _fm_env_temp);
+    if (_fm_env_flags & 2) dp += snprintf(dp, end - dp, ",\"hum\":%.0f", _fm_env_hum);
+    if (_fm_env_flags & 4) dp += snprintf(dp, end - dp, ",\"mcu\":%.0f", _fm_env_temp);
+    dp += snprintf(dp, end - dp, ",\"duty_ms\":%lu,\"team\":%d,\"boot\":", (unsigned long)fmDutyMillisLastHour(), _fm_num_team);
+    fmJsonStr(dp, end, _fm_boot_reason ? _fm_boot_reason : "");
+    if (dp < end) *dp++ = '}';
+  }
   *dp = 0;
 
   if (xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {

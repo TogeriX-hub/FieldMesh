@@ -126,7 +126,41 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void fmClockRestore();
   void fmClockSaveLoop();
 
+  // dashboard data (FieldMeshStats.cpp)
+  FmNode* _fm_nodes;            // PSRAM if available
+  int _fm_max_nodes;
+  uint8_t _fm_team[FM_MAX_TEAM][PUB_KEY_SIZE];
+  int _fm_num_team;
+  FmActBucket _fm_act[FM_ACT_BUCKETS];
+  int _fm_act_idx;
+  unsigned long _fm_act_next;
+  unsigned long _fm_act_air_mark;
+  uint32_t _fm_type_counts[16];
+  FmFeedEntry _fm_feed[FM_FEED_SIZE];
+  int _fm_feed_next;
+  float _fm_env_temp, _fm_env_hum;
+  uint8_t _fm_env_flags;        // 1 = temp from sensor, 2 = humidity, 4 = temp from MCU
+  unsigned long _fm_env_next;
+  void fmStatsBegin();
+  void fmStatsLoop();
+  void fmStatsRx(const mesh::Packet* pkt);
+  void fmStatsTx(const mesh::Packet* pkt);
+  void fmNodeHeard(const mesh::Packet* pkt, const mesh::Identity& id, const uint8_t* app_data, size_t app_data_len);
+  FmNode* fmNodeFind(const uint8_t* key, int key_len);
+  const char* fmNodeNameByHash(uint8_t hash);   // NULL if unknown or ambiguous
+  bool fmTeamHas(const uint8_t* pub_key) const;
+  bool fmTeamSet(const uint8_t* pub_key, bool on);
+  void fmTeamLoad();
+  void fmTeamSave();
+  bool fmStatsHandleCommand(const char* command, char* reply);
+  uint32_t fmDutyMillisLastHour();
+
+  const char* _fm_boot_reason;
+
   // WiFi dashboard (FieldMeshWeb.cpp)
+  void fmWebBuildNodes(struct FmJson& j);
+  void fmWebBuildNetwork(struct FmJson& j);
+  void fmWebBuildBoard(struct FmJson& j);
   bool fmWebStart();
   void fmWebStop();
   bool fmWebIsOn() const;

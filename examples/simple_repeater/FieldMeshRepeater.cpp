@@ -8,6 +8,7 @@
 
 void MyMesh::fmBegin() {
   fmClockRestore();   // before anything gets a timestamp
+  _fm_boot_reason = board.getResetReasonString(board.getResetReason());   // for the dashboard
 
   if (fmFsExists(_fs, FM_REPEATER_PREFS_FILE)) {
     File file = fmFsOpenRead(_fs, FM_REPEATER_PREFS_FILE);
@@ -24,6 +25,7 @@ void MyMesh::fmBegin() {
   }
   fmRoomBootPost();   // "Box started (...)" on the board, if the room is on
   fmChannelsLoad();   // channels the box listens to (SOS)
+  fmStatsBegin();     // dashboard data: node table, team
   if (_fm.wifi_enabled) fmWebStart();   // WiFi dashboard (FieldMeshWeb.cpp)
 }
 
@@ -185,6 +187,7 @@ bool MyMesh::fmHandleCommand(uint32_t sender_timestamp, const char* command, cha
     return true;
   }
   if (fmChannelsHandleCommand(command, reply)) return true;   // channel.add / channel.del / get channels / get sos
+  if (fmStatsHandleCommand(command, reply)) return true;      // team.add / team.del / get team / get nodes
 
   if (strcmp(command, "set wifi on") == 0) {
     fmSetWifi(true, reply);
