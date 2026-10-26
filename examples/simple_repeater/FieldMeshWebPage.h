@@ -212,9 +212,16 @@ nav .bdg{position:absolute;top:6px;right:calc(50% - 20px);width:8px;height:8px;b
 <label for="s-rn">Name</label><input id="s-rn" maxlength="31">
 <label for="s-rp">Room password (empty = open)</label><input id="s-rp" maxlength="15" placeholder="leer = offen" autocomplete="off">
 <button type="button" class="btn ghost" data-act="rsave">Save room settings</button>
+<p id="s-rm" class="msg" hidden></p>
+<h2 style="margin-top:6px">Clean up</h2>
+<div class="col">
+<button type="button" class="btn plain" id="s-cposts" data-act="cposts">Delete all posts…</button>
+<button type="button" class="btn plain" id="s-cusers" data-act="cusers">Log out all users…</button>
 <button type="button" class="btn plain" id="s-reset" data-act="rreset">Reset room…</button>
-<span class="small">Reset deletes posts, users and password. Name stays. Changing the password logs everyone out. Turning the room on or off and renaming it changes the WiFi name: connect again afterwards.</span>
-<p id="s-rm" class="msg" hidden></p></section>
+<button type="button" class="btn plain" id="s-call" data-act="call">Clear everything…</button>
+</div>
+<span class="small">Each button asks once more. Reset: posts, users and password, the name stays. Clear everything: also the name (back to the repeater name, the WiFi name changes). Changing the password logs everyone out. Turning the room on or off and renaming it changes the WiFi name: connect again afterwards.</span>
+<p id="s-cm" class="msg" hidden></p></section>
 
 <section class="card col" style="padding:14px;gap:10px"><h2>SOS channels</h2>
 <div id="s-ch"></div>
@@ -601,7 +608,10 @@ document.addEventListener('click',e=>{
   if(name&&name!==SET.rn){if(SET.room)cmds.push('set roomserver '+name);else{msg('s-rm','The room is off: the name is used when you turn it on.');return;}}
   if(!cmds.length){msg('s-rm','Nothing changed.');return;}
   run('s-rm',cmds).then(r=>{if(!/^Err/.test(r||'')){$('s-rn')._dirty=false;$('s-rp')._dirty=false;}});}
- else if(act==='rreset')arm('s-reset','Tap again to reset','Reset room…',()=>run('s-rm',['room.reset']).then(()=>{$('s-rp')._dirty=false;}));
+ else if(act==='rreset')arm('s-reset','Tap again','Reset room…',()=>run('s-cm',['room.reset']).then(()=>{$('s-rp')._dirty=false;}));
+ else if(act==='cposts')arm('s-cposts','Tap again','Delete all posts…',()=>run('s-cm',['room.clear posts']).then(()=>{inflight['/api/board']=0;getBoard();}));
+ else if(act==='cusers')arm('s-cusers','Tap again','Log out all users…',()=>run('s-cm',['room.clear users']));
+ else if(act==='call')arm('s-call','Tap again','Clear everything…',()=>run('s-cm',['room.clear all']).then(()=>{$('s-rp')._dirty=false;$('s-rn')._dirty=false;}));
  else if(act==='chadd'){
   const n=$('s-chn').value.trim(),k=$('s-chk').value.trim();
   if(!n){msg('s-chm','Enter a channel name.',true);return;}
