@@ -23,6 +23,7 @@ void MyMesh::fmBegin() {
   if (_fm.room_enabled && !fmRoomLoadIdentity(false)) {
     _fm.room_enabled = 0;   // identity file missing (e.g. erased): room stays off until 'set roomserver'
   }
+  fmRoomBootPost();   // "Box started (...)" on the board, if the room is on
 }
 
 bool MyMesh::fmSavePrefs() {

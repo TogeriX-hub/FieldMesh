@@ -870,6 +870,9 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
       telemetry(MAX_PACKET_PAYLOAD - 4),
       discover_limiter(4, 120),  // max 4 every 2 minutes
       anon_limiter(4, 180)   // max 4 every 3 minutes
+#ifdef FIELDMESH_REPEATER
+      , _room_bot_limiter(6, 60)   // room bot: max 6 replies per minute in total
+#endif
 #if defined(WITH_RS232_BRIDGE)
       , bridge(&_prefs, WITH_RS232_BRIDGE, _mgr, &rtc)
 #endif
@@ -889,6 +892,9 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _room_next_post_idx = _room_next_client_idx = 0;
   _room_next_push = 0;
   _room_num_posted = _room_num_pushes = 0;
+  memset(_room_private, 0, sizeof(_room_private));
+  _room_next_private_idx = 0;
+  _room_posts_dirty_at = _room_clients_dirty_at = 0;
 #endif
   _logging = false;
   region_load_active = false;

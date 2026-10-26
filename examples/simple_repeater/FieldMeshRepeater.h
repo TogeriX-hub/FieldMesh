@@ -25,6 +25,18 @@ struct FmRoomPost {
   char text[FM_ROOM_POST_TEXT_LEN+1];
 };
 
+// Bot replies (!ping, !status) go only to the one who asked: own small queue,
+// not stored on the board and not saved.
+#define FM_ROOM_MAX_PRIVATE     8
+struct FmRoomPrivate {
+  mesh::Identity to;
+  FmRoomPost post;
+};
+
+#define FM_ROOM_POSTS_FILE      "/fm_room_posts"     // board survives a reboot
+#define FM_ROOM_CLIENTS_FILE    "/fm_room_clients"   // logged-in users survive a reboot
+#define FM_ROOM_SAVE_DELAY      10000                // lazy write after the last change (ms)
+
 // FieldMesh settings live in their own file, so the upstream /prefs.json stays untouched.
 class FieldMeshRepeaterPrefs : public ConfigSerializer {
 public:

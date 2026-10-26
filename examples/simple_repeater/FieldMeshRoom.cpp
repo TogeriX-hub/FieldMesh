@@ -10,6 +10,7 @@
 
 #include "MyMesh.h"
 #include <new>   // placement new (room client list reset)
+#include <helpers/sensors/LPPDataHelpers.h>   // box sensor values for !status
 
 #ifdef FIELDMESH_REPEATER
 
@@ -54,6 +55,7 @@ bool MyMesh::fmRoomLoadIdentity(bool create) {
 #endif
   if (store.load(FM_ROOM_IDENTITY_NAME, _room_id)) {
     _room_id_loaded = true;
+    fmRoomLoadData();   // board and users from before the restart
     return true;
   }
   if (!create) return false;
@@ -173,7 +175,14 @@ void MyMesh::fmRoomOnLogin(mesh::Packet* pkt, const uint8_t* secret, const mesh:
     client->last_activity = getRTCClock()->getCurrentTime();
     client->permissions = PERM_ACL_READ_WRITE;
     memcpy(client->shared_secret, secret, PUB_KEY_SIZE);
+    _room_clients_dirty_at = futureMillis(FM_ROOM_SAVE_DELAY);
   }
+
+  // Every login (also a known user with blank password, e.g. after a restart where the user
+  // list comes from flash with last_activity = 0) makes the user active again, so pushes resume.
+  client->last_activity = getRTCClock()->getCurrentTime();
+  client->extra.room.push_failures = 0;
+  client->extra.room.pending_ack = 0;
 
   if (pkt->isRouteFlood()) {
     client->out_path_len = OUT_PATH_UNKNOWN;   // need to rediscover out_path
@@ -239,7 +248,7 @@ void MyMesh::fmRoomOnData(mesh::Packet* pkt, ClientInfo* client, const uint8_t* 
 
     if ((client->permissions & PERM_ACL_ROLE_MASK) == PERM_ACL_GUEST) return;   // read only: no post, no ACK
 
-    if (!is_retry) {
+    if (!is_retry && !fmRoomBot(pkt, client, (const char *)&data[5])) {   // !ping / !status: private reply, no post
       fmRoomStorePost(client->id, (const char *)&data[5]);
     }
 
@@ -279,6 +288,7 @@ void MyMesh::fmRoomOnData(mesh::Packet* pkt, ClientInfo* client, const uint8_t* 
       }
       if (force_since > 0) {
         client->extra.room.sync_since = force_since;
+        _room_clients_dirty_at = futureMillis(FM_ROOM_SAVE_DELAY);
       }
       client->extra.room.pending_ack = 0;
 
@@ -321,6 +331,7 @@ void MyMesh::fmRoomOnData(mesh::Packet* pkt, ClientInfo* client, const uint8_t* 
 void MyMesh::fmRoomOnPath(ClientInfo* client, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) {
   client->out_path_len = mesh::Packet::copyPath(client->out_path, path, path_len);   // for sendDirect()
   client->last_activity = getRTCClock()->getCurrentTime();
+  _room_clients_dirty_at = futureMillis(FM_ROOM_SAVE_DELAY);
   if (extra_type == PAYLOAD_TYPE_ACK && extra_len >= 4) {
     fmRoomProcessAck(extra);   // encoded ACK
   }
@@ -376,6 +387,17 @@ void MyMesh::fmRoomStorePost(const mesh::Identity& author, const char* text) {
   _room_next_post_idx = (_room_next_post_idx + 1) % FM_ROOM_MAX_POSTS;
   _room_next_push = futureMillis(FM_ROOM_PUSH_NOTIFY_DELAY);
   _room_num_posted++;
+  _room_posts_dirty_at = futureMillis(FM_ROOM_SAVE_DELAY);
+}
+
+void MyMesh::fmRoomQueuePrivate(ClientInfo* client, const char* text) {
+  FmRoomPrivate* q = &_room_private[_room_next_private_idx];
+  q->to = client->id;
+  q->post.author = _room_id;
+  StrHelper::strncpy(q->post.text, text, sizeof(q->post.text));
+  q->post.post_timestamp = getRTCClock()->getCurrentTimeUnique();
+  _room_next_private_idx = (_room_next_private_idx + 1) % FM_ROOM_MAX_PRIVATE;
+  _room_next_push = futureMillis(FM_ROOM_PUSH_NOTIFY_DELAY);
 }
 
 void MyMesh::fmRoomPushPost(ClientInfo* client, FmRoomPost& post) {
@@ -420,6 +442,11 @@ uint8_t MyMesh::fmRoomUnsyncedCount(ClientInfo* client) {
       count++;
     }
   }
+  for (int k = 0; k < FM_ROOM_MAX_PRIVATE; k++) {   // bot replies waiting for this client
+    if (_room_private[k].post.post_timestamp > client->extra.room.sync_since && _room_private[k].to.matches(client->id)) {
+      count++;
+    }
+  }
   return count;
 }
 
@@ -430,6 +457,7 @@ bool MyMesh::fmRoomProcessAck(const uint8_t* data) {
       client->extra.room.pending_ack = 0;   // next push can happen
       client->extra.room.push_failures = 0;
       client->extra.room.sync_since = client->extra.room.push_post_timestamp;   // advance SINCE
+      _room_clients_dirty_at = futureMillis(FM_ROOM_SAVE_DELAY);
       return true;
     }
   }
@@ -443,6 +471,8 @@ void MyMesh::onAckRecv(mesh::Packet* packet, uint32_t ack_crc) {
 }
 
 void MyMesh::fmRoomLoop() {
+  fmRoomSaveData();   // pending lazy writes (also while the room is off)
+
   if (!fmRoomActive() || _room_acl.getNumClients() == 0) return;
   if (!millisHasNowPassed(_room_next_push)) return;
 
@@ -455,22 +485,37 @@ void MyMesh::fmRoomLoop() {
     }
   }
 
-  // next client (round robin), push its next new post
+  // next client (round robin)
   if (_room_next_client_idx >= _room_acl.getNumClients()) _room_next_client_idx = 0;
   ClientInfo* client = _room_acl.getClientByIdx(_room_next_client_idx);
   bool did_push = false;
   if (client->extra.room.pending_ack == 0 && client->last_activity != 0 && client->extra.room.push_failures < 3) {
-    uint32_t now = getRTCClock()->getCurrentTime();
-    for (int k = 0, idx = _room_next_post_idx; k < FM_ROOM_MAX_POSTS; k++) {
-      FmRoomPost* p = &_room_posts[idx];
-      if (now >= p->post_timestamp + FM_ROOM_POST_SYNC_DELAY_SECS
-          && p->post_timestamp > client->extra.room.sync_since
-          && !p->author.matches(client->id)) {   // not to the author
-        fmRoomPushPost(client, *p);
-        did_push = true;
-        break;
+    // Oldest unsynced entry for this client: board posts and its own bot replies together,
+    // strictly by timestamp. sync_since jumps to the pushed timestamp on ACK, so an older
+    // entry pushed later would never arrive.
+    FmRoomPost* next = NULL;
+    bool next_is_board = false;
+    for (int k = 0; k < FM_ROOM_MAX_POSTS; k++) {
+      FmRoomPost* p = &_room_posts[k];
+      if (p->post_timestamp > client->extra.room.sync_since && !p->author.matches(client->id)   // not to the author
+          && (next == NULL || p->post_timestamp < next->post_timestamp)) {
+        next = p;
+        next_is_board = true;
       }
-      idx = (idx + 1) % FM_ROOM_MAX_POSTS;   // oldest first
+    }
+    for (int k = 0; k < FM_ROOM_MAX_PRIVATE; k++) {
+      FmRoomPrivate* q = &_room_private[k];
+      if (q->post.post_timestamp > client->extra.room.sync_since && q->to.matches(client->id)
+          && (next == NULL || q->post.post_timestamp < next->post_timestamp)) {
+        next = &q->post;
+        next_is_board = false;
+      }
+    }
+    uint32_t now = getRTCClock()->getCurrentTime();
+    // board posts wait a few seconds (as upstream); if the oldest one is still waiting, wait for it
+    if (next && (!next_is_board || now >= next->post_timestamp + FM_ROOM_POST_SYNC_DELAY_SECS)) {
+      fmRoomPushPost(client, *next);
+      did_push = true;
     }
   }
   _room_next_client_idx = (_room_next_client_idx + 1) % _room_acl.getNumClients();
@@ -507,6 +552,7 @@ void MyMesh::fmRoomSendAdvert(bool flood, int delay_millis) {
 void MyMesh::fmRoomClearPosts() {
   memset(_room_posts, 0, sizeof(_room_posts));
   _room_next_post_idx = 0;
+  _room_posts_dirty_at = futureMillis(FM_ROOM_SAVE_DELAY);
 }
 
 void MyMesh::fmRoomClearUsers() {
@@ -515,6 +561,224 @@ void MyMesh::fmRoomClearUsers() {
   _room_acl.~ClientACL();
   new (&_room_acl) ClientACL();
   _room_next_client_idx = 0;
+  _room_clients_dirty_at = futureMillis(FM_ROOM_SAVE_DELAY);
+}
+
+// ---- saving (posts and users survive a restart) ----
+
+static File fmOpenRead(FILESYSTEM* fs, const char* name) {
+#if defined(RP2040_PLATFORM)
+  return fs->open(name, "r");
+#else
+  return fs->open(name);
+#endif
+}
+
+static File fmOpenWrite(FILESYSTEM* fs, const char* name) {
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+  fs->remove(name);
+  return fs->open(name, FILE_O_WRITE);
+#elif defined(RP2040_PLATFORM)
+  return fs->open(name, "w");
+#else
+  return fs->open(name, "w", true);
+#endif
+}
+
+void MyMesh::fmRoomLoadData() {
+  uint32_t newest = 0;
+
+  // posts, oldest first: magic 'F','P', version 1, then per post: pub_key, timestamp, text length, text
+  if (_fs->exists(FM_ROOM_POSTS_FILE)) {
+    File f = fmOpenRead(_fs, FM_ROOM_POSTS_FILE);
+    if (f) {
+      uint8_t hdr[3];
+      if (f.read(hdr, 3) == 3 && hdr[0] == 'F' && hdr[1] == 'P' && hdr[2] == 1) {
+        memset(_room_posts, 0, sizeof(_room_posts));
+        int n = 0;
+        while (true) {
+          uint8_t pub_key[PUB_KEY_SIZE];
+          uint32_t ts;
+          uint8_t len;
+          char text[FM_ROOM_POST_TEXT_LEN+1];
+          if (f.read(pub_key, PUB_KEY_SIZE) != PUB_KEY_SIZE) break;
+          if (f.read((uint8_t *)&ts, 4) != 4) break;
+          if (f.read(&len, 1) != 1 || len > FM_ROOM_POST_TEXT_LEN) break;
+          if (f.read((uint8_t *)text, len) != len) break;
+          text[len] = 0;
+
+          FmRoomPost* p = &_room_posts[n % FM_ROOM_MAX_POSTS];   // more than fit: oldest drop out
+          p->author = mesh::Identity(pub_key);
+          p->post_timestamp = ts;
+          memcpy(p->text, text, len + 1);
+          if (ts > newest) newest = ts;
+          n++;
+        }
+        _room_next_post_idx = n % FM_ROOM_MAX_POSTS;
+      }
+      f.close();
+    }
+  }
+
+  // users: magic 'F','C', version 1, then per user: pub_key, permissions, sync_since, out_path_len, out_path
+  if (_fs->exists(FM_ROOM_CLIENTS_FILE)) {
+    File f = fmOpenRead(_fs, FM_ROOM_CLIENTS_FILE);
+    if (f) {
+      uint8_t hdr[3];
+      if (f.read(hdr, 3) == 3 && hdr[0] == 'F' && hdr[1] == 'C' && hdr[2] == 1) {
+        _room_acl.~ClientACL();
+        new (&_room_acl) ClientACL();
+        while (true) {
+          uint8_t pub_key[PUB_KEY_SIZE];
+          uint8_t perm, out_path_len;
+          uint32_t sync_since;
+          uint8_t out_path[MAX_PATH_SIZE];
+          if (f.read(pub_key, PUB_KEY_SIZE) != PUB_KEY_SIZE) break;
+          if (f.read(&perm, 1) != 1) break;
+          if (f.read((uint8_t *)&sync_since, 4) != 4) break;
+          if (f.read(&out_path_len, 1) != 1) break;
+          if (f.read(out_path, MAX_PATH_SIZE) != MAX_PATH_SIZE) break;
+
+          ClientInfo* c = _room_acl.putClient(mesh::Identity(pub_key), perm);
+          c->extra.room.sync_since = sync_since;
+          c->out_path_len = out_path_len;
+          memcpy(c->out_path, out_path, MAX_PATH_SIZE);
+          _room_id.calcSharedSecret(c->shared_secret, pub_key);   // not stored, always recalculated
+          if (sync_since > newest) newest = sync_since;
+        }
+      }
+      f.close();
+    }
+  }
+  _room_next_client_idx = 0;
+
+  // Without power the G2 loses its clock and starts on an old date. New posts must still be
+  // newer than everything stored, otherwise they are never pushed (sync_since compares timestamps).
+  // So the clock never stays behind the newest stored post / user.
+  if (newest > 0 && getRTCClock()->getCurrentTime() <= newest) {
+    getRTCClock()->setCurrentTime(newest + 1);
+  }
+}
+
+void MyMesh::fmRoomSaveData() {
+  if (_room_posts_dirty_at && millisHasNowPassed(_room_posts_dirty_at)) {
+    _room_posts_dirty_at = 0;
+    File f = fmOpenWrite(_fs, FM_ROOM_POSTS_FILE);
+    if (f) {
+      uint8_t hdr[3] = { 'F', 'P', 1 };
+      f.write(hdr, 3);
+      for (int k = 0, idx = _room_next_post_idx; k < FM_ROOM_MAX_POSTS; k++, idx = (idx + 1) % FM_ROOM_MAX_POSTS) {   // oldest first
+        FmRoomPost* p = &_room_posts[idx];
+        if (p->post_timestamp == 0) continue;   // empty slot
+        uint8_t len = strlen(p->text);
+        f.write(p->author.pub_key, PUB_KEY_SIZE);
+        f.write((uint8_t *)&p->post_timestamp, 4);
+        f.write(&len, 1);
+        f.write((uint8_t *)p->text, len);
+      }
+      f.close();
+    }
+  }
+  if (_room_clients_dirty_at && millisHasNowPassed(_room_clients_dirty_at)) {
+    _room_clients_dirty_at = 0;
+    File f = fmOpenWrite(_fs, FM_ROOM_CLIENTS_FILE);
+    if (f) {
+      uint8_t hdr[3] = { 'F', 'C', 1 };
+      f.write(hdr, 3);
+      for (int i = 0; i < _room_acl.getNumClients(); i++) {
+        ClientInfo* c = _room_acl.getClientByIdx(i);
+        if (c->permissions == 0) continue;
+        f.write(c->id.pub_key, PUB_KEY_SIZE);
+        f.write(&c->permissions, 1);
+        f.write((uint8_t *)&c->extra.room.sync_since, 4);
+        f.write(&c->out_path_len, 1);
+        f.write(c->out_path, MAX_PATH_SIZE);
+      }
+      f.close();
+    }
+  }
+}
+
+// ---- F1 boot message, F2 bot, F3 box sensor ----
+
+void MyMesh::fmRoomBootPost() {
+  if (!fmRoomActive()) return;
+  uint32_t reason = board.getResetReason();
+#if defined(ESP32)
+  if (reason == ESP_RST_DEEPSLEEP) return;   // wake-up, not a restart
+#endif
+  char msg[80];
+  snprintf(msg, sizeof(msg), "Box started (%s)", board.getResetReasonString(reason));
+  fmRoomStorePost(_room_id, msg);
+}
+
+static bool fmIsCmd(const char* text, const char* cmd) {
+  while (*text == ' ') text++;
+  size_t n = strlen(cmd);
+  if (strncasecmp(text, cmd, n) != 0) return false;
+  text += n;
+  while (*text == ' ') text++;
+  return *text == 0;   // nothing after the command
+}
+
+bool MyMesh::fmRoomBot(mesh::Packet* pkt, ClientInfo* client, const char* text) {
+  bool is_ping = fmIsCmd(text, "!ping");
+  bool is_status = fmIsCmd(text, "!status");
+  if (!is_ping && !is_status) return false;   // normal post (any other text, also e.g. a manual !SOS)
+
+  if (!_room_bot_limiter.allow(getRTCClock()->getCurrentTime())) return true;   // too many: no reply, no post
+
+  char msg[FM_ROOM_POST_TEXT_LEN+1];
+  if (is_ping) {
+    char route[16];
+    if (pkt->isRouteFlood()) {
+      unsigned hops = pkt->getPathHashCount();
+      snprintf(route, sizeof(route), "%u hop%s", hops, hops == 1 ? "" : "s");
+    } else {
+      strcpy(route, "direct");
+    }
+    snprintf(msg, sizeof(msg), "Pong - SNR %.1f dB, RSSI %d dBm, %s", pkt->getSNR(), (int)radio_driver.getLastRSSI(), route);
+  } else {
+    unsigned up = (unsigned)(uptime_millis / 1000);
+    char env[32] = "";
+    float t, h;
+    bool has_h;
+    if (fmBoxEnv(t, h, has_h)) {
+      if (has_h) {
+        snprintf(env, sizeof(env), " | Box %.1fC %.0f%%", t, h);
+      } else {
+        snprintf(env, sizeof(env), " | Box %.1fC", t);
+      }
+    } else {
+      float mcu = board.getMCUTemperature();   // no sensor: chip temperature (not the air in the box)
+      if (!isnan(mcu)) snprintf(env, sizeof(env), " | MCU %.0fC", mcu);
+    }
+    snprintf(msg, sizeof(msg), "Up %ud %uh %um | %s %.3f MHz | %d users, %d posts%s",
+             up / 86400, (up / 3600) % 24, (up / 60) % 60,
+             _fm.offgrid ? "Off-Grid" : "Normal", _prefs.freq,
+             _room_acl.getNumClients(), fmRoomNumPosts(), env);
+  }
+  fmRoomQueuePrivate(client, msg);
+  return true;
+}
+
+bool MyMesh::fmBoxEnv(float& temp_c, float& hum_pct, bool& has_hum) {
+  bool has_temp = false;
+  has_hum = false;
+  telemetry.reset();
+  sensors.querySensors(TELEM_PERM_ENVIRONMENT, telemetry);   // e.g. BME280 on the I2C of the G2
+  LPPReader reader(telemetry.getBuffer(), telemetry.getSize());
+  uint8_t ch, type;
+  while (reader.readHeader(ch, type)) {
+    if (type == LPP_TEMPERATURE && !has_temp) {
+      has_temp = reader.readTemperature(temp_c);
+    } else if (type == LPP_RELATIVE_HUMIDITY && !has_hum) {
+      has_hum = reader.readRelativeHumidity(hum_pct);
+    } else {
+      reader.skipData(type);
+    }
+  }
+  return has_temp;
 }
 
 int MyMesh::fmRoomNumPosts() const {

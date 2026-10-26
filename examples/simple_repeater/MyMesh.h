@@ -133,8 +133,11 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   int _room_next_post_idx, _room_next_client_idx;
   unsigned long _room_next_push;
   uint16_t _room_num_posted, _room_num_pushes;
-  int _room_matching[MAX_CLIENTS];
   uint8_t _room_reply[MAX_PACKET_PAYLOAD];
+  FmRoomPrivate _room_private[FM_ROOM_MAX_PRIVATE];   // bot replies, only for the asker
+  int _room_next_private_idx;
+  unsigned long _room_posts_dirty_at, _room_clients_dirty_at;   // lazy saving
+  RateLimiter _room_bot_limiter;
 
   bool fmRoomActive() const { return _fm.room_enabled && _room_id_loaded; }
   bool fmRoomLoadIdentity(bool create);
@@ -153,6 +156,12 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   int  fmRoomNumPosts() const;
   void fmRoomClearPosts();
   void fmRoomClearUsers();   // log out everyone
+  void fmRoomLoadData();     // posts + users from flash, keeps the clock ahead of them
+  void fmRoomSaveData();     // pending lazy writes
+  void fmRoomBootPost();     // F1: system post with the reason of the (re)start
+  bool fmRoomBot(mesh::Packet* pkt, ClientInfo* client, const char* text);   // F2: true = was a bot command
+  void fmRoomQueuePrivate(ClientInfo* client, const char* text);
+  bool fmBoxEnv(float& temp_c, float& hum_pct, bool& has_hum);   // F3: box sensor (or MCU temperature)
 #endif
 #if defined(WITH_RS232_BRIDGE)
   RS232Bridge bridge;
