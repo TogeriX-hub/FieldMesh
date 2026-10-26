@@ -167,11 +167,25 @@ void UITask::fmRenderPage() {
       _display->print(offgrid ? "Hold: switch OFF" : "Hold: switch ON");
       break;
 
-    case FM_PAGE_ROOM:
+    case FM_PAGE_ROOM: {
+      bool room_on = _fm_host && _fm_host->fmIsRoomOn();
       fmDrawHeader("Room server");
-      _display->setCursor(0, 20);
-      _display->print("Not available yet");
+      _display->setCursor(0, 15);
+      _display->print(room_on ? "State: ON" : "State: OFF");
+      if (_fm_host) {
+        _display->drawTextEllipsized(0, 26, _display->width(), _fm_host->fmRoomName());
+      }
+      if (room_on) {
+        int clients = 0, posts = 0;
+        _fm_host->fmRoomCounts(clients, posts);
+        _display->setCursor(0, 37);
+        sprintf(tmp, "Clients %d  Posts %d", clients, posts);
+        _display->print(tmp);
+      }
+      _display->setCursor(0, 46);
+      _display->print(room_on ? "Hold: switch OFF" : "Hold: switch ON");
       break;
+    }
 
     case FM_PAGE_WIFI:
       fmDrawHeader("WiFi / Dashboard");
@@ -217,6 +231,14 @@ void UITask::fmOnLongPress() {
         bool on = !_fm_host->fmIsOffGrid();
         _fm_host->fmSetOffGrid(on, NULL);
         strcpy(_fm_msg, on ? "Off-Grid ON" : "Off-Grid OFF");
+        _fm_msg_until = millis() + 3000;
+      }
+      break;
+    case FM_PAGE_ROOM:
+      if (_fm_host) {
+        bool on = !_fm_host->fmIsRoomOn();
+        _fm_host->fmSetRoom(on, NULL, NULL);   // last name, or the repeater name
+        strcpy(_fm_msg, on ? "Room ON" : "Room OFF");
         _fm_msg_until = millis() + 3000;
       }
       break;
