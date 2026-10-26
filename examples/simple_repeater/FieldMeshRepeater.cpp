@@ -2,16 +2,15 @@
 // Only compiled in with -D FIELDMESH_REPEATER=1.
 
 #include "MyMesh.h"
+#include "FieldMeshFs.h"
 
 #ifdef FIELDMESH_REPEATER
 
 void MyMesh::fmBegin() {
-  if (_fs->exists(FM_REPEATER_PREFS_FILE)) {
-#if defined(RP2040_PLATFORM)
-    File file = _fs->open(FM_REPEATER_PREFS_FILE, "r");
-#else
-    File file = _fs->open(FM_REPEATER_PREFS_FILE);
-#endif
+  fmClockRestore();   // before anything gets a timestamp
+
+  if (fmFsExists(_fs, FM_REPEATER_PREFS_FILE)) {
+    File file = fmFsOpenRead(_fs, FM_REPEATER_PREFS_FILE);
     if (file) {
       _fm.loadSerial(file);
       file.close();
@@ -28,20 +27,50 @@ void MyMesh::fmBegin() {
 }
 
 bool MyMesh::fmSavePrefs() {
-#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
-  _fs->remove(FM_REPEATER_PREFS_FILE);
-  File file = _fs->open(FM_REPEATER_PREFS_FILE, FILE_O_WRITE);
-#elif defined(RP2040_PLATFORM)
-  File file = _fs->open(FM_REPEATER_PREFS_FILE, "w");
-#else
-  File file = _fs->open(FM_REPEATER_PREFS_FILE, "w", true);
-#endif
+  File file = fmFsOpenWriteTmp(_fs, FM_REPEATER_PREFS_FILE);
   if (file) {
     bool success = _fm.saveSerial(file);
     file.close();
-    return success;
+    return success && fmFsCommit(_fs, FM_REPEATER_PREFS_FILE);
   }
   return false;
+}
+
+// ---- clock high-water mark ----
+// The G2 has no battery-backed clock: after a power loss it restarts on an old date.
+// Peers ignore adverts that are older than the last one they heard from us (new name,
+// position ...), and room posts must stay in time order. So the current time is saved
+// every few minutes, and after a restart the clock is never behind the saved value.
+
+void MyMesh::fmClockRestore() {
+  _fm_clock_saved = 0;
+  if (!fmFsExists(_fs, FM_CLOCK_FILE)) return;
+  File f = fmFsOpenRead(_fs, FM_CLOCK_FILE);
+  if (!f) return;
+  uint8_t hdr[3];
+  uint32_t t;
+  if (f.read(hdr, 3) == 3 && hdr[0] == 'F' && hdr[1] == 'T' && hdr[2] == 1 && f.read((uint8_t *)&t, 4) == 4) {
+    _fm_clock_saved = t;
+    if (getRTCClock()->getCurrentTime() <= t) {
+      // adverts sent up to FM_CLOCK_SAVE_INTERVAL after the save may be a little newer:
+      // at worst they are ignored by peers for that long, the clock never runs ahead
+      getRTCClock()->setCurrentTime(t + 1);
+    }
+  }
+  f.close();
+}
+
+void MyMesh::fmClockSaveLoop() {
+  if (_fm_clock_next_save && !millisHasNowPassed(_fm_clock_next_save)) return;
+  _fm_clock_next_save = futureMillis(FM_CLOCK_SAVE_INTERVAL);
+  uint32_t now = getRTCClock()->getCurrentTime();
+  if (now <= _fm_clock_saved) return;   // nothing new (clock not moving forward)
+  File f = fmFsOpenWriteTmp(_fs, FM_CLOCK_FILE);
+  if (!f) return;
+  uint8_t hdr[3] = { 'F', 'T', 1 };
+  bool ok = f.write(hdr, 3) == 3 && f.write((uint8_t *)&now, 4) == 4;
+  f.close();
+  if (ok && fmFsCommit(_fs, FM_CLOCK_FILE)) _fm_clock_saved = now;
 }
 
 void MyMesh::fmSetOffGrid(bool on, char* reply) {

@@ -897,6 +897,8 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _room_posts_dirty_at = _room_clients_dirty_at = 0;
   memset(_fm_channels, 0, sizeof(_fm_channels));
   _fm_num_channels = 0;
+  _fm_clock_saved = 0;
+  _fm_clock_next_save = 0;
   memset(_fm_sos, 0, sizeof(_fm_sos));
   _fm_sos_next = 0;
 #endif

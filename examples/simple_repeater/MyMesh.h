@@ -121,6 +121,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
 
   void fmBegin();
   bool fmSavePrefs();
+  uint32_t _fm_clock_saved;
+  unsigned long _fm_clock_next_save;
+  void fmClockRestore();
+  void fmClockSaveLoop();
   bool fmHandleCommand(uint32_t sender_timestamp, const char* command, char* reply);
 
   // Room server as a second identity (FieldMeshRoom.cpp). The repeater itself stays a

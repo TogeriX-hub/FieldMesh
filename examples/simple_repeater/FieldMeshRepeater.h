@@ -51,6 +51,9 @@ struct FmSosEntry {
   unsigned long heard_millis;  // 0 = empty
 };
 
+#define FM_CLOCK_FILE           "/fm_clock"          // clock high-water mark (no battery-backed clock on the G2)
+#define FM_CLOCK_SAVE_INTERVAL  300000               // 5 min
+
 #define FM_ROOM_POSTS_FILE      "/fm_room_posts"     // board survives a reboot
 #define FM_ROOM_CLIENTS_FILE    "/fm_room_clients"   // logged-in users survive a reboot
 #define FM_ROOM_SAVE_DELAY      10000                // lazy write after the last change (ms)

@@ -9,6 +9,7 @@
 // the room is disabled on purpose (the box is administered via the repeater identity).
 
 #include "MyMesh.h"
+#include "FieldMeshFs.h"
 #include <new>   // placement new (room client list reset)
 #include <helpers/sensors/LPPDataHelpers.h>   // box sensor values for !status
 
@@ -473,6 +474,7 @@ void MyMesh::onAckRecv(mesh::Packet* packet, uint32_t ack_crc) {
 
 void MyMesh::fmRoomLoop() {
   fmRoomSaveData();   // pending lazy writes (also while the room is off)
+  fmClockSaveLoop();  // clock high-water mark (FieldMeshRepeater.cpp)
 
   if (!fmRoomActive() || _room_acl.getNumClients() == 0) return;
   if (!millisHasNowPassed(_room_next_push)) return;
@@ -569,31 +571,12 @@ void MyMesh::fmRoomClearUsers() {
 
 // ---- saving (posts and users survive a restart) ----
 
-static File fmOpenRead(FILESYSTEM* fs, const char* name) {
-#if defined(RP2040_PLATFORM)
-  return fs->open(name, "r");
-#else
-  return fs->open(name);
-#endif
-}
-
-static File fmOpenWrite(FILESYSTEM* fs, const char* name) {
-#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
-  fs->remove(name);
-  return fs->open(name, FILE_O_WRITE);
-#elif defined(RP2040_PLATFORM)
-  return fs->open(name, "w");
-#else
-  return fs->open(name, "w", true);
-#endif
-}
-
 void MyMesh::fmRoomLoadData() {
   uint32_t newest = 0;
 
   // posts, oldest first: magic 'F','P', version 1, then per post: pub_key, timestamp, text length, text
-  if (_fs->exists(FM_ROOM_POSTS_FILE)) {
-    File f = fmOpenRead(_fs, FM_ROOM_POSTS_FILE);
+  if (fmFsExists(_fs, FM_ROOM_POSTS_FILE)) {
+    File f = fmFsOpenRead(_fs, FM_ROOM_POSTS_FILE);
     if (f) {
       uint8_t hdr[3];
       if (f.read(hdr, 3) == 3 && hdr[0] == 'F' && hdr[1] == 'P' && hdr[2] == 1) {
@@ -624,8 +607,8 @@ void MyMesh::fmRoomLoadData() {
   }
 
   // users: magic 'F','C', version 1, then per user: pub_key, permissions, sync_since, out_path_len, out_path
-  if (_fs->exists(FM_ROOM_CLIENTS_FILE)) {
-    File f = fmOpenRead(_fs, FM_ROOM_CLIENTS_FILE);
+  if (fmFsExists(_fs, FM_ROOM_CLIENTS_FILE)) {
+    File f = fmFsOpenRead(_fs, FM_ROOM_CLIENTS_FILE);
     if (f) {
       uint8_t hdr[3];
       if (f.read(hdr, 3) == 3 && hdr[0] == 'F' && hdr[1] == 'C' && hdr[2] == 1) {
@@ -666,38 +649,40 @@ void MyMesh::fmRoomLoadData() {
 void MyMesh::fmRoomSaveData() {
   if (_room_posts_dirty_at && millisHasNowPassed(_room_posts_dirty_at)) {
     _room_posts_dirty_at = 0;
-    File f = fmOpenWrite(_fs, FM_ROOM_POSTS_FILE);
+    File f = fmFsOpenWriteTmp(_fs, FM_ROOM_POSTS_FILE);
     if (f) {
       uint8_t hdr[3] = { 'F', 'P', 1 };
-      f.write(hdr, 3);
-      for (int k = 0, idx = _room_next_post_idx; k < FM_ROOM_MAX_POSTS; k++, idx = (idx + 1) % FM_ROOM_MAX_POSTS) {   // oldest first
+      bool ok = f.write(hdr, 3) == 3;
+      for (int k = 0, idx = _room_next_post_idx; ok && k < FM_ROOM_MAX_POSTS; k++, idx = (idx + 1) % FM_ROOM_MAX_POSTS) {   // oldest first
         FmRoomPost* p = &_room_posts[idx];
         if (p->post_timestamp == 0) continue;   // empty slot
         uint8_t len = strlen(p->text);
-        f.write(p->author.pub_key, PUB_KEY_SIZE);
-        f.write((uint8_t *)&p->post_timestamp, 4);
-        f.write(&len, 1);
-        f.write((uint8_t *)p->text, len);
+        ok = f.write(p->author.pub_key, PUB_KEY_SIZE) == PUB_KEY_SIZE
+          && f.write((uint8_t *)&p->post_timestamp, 4) == 4
+          && f.write(&len, 1) == 1
+          && f.write((uint8_t *)p->text, len) == len;
       }
       f.close();
+      if (ok) fmFsCommit(_fs, FM_ROOM_POSTS_FILE);   // flash full: keep the old file instead of a cut one
     }
   }
   if (_room_clients_dirty_at && millisHasNowPassed(_room_clients_dirty_at)) {
     _room_clients_dirty_at = 0;
-    File f = fmOpenWrite(_fs, FM_ROOM_CLIENTS_FILE);
+    File f = fmFsOpenWriteTmp(_fs, FM_ROOM_CLIENTS_FILE);
     if (f) {
       uint8_t hdr[3] = { 'F', 'C', 1 };
-      f.write(hdr, 3);
-      for (int i = 0; i < _room_acl.getNumClients(); i++) {
+      bool ok = f.write(hdr, 3) == 3;
+      for (int i = 0; ok && i < _room_acl.getNumClients(); i++) {
         ClientInfo* c = _room_acl.getClientByIdx(i);
         if (c->permissions == 0) continue;
-        f.write(c->id.pub_key, PUB_KEY_SIZE);
-        f.write(&c->permissions, 1);
-        f.write((uint8_t *)&c->extra.room.sync_since, 4);
-        f.write(&c->out_path_len, 1);
-        f.write(c->out_path, MAX_PATH_SIZE);
+        ok = f.write(c->id.pub_key, PUB_KEY_SIZE) == PUB_KEY_SIZE
+          && f.write(&c->permissions, 1) == 1
+          && f.write((uint8_t *)&c->extra.room.sync_since, 4) == 4
+          && f.write(&c->out_path_len, 1) == 1
+          && f.write(c->out_path, MAX_PATH_SIZE) == MAX_PATH_SIZE;
       }
       f.close();
+      if (ok) fmFsCommit(_fs, FM_ROOM_CLIENTS_FILE);
     }
   }
 }

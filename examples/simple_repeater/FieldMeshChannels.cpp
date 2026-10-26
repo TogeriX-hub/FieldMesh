@@ -8,27 +8,9 @@
 // MyMesh::isSosChannel()); every "!SOS ..." heard there goes onto the room board.
 
 #include "MyMesh.h"
+#include "FieldMeshFs.h"
 
 #ifdef FIELDMESH_REPEATER
-
-static File fmChOpenRead(FILESYSTEM* fs, const char* name) {
-#if defined(RP2040_PLATFORM)
-  return fs->open(name, "r");
-#else
-  return fs->open(name);
-#endif
-}
-
-static File fmChOpenWrite(FILESYSTEM* fs, const char* name) {
-#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
-  fs->remove(name);
-  return fs->open(name, FILE_O_WRITE);
-#elif defined(RP2040_PLATFORM)
-  return fs->open(name, "w");
-#else
-  return fs->open(name, "w", true);
-#endif
-}
 
 static bool fmIsSosChannelName(const char* name) {   // case-insensitive "sos" anywhere (companion rule)
   for (const char* p = name; p[0] && p[1] && p[2]; p++) {
@@ -44,8 +26,8 @@ static void fmChannelCalcHash(FmChannel& ch) {
 
 void MyMesh::fmChannelsLoad() {
   _fm_num_channels = 0;
-  if (!_fs->exists(FM_CHANNELS_FILE)) return;
-  File f = fmChOpenRead(_fs, FM_CHANNELS_FILE);
+  if (!fmFsExists(_fs, FM_CHANNELS_FILE)) return;
+  File f = fmFsOpenRead(_fs, FM_CHANNELS_FILE);
   if (!f) return;
   uint8_t hdr[3];
   if (f.read(hdr, 3) == 3 && hdr[0] == 'F' && hdr[1] == 'K' && hdr[2] == 1) {
@@ -64,15 +46,16 @@ void MyMesh::fmChannelsLoad() {
 }
 
 void MyMesh::fmChannelsSave() {
-  File f = fmChOpenWrite(_fs, FM_CHANNELS_FILE);
+  File f = fmFsOpenWriteTmp(_fs, FM_CHANNELS_FILE);
   if (!f) return;
   uint8_t hdr[3] = { 'F', 'K', 1 };
-  f.write(hdr, 3);
-  for (int i = 0; i < _fm_num_channels; i++) {
-    f.write((uint8_t *)_fm_channels[i].name, sizeof(_fm_channels[i].name));
-    f.write(_fm_channels[i].channel.secret, FM_CHANNEL_KEY_LEN);
+  bool ok = f.write(hdr, 3) == 3;
+  for (int i = 0; ok && i < _fm_num_channels; i++) {
+    ok = f.write((uint8_t *)_fm_channels[i].name, sizeof(_fm_channels[i].name)) == sizeof(_fm_channels[i].name)
+      && f.write(_fm_channels[i].channel.secret, FM_CHANNEL_KEY_LEN) == FM_CHANNEL_KEY_LEN;
   }
   f.close();
+  if (ok) fmFsCommit(_fs, FM_CHANNELS_FILE);
 }
 
 int MyMesh::searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel channels[], int max_matches) {
