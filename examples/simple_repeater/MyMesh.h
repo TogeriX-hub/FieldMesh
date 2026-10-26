@@ -125,6 +125,15 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   unsigned long _fm_clock_next_save;
   void fmClockRestore();
   void fmClockSaveLoop();
+
+  // WiFi dashboard (FieldMeshWeb.cpp)
+  bool fmWebStart();
+  void fmWebStop();
+  bool fmWebIsOn() const;
+  int  fmWebStations() const;
+  const char* fmWebCurrentSsid() const;
+  void fmWebSsid(char* dest, size_t sz);
+  void fmWebLoop();
   bool fmHandleCommand(uint32_t sender_timestamp, const char* command, char* reply);
 
   // Room server as a second identity (FieldMeshRoom.cpp). The repeater itself stays a
@@ -334,6 +343,10 @@ public:
   void fmRoomCounts(int& clients, int& posts) override { clients = _room_acl.getNumClients(); posts = fmRoomNumPosts(); }
   void fmSetRoom(bool on, const char* name, char* reply) override;
   void fmRoomReset() override;
+  bool fmIsWifiOn() const override { return fmWebIsOn(); }
+  const char* fmWifiSsid() const override { return fmWebCurrentSsid(); }
+  int fmWifiStations() const override { return fmWebStations(); }
+  void fmSetWifi(bool on, char* reply) override;
 #endif
 
   #if defined(USE_LR2021)

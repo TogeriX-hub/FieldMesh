@@ -69,6 +69,7 @@ public:
   uint8_t room_enabled = 0;     // 1 = room server identity active
   char    room_name[32] = "";   // empty -> repeater name
   char    room_pass[16] = "";   // empty -> login without password (read + write)
+  uint8_t wifi_enabled = 0;     // 1 = WiFi dashboard on (also after a restart)
 
 protected:
   void structure() override {
@@ -80,6 +81,7 @@ protected:
     def("room_en", room_enabled);
     def("room_name", room_name, sizeof(room_name));
     def("room_pass", room_pass, sizeof(room_pass));
+    def("wifi_en", wifi_enabled);
   }
 };
 
@@ -93,6 +95,10 @@ public:
   virtual void fmRoomCounts(int& clients, int& posts) = 0;
   virtual void fmSetRoom(bool on, const char* name, char* reply) = 0;   // name NULL -> last name / repeater name
   virtual void fmRoomReset() = 0;   // posts, users and password; name, key and on/off stay
+  virtual bool fmIsWifiOn() const = 0;
+  virtual const char* fmWifiSsid() const = 0;
+  virtual int fmWifiStations() const = 0;
+  virtual void fmSetWifi(bool on, char* reply) = 0;
 };
 
 #endif

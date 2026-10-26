@@ -1372,6 +1372,7 @@ void MyMesh::loop() {
 
 #ifdef FIELDMESH_REPEATER
   fmRoomLoop();   // push new room posts to logged-in clients
+  fmWebLoop();    // WiFi dashboard: captive DNS, snapshot, phone clock
 #endif
 
   // update uptime
@@ -1382,6 +1383,9 @@ void MyMesh::loop() {
 
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
+#ifdef FIELDMESH_REPEATER
+  if (fmWebIsOn()) return true;   // WiFi access point: no sleep
+#endif
 #if defined(WITH_BRIDGE)
   if (bridge.isRunning()) return true;  // bridge needs WiFi radio, can't sleep
 #endif

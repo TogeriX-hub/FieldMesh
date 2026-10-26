@@ -197,11 +197,21 @@ void UITask::fmRenderPage() {
       _display->print(_fm_confirm_until && millis() < _fm_confirm_until ? "Hold again: RESET" : "Hold: reset room");
       break;
 
-    case FM_PAGE_WIFI:
+    case FM_PAGE_WIFI: {
+      bool wifi_on = _fm_host && _fm_host->fmIsWifiOn();
       fmDrawHeader("WiFi / Dashboard");
-      _display->setCursor(0, 20);
-      _display->print("Not available yet");
+      _display->setCursor(0, 15);
+      _display->print(wifi_on ? "State: ON" : "State: OFF");
+      if (wifi_on) {
+        _display->drawTextEllipsized(0, 26, _display->width(), _fm_host->fmWifiSsid());
+        _display->setCursor(0, 37);
+        sprintf(tmp, "192.168.4.1  %d phone%s", _fm_host->fmWifiStations(), _fm_host->fmWifiStations() == 1 ? "" : "s");
+        _display->print(tmp);
+      }
+      _display->setCursor(0, 46);
+      _display->print(wifi_on ? "Hold: switch OFF" : "Hold: switch ON");
       break;
+    }
 
     case FM_PAGE_POWER:
       fmDrawHeader("Power");
@@ -250,6 +260,14 @@ void UITask::fmOnLongPress() {
         bool on = !_fm_host->fmIsRoomOn();
         _fm_host->fmSetRoom(on, NULL, NULL);   // last name, or the repeater name
         strcpy(_fm_msg, on ? "Room ON" : "Room OFF");
+        _fm_msg_until = millis() + 3000;
+      }
+      break;
+    case FM_PAGE_WIFI:
+      if (_fm_host) {
+        bool on = !_fm_host->fmIsWifiOn();
+        _fm_host->fmSetWifi(on, NULL);
+        strcpy(_fm_msg, on ? (_fm_host->fmIsWifiOn() ? "WiFi ON" : "WiFi failed") : "WiFi OFF");
         _fm_msg_until = millis() + 3000;
       }
       break;

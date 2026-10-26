@@ -24,6 +24,7 @@ void MyMesh::fmBegin() {
   }
   fmRoomBootPost();   // "Box started (...)" on the board, if the room is on
   fmChannelsLoad();   // channels the box listens to (SOS)
+  if (_fm.wifi_enabled) fmWebStart();   // WiFi dashboard (FieldMeshWeb.cpp)
 }
 
 bool MyMesh::fmSavePrefs() {
@@ -184,6 +185,31 @@ bool MyMesh::fmHandleCommand(uint32_t sender_timestamp, const char* command, cha
     return true;
   }
   if (fmChannelsHandleCommand(command, reply)) return true;   // channel.add / channel.del / get channels / get sos
+
+  if (strcmp(command, "set wifi on") == 0) {
+    fmSetWifi(true, reply);
+    return true;
+  }
+  if (strcmp(command, "set wifi off") == 0) {
+    fmSetWifi(false, reply);
+    return true;
+  }
+  if (memcmp(command, "set wifi", 8) == 0) {
+    strcpy(reply, "Err - use: set wifi on|off");
+    return true;
+  }
+  if (strcmp(command, "get wifi") == 0) {
+    if (fmWebIsOn()) {
+      sprintf(reply, "> on: '%s', http://192.168.4.1, %d phones", fmWebCurrentSsid(), fmWebStations());
+    } else {
+      strcpy(reply, "> off");
+    }
+    return true;
+  }
+  if (memcmp(command, "start ota", 9) == 0 && fmWebIsOn()) {
+    fmWebStop();   // OTA brings its own access point and web server on port 80
+    return false;  // upstream CLI starts the OTA update
+  }
 
   if (memcmp(command, "room.clear", 10) == 0 && (command[10] == 0 || command[10] == ' ')) {
     const char* what = &command[10];
