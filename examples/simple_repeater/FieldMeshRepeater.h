@@ -69,6 +69,7 @@ struct FmNode {
 
 #define FM_TEAM_FILE            "/fm_team"           // team members (favourites), set by the admin
 #define FM_MAX_TEAM             32
+#define FM_TEAM_SAVE_INTERVAL   600000               // team members' last data (name, position, heard) at most every 10 min
 
 #define FM_ACT_BUCKETS          30                   // activity: 30 x 2 min = last hour
 #define FM_ACT_BUCKET_MS        120000

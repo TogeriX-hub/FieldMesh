@@ -131,6 +131,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   int _fm_max_nodes;
   uint8_t _fm_team[FM_MAX_TEAM][PUB_KEY_SIZE];
   int _fm_num_team;
+  bool _fm_team_dirty;          // a team member was heard since the last save
+  unsigned long _fm_team_next_save;
   FmActBucket _fm_act[FM_ACT_BUCKETS];
   int _fm_act_idx;
   unsigned long _fm_act_next;

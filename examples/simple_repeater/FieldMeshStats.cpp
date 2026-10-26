@@ -87,6 +87,7 @@ void MyMesh::fmNodeHeard(const mesh::Packet* pkt, const mesh::Identity& id, cons
     n->lon = parser.getIntLon();
     n->pos_at = n->heard_at;
   }
+  if (fmTeamHas(n->pub_key)) _fm_team_dirty = true;   // saved lazily (fmStatsLoop)
 }
 
 // ---- team ----
@@ -120,10 +121,33 @@ void MyMesh::fmTeamLoad() {
   if (!fmFsExists(_fs, FM_TEAM_FILE)) return;
   File f = fmFsOpenRead(_fs, FM_TEAM_FILE);
   if (!f) return;
-  uint8_t hdr[3];
-  if (f.read(hdr, 3) == 3 && hdr[0] == 'F' && hdr[1] == 'M' && hdr[2] == 1) {
+  static_assert(sizeof(FmNode) <= 255, "team file stores the record size in one byte");
+  uint8_t hdr[3] = { 0, 0, 0 };
+  if (f.read(hdr, 3) == 3 && hdr[0] == 'F' && hdr[1] == 'M' && hdr[2] == 1) {   // old format: keys only
     while (_fm_num_team < FM_MAX_TEAM && f.read(_fm_team[_fm_num_team], PUB_KEY_SIZE) == PUB_KEY_SIZE) {
       _fm_num_team++;
+    }
+  } else if (hdr[0] == 'F' && hdr[1] == 'M' && hdr[2] == 2) {   // key + last node data (FmNode)
+    uint8_t rec_size = 0;
+    f.read(&rec_size, 1);
+    FmNode rec;
+    uint8_t skip[32];
+    while (_fm_num_team < FM_MAX_TEAM && rec_size >= PUB_KEY_SIZE) {
+      memset(&rec, 0, sizeof(rec));
+      size_t want = rec_size < sizeof(rec) ? rec_size : sizeof(rec);
+      if (f.read((uint8_t*)&rec, want) != want) break;
+      for (size_t left = rec_size - want; left > 0; ) {   // newer firmware wrote bigger records
+        size_t n = left < sizeof(skip) ? left : sizeof(skip);
+        if (f.read(skip, n) != n) { left = 0; break; }
+        left -= n;
+      }
+      memcpy(_fm_team[_fm_num_team++], rec.pub_key, PUB_KEY_SIZE);
+      // back into the node table, so the team shows up right after a restart (with its last data)
+      if (rec_size == sizeof(FmNode) && rec.heard_at != 0 && _fm_nodes && fmNodeFind(rec.pub_key, PUB_KEY_SIZE) == NULL) {
+        for (int i = 0; i < _fm_max_nodes; i++) {
+          if (_fm_nodes[i].heard_at == 0) { _fm_nodes[i] = rec; break; }
+        }
+      }
     }
   }
   f.close();
@@ -132,13 +156,25 @@ void MyMesh::fmTeamLoad() {
 void MyMesh::fmTeamSave() {
   File f = fmFsOpenWriteTmp(_fs, FM_TEAM_FILE);
   if (!f) return;
-  uint8_t hdr[3] = { 'F', 'M', 1 };
-  bool ok = f.write(hdr, 3) == 3;
+  // format 2: header, record size, then one FmNode per team member (key + name, type,
+  // position, last heard). Only the key is filled if the member is not in the table.
+  uint8_t hdr[4] = { 'F', 'M', 2, (uint8_t)sizeof(FmNode) };
+  bool ok = f.write(hdr, 4) == 4;
   for (int i = 0; ok && i < _fm_num_team; i++) {
-    ok = f.write(_fm_team[i], PUB_KEY_SIZE) == PUB_KEY_SIZE;
+    FmNode rec;
+    FmNode* n = fmNodeFind(_fm_team[i], PUB_KEY_SIZE);
+    if (n) {
+      rec = *n;
+    } else {
+      memset(&rec, 0, sizeof(rec));
+      memcpy(rec.pub_key, _fm_team[i], PUB_KEY_SIZE);
+    }
+    ok = f.write((uint8_t*)&rec, sizeof(rec)) == sizeof(rec);
   }
   f.close();
   if (ok) fmFsCommit(_fs, FM_TEAM_FILE);
+  _fm_team_dirty = false;
+  _fm_team_next_save = futureMillis(FM_TEAM_SAVE_INTERVAL);
 }
 
 // ---- counters ----
@@ -181,6 +217,10 @@ uint32_t MyMesh::fmDutyMillisLastHour() {
 }
 
 void MyMesh::fmStatsLoop() {
+  if (_fm_team_dirty && (_fm_team_next_save == 0 || millisHasNowPassed(_fm_team_next_save))) {
+    fmTeamSave();
+  }
+
   if (millisHasNowPassed(_fm_act_next)) {
     _fm_act_next = futureMillis(FM_ACT_BUCKET_MS);
     unsigned long air = getTotalAirTime();

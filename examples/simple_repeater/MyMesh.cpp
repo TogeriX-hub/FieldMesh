@@ -912,6 +912,8 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _fm_max_nodes = 0;
   _fm_num_team = 0;
   memset(_fm_act, 0, sizeof(_fm_act));
+  _fm_team_dirty = false;
+  _fm_team_next_save = 0;
   _fm_act_idx = 0;
   _fm_act_next = 0;
   _fm_act_air_mark = 0;
