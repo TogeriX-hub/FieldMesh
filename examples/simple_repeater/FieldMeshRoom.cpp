@@ -25,6 +25,7 @@
 #define FM_ROOM_POST_SYNC_DELAY_SECS 6
 #define FM_ROOM_FIRMWARE_VER_LEVEL   1
 #define FM_ROOM_RESP_LOGIN_OK        0
+#define FM_ROOM_LAT_OFFSET           0.000045   // ~5 m south of the repeater (1 deg lat = ~111 km)
 
 #define FM_ROOM_REQ_GET_STATUS       0x01
 #define FM_ROOM_REQ_KEEP_ALIVE       0x02
@@ -532,11 +533,13 @@ void MyMesh::fmRoomSendAdvert(bool flood, int delay_millis) {
   if (_prefs.advert_loc_policy == ADVERT_LOC_NONE) {   // same location policy as the repeater advert
     AdvertDataBuilder builder(ADV_TYPE_ROOM, name);
     app_data_len = builder.encodeTo(app_data);
-  } else if (_prefs.advert_loc_policy == ADVERT_LOC_SHARE) {
-    AdvertDataBuilder builder(ADV_TYPE_ROOM, name, sensors.node_lat, sensors.node_lon);
-    app_data_len = builder.encodeTo(app_data);
   } else {
-    AdvertDataBuilder builder(ADV_TYPE_ROOM, name, _prefs.node_lat, _prefs.node_lon);
+    // Same location as the repeater, moved ~5 m south so both are visible on a map.
+    // 0/0 means "no location set": keep it as it is.
+    double lat = (_prefs.advert_loc_policy == ADVERT_LOC_SHARE) ? sensors.node_lat : _prefs.node_lat;
+    double lon = (_prefs.advert_loc_policy == ADVERT_LOC_SHARE) ? sensors.node_lon : _prefs.node_lon;
+    if (lat != 0.0 || lon != 0.0) lat -= FM_ROOM_LAT_OFFSET;
+    AdvertDataBuilder builder(ADV_TYPE_ROOM, name, lat, lon);
     app_data_len = builder.encodeTo(app_data);
   }
 
