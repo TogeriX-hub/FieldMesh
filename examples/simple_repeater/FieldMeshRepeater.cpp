@@ -214,6 +214,11 @@ bool MyMesh::fmHandleCommand(uint32_t sender_timestamp, const char* command, cha
     return false;  // upstream CLI starts the OTA update
   }
 
+  if (strcmp(command, "room.reset") == 0) {   // same as the menu: posts, users, password; name stays
+    fmRoomReset();
+    strcpy(reply, "OK - room reset (posts, users, password); name stays");
+    return true;
+  }
   if (memcmp(command, "room.clear", 10) == 0 && (command[10] == 0 || command[10] == ' ')) {
     const char* what = &command[10];
     while (*what == ' ') what++;

@@ -43,6 +43,20 @@ static FmSnap fm_snap_board = { NULL, 12000, 0 };
 #define FM_WEB_POST_NAME_MAX          24
 #define FM_WEB_POST_TEXT_MAX          120
 
+// admin login (setup page): password = the repeater admin password, copied here by loop()
+#define FM_WEB_MAX_TOKENS     4
+#define FM_WEB_TOKEN_TTL_MS   3600000UL   // 1 h without use
+#define FM_WEB_LOGIN_BLOCK_MS 2000        // after a wrong password (open WiFi: no fast guessing)
+struct FmToken { char t[33]; unsigned long until; };
+static FmToken fm_tokens[FM_WEB_MAX_TOKENS];
+static char fm_admin_pw[17] = "";
+static unsigned long fm_login_block_until = 0;
+// admin command (a normal CLI command) handed over to loop(), result fetched with its id
+static char fm_admin_cmd[160];
+static bool fm_admin_pending = false;
+static uint32_t fm_admin_seq = 0, fm_admin_done_id = 0;
+static char fm_admin_reply[200] = "";
+
 // post from the WiFi page, handed over to loop()
 static char fm_post_name[FM_WEB_POST_NAME_MAX + 1];
 static char fm_post_text[FM_WEB_POST_TEXT_MAX + 1];
@@ -84,6 +98,30 @@ static void fmSendSnap(AsyncWebServerRequest* request, FmSnap& snap) {
   AsyncWebServerResponse* res = request->beginResponse(200, "application/json", body);
   res->addHeader("Cache-Control", "no-store");
   request->send(res);
+}
+
+static String fmParam(AsyncWebServerRequest* request, const char* name) {
+  if (request->hasParam(name, true)) return request->getParam(name, true)->value();
+  if (request->hasParam(name)) return request->getParam(name)->value();
+  return String("");
+}
+
+// valid admin token (body/query "k")? extends it. Caller holds no lock.
+static bool fmTokenOk(AsyncWebServerRequest* request) {
+  String k = fmParam(request, "k");
+  if (k.length() != 32) return false;
+  bool ok = false;
+  if (xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    for (int i = 0; i < FM_WEB_MAX_TOKENS; i++) {
+      if (fm_tokens[i].t[0] && (long)(fm_tokens[i].until - millis()) > 0 && k.equals(fm_tokens[i].t)) {
+        fm_tokens[i].until = millis() + FM_WEB_TOKEN_TTL_MS;
+        ok = true;
+        break;
+      }
+    }
+    xSemaphoreGive(fm_snap_mutex);
+  }
+  return ok;
 }
 
 static void fmCleanInput(char* dest, size_t sz, const String& src) {
@@ -208,6 +246,79 @@ static void fmWebSetupRoutes() {
       xSemaphoreGive(fm_snap_mutex);
     }
     request->send(ok ? 202 : 429);   // 429: previous post not taken over yet, try again
+  });
+  fm_server->on("/api/login", HTTP_POST, [](AsyncWebServerRequest* request) {
+    if ((long)(fm_login_block_until - millis()) > 0) { request->send(429); return; }
+    String p = fmParam(request, "p");
+    bool ok = false;
+    char token[33] = "";
+    if (xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+      ok = fm_admin_pw[0] != 0 && p.equals(fm_admin_pw);
+      if (ok) {
+        int slot = 0;
+        for (int i = 1; i < FM_WEB_MAX_TOKENS; i++) {   // free or oldest slot
+          if ((long)(fm_tokens[i].until - fm_tokens[slot].until) < 0) slot = i;
+        }
+        for (int i = 0; i < 16; i += 4) {
+          uint32_t r = esp_random();
+          snprintf(&token[i * 2], 9, "%08lx", (unsigned long)r);
+        }
+        StrHelper::strncpy(fm_tokens[slot].t, token, sizeof(fm_tokens[slot].t));
+        fm_tokens[slot].until = millis() + FM_WEB_TOKEN_TTL_MS;
+      } else {
+        fm_login_block_until = millis() + FM_WEB_LOGIN_BLOCK_MS;
+      }
+      xSemaphoreGive(fm_snap_mutex);
+    }
+    if (!ok) { request->send(403); return; }
+    request->send(200, "application/json", String("{\"token\":\"") + token + "\"}");
+  });
+  fm_server->on("/api/logout", HTTP_POST, [](AsyncWebServerRequest* request) {
+    String k = fmParam(request, "k");
+    if (xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+      for (int i = 0; i < FM_WEB_MAX_TOKENS; i++) {
+        if (fm_tokens[i].t[0] && k.equals(fm_tokens[i].t)) fm_tokens[i].t[0] = 0;
+      }
+      xSemaphoreGive(fm_snap_mutex);
+    }
+    request->send(204);
+  });
+  // setup actions = normal CLI commands, run by loop() like a remote admin CLI
+  fm_server->on("/api/admin", HTTP_POST, [](AsyncWebServerRequest* request) {
+    if (!fmTokenOk(request)) { request->send(403); return; }
+    String c = fmParam(request, "c");
+    if (c.length() == 0 || c.length() >= sizeof(fm_admin_cmd)) { request->send(400); return; }
+    uint32_t id = 0;
+    if (xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+      if (!fm_admin_pending) {
+        fmCleanInput(fm_admin_cmd, sizeof(fm_admin_cmd), c);
+        id = ++fm_admin_seq;
+        fm_admin_pending = true;
+      }
+      xSemaphoreGive(fm_snap_mutex);
+    }
+    if (id == 0) { request->send(429); return; }
+    request->send(200, "application/json", String("{\"id\":") + id + "}");
+  });
+  fm_server->on("/api/admin", HTTP_GET, [](AsyncWebServerRequest* request) {
+    if (!fmTokenOk(request)) { request->send(403); return; }
+    uint32_t id = strtoul(fmParam(request, "id").c_str(), NULL, 10);
+    String body = "{\"done\":false}";
+    if (xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+      if (id != 0 && id == fm_admin_done_id) {
+        char buf[260];
+        FmJson j(buf, sizeof(buf));
+        j.raw("{\"done\":true,\"reply\":");
+        j.str(fm_admin_reply);
+        j.raw("}");
+        j.done(buf);
+        body = buf;
+      }
+      xSemaphoreGive(fm_snap_mutex);
+    }
+    AsyncWebServerResponse* res = request->beginResponse(200, "application/json", body);
+    res->addHeader("Cache-Control", "no-store");
+    request->send(res);
   });
   fm_server->on("/api/ping", HTTP_GET, [](AsyncWebServerRequest* request) {
     AsyncWebServerResponse* res = request->beginResponse(204);
@@ -533,8 +644,36 @@ void MyMesh::fmWebLoop() {
     xSemaphoreGive(fm_snap_mutex);
   }
 
+  // admin command from the setup page: run as remote CLI (serial-only commands stay blocked)
+  if (xSemaphoreTake(fm_snap_mutex, 0) == pdTRUE) {
+    bool run = fm_admin_pending;
+    char cmd[sizeof(fm_admin_cmd)];
+    uint32_t id = fm_admin_seq;
+    if (run) strcpy(cmd, fm_admin_cmd);
+    xSemaphoreGive(fm_snap_mutex);
+    if (run) {
+      char reply[200];
+      reply[0] = 0;
+      uint32_t now = getRTCClock()->getCurrentTime();
+      handleCommand(now ? now : 1, cmd, reply);   // may stop the WiFi (set wifi off)
+      if (fm_snap_mutex && xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        StrHelper::strncpy(fm_admin_reply, reply[0] ? reply : "OK", sizeof(fm_admin_reply));
+        fm_admin_done_id = id;
+        fm_admin_pending = false;
+        xSemaphoreGive(fm_snap_mutex);
+      }
+      fm_next_snapshot = 0;   // show the change right away
+      if (!fm_web_running) return;
+    }
+  }
+
   if (fm_next_snapshot && !millisHasNowPassed(fm_next_snapshot)) return;
   fm_next_snapshot = futureMillis(FM_WEB_SNAPSHOT_INTERVAL);
+
+  if (xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+    StrHelper::strncpy(fm_admin_pw, _prefs.password, sizeof(fm_admin_pw));   // setup login = repeater admin password
+    xSemaphoreGive(fm_snap_mutex);
+  }
 
   bool viewers = fmWebStations() > 0;
   if (viewers && fm_snap_board.buf && xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(20)) == pdTRUE) {

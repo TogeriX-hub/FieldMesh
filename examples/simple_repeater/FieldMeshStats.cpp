@@ -235,6 +235,27 @@ bool MyMesh::fmStatsHandleCommand(const char* command, char* reply) {
     strcpy(reply, "Err - node not heard yet (name as in its advert)");
     return true;
   }
+  if (memcmp(command, "team.key ", 9) == 0) {   // team.key <first 6 bytes as hex> on|off (dashboard)
+    char hex[13];
+    StrHelper::strncpy(hex, &command[9], sizeof(hex));
+    const char* arg = strchr(&command[9], ' ');
+    uint8_t key[6];
+    if (strlen(hex) < 12 || arg == NULL || !mesh::Utils::fromHex(key, 6, hex)) {
+      strcpy(reply, "Err - use: team.key <12 hex> on|off");
+      return true;
+    }
+    while (*arg == ' ') arg++;
+    bool on = strcmp(arg, "on") == 0;
+    FmNode* n = fmNodeFind(key, 6);
+    if (n == NULL) {
+      strcpy(reply, "Err - node not in the table");
+    } else if (fmTeamSet(n->pub_key, on)) {
+      sprintf(reply, "OK - '%s' %s team", n->name, on ? "added to" : "removed from");
+    } else {
+      sprintf(reply, "Err - max %d team members", FM_MAX_TEAM);
+    }
+    return true;
+  }
   if (strcmp(command, "get team") == 0) {
     char* dp = reply;
     dp += sprintf(dp, "> %d: ", _fm_num_team);
