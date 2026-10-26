@@ -12,11 +12,13 @@
 
 #include <WiFi.h>
 #include <DNSServer.h>
+#include <ESPmDNS.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 
 #define FM_WEB_SNAPSHOT_INTERVAL  2000
 #define FM_WEB_MAX_STATIONS       10              // phones at the same time (ESP32-S3 allows up to 15)
+#define FM_WEB_MDNS_NAME          "fieldmesh"     // http://fieldmesh.local (resolved in the WiFi even with mobile data on)
 #define FM_WEB_CLOCK_MIN_STEP     30              // s: smaller differences are ignored
 #define FM_WEB_CLOCK_MAX_STEP     (365UL * 86400) // s: a phone further ahead is not trusted
 
@@ -64,7 +66,7 @@ h1{margin:2px 0 0;font-size:22px}
 <div class="card"><div class="lbl">Packets in / out</div><div class="val" id="pk">-</div></div>
 <div class="card"><div class="lbl">Noise</div><div class="val" id="noise">-</div></div>
 </div>
-<p class="note">Dashboard preview (P5a). Board, SOS, Mesh and Setup follow.</p>
+<p class="note">Address: http://fieldmesh.local (or http://192.168.4.1). Dashboard preview (P5a): Board, SOS, Mesh and Setup follow.</p>
 </div><script>
 var last=0,fails=0;
 function set(id,v){var e=document.getElementById(id);if(e.textContent!==v)e.textContent=v;}
@@ -146,6 +148,11 @@ bool MyMesh::fmWebStart() {
     fmWebSetupRoutes();
   }
   fm_server->begin();
+  // .local name via mDNS: phones resolve it inside the WiFi, also when they keep mobile
+  // data on ("use without internet"), where normal names would go to the mobile network
+  if (MDNS.begin(FM_WEB_MDNS_NAME)) {
+    MDNS.addService("http", "tcp", 80);
+  }
   fm_web_running = true;
   fm_next_snapshot = 0;
   return true;
@@ -153,6 +160,7 @@ bool MyMesh::fmWebStart() {
 
 void MyMesh::fmWebStop() {
   if (!fm_web_running) return;
+  MDNS.end();
   fm_server->end();
   fm_dns->stop();
   WiFi.softAPdisconnect(true);
@@ -231,7 +239,7 @@ void MyMesh::fmSetWifi(bool on, char* reply) {
   char tmp[64];
   if (on) {
     if (fmWebStart()) {
-      snprintf(tmp, sizeof(tmp), "OK - WiFi '%s' on, http://192.168.4.1", fm_web_ssid);
+      snprintf(tmp, sizeof(tmp), "OK - WiFi '%s' on, http://fieldmesh.local", fm_web_ssid);
     } else {
       strcpy(tmp, "Err - WiFi could not start");
     }

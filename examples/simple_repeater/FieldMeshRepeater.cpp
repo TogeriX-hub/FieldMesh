@@ -200,7 +200,7 @@ bool MyMesh::fmHandleCommand(uint32_t sender_timestamp, const char* command, cha
   }
   if (strcmp(command, "get wifi") == 0) {
     if (fmWebIsOn()) {
-      sprintf(reply, "> on: '%s', http://192.168.4.1, %d phones", fmWebCurrentSsid(), fmWebStations());
+      sprintf(reply, "> on: '%s', http://fieldmesh.local, %d phones", fmWebCurrentSsid(), fmWebStations());
     } else {
       strcpy(reply, "> off");
     }
