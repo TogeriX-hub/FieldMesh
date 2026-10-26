@@ -18,7 +18,7 @@
 
 #define FM_WEB_SNAPSHOT_INTERVAL  2000
 #define FM_WEB_MAX_STATIONS       10              // phones at the same time (ESP32-S3 allows up to 15)
-#define FM_WEB_MDNS_NAME          "fieldmesh"     // http://fieldmesh.local (resolved in the WiFi even with mobile data on)
+#define FM_WEB_MDNS_FALLBACK      "fieldmesh"     // .local name if the public name has no usable letters
 #define FM_WEB_CLOCK_MIN_STEP     30              // s: smaller differences are ignored
 #define FM_WEB_CLOCK_MAX_STEP     (365UL * 86400) // s: a phone further ahead is not trusted
 
@@ -29,6 +29,7 @@ static char fm_snap[1024] = "{}";
 static volatile uint32_t fm_pending_time = 0;   // phone clock, handed over to loop()
 static bool fm_web_running = false;
 static char fm_web_ssid[33] = "";
+static char fm_web_host[64] = "";   // mDNS name without ".local", made from the public name ("BaseCamp" -> "basecamp")
 static unsigned long fm_next_snapshot = 0;
 
 // ---- the page (P5a: status only; full dashboard in P5e) ----
@@ -66,13 +67,21 @@ h1{margin:2px 0 0;font-size:22px}
 <div class="card"><div class="lbl">Packets in / out</div><div class="val" id="pk">-</div></div>
 <div class="card"><div class="lbl">Noise</div><div class="val" id="noise">-</div></div>
 </div>
-<p class="note">Address: http://fieldmesh.local (or http://192.168.4.1). Dashboard preview (P5a): Board, SOS, Mesh and Setup follow.</p>
+<p class="note">Address: <span id="addr">-</span> · fixed address for QR codes: http://192.168.4.1<br>Dashboard preview (P5a): Board, SOS, Mesh and Setup follow.</p>
 </div><script>
 var last=0,fails=0;
 function set(id,v){var e=document.getElementById(id);if(e.textContent!==v)e.textContent=v;}
 function dur(s){var d=Math.floor(s/86400),h=Math.floor(s/3600)%24,m=Math.floor(s/60)%60;return (d?d+' d ':'')+h+' h '+m+' min';}
 function hm(t){var d=new Date(t*1000);return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
-function draw(j){set('name',j.name);set('mode',j.offgrid?'OFF-GRID':'NORMAL');
+var moved=false;
+function toLocal(host){
+// The fixed address (QR code: 192.168.4.1) moves on to http://<name>.local, but only when this
+// phone can reach that name (iPhone: yes; Android before 12 often not: stay on the IP then).
+if(moved||!host||location.hostname===host)return;moved=true;
+var probe=fetch('http://'+host+'/api/ping',{mode:'no-cors',cache:'no-store'});
+var timeout=new Promise(function(_,rej){setTimeout(rej,2500);});
+Promise.race([probe,timeout]).then(function(){location.replace('http://'+host+'/');}).catch(function(){});}
+function draw(j){set('name',j.name);set('addr','http://'+j.host);toLocal(j.host);set('mode',j.offgrid?'OFF-GRID':'NORMAL');
 document.getElementById('mode').className='badge'+(j.offgrid?' og':'');
 set('freq',j.freq.toFixed(3)+' MHz SF'+j.sf);set('up',dur(j.uptime));set('clock',hm(j.time));
 set('board',j.room?(j.posts+' posts · '+j.users+' users'):'room off');set('wifi',String(j.stations));
@@ -115,6 +124,12 @@ static void fmWebSetupRoutes() {
     res->addHeader("Cache-Control", "no-store");
     request->send(res);
   });
+  fm_server->on("/api/ping", HTTP_GET, [](AsyncWebServerRequest* request) {
+    AsyncWebServerResponse* res = request->beginResponse(204);
+    res->addHeader("Access-Control-Allow-Origin", "*");   // reachability check from the IP address
+    res->addHeader("Cache-Control", "no-store");
+    request->send(res);
+  });
   fm_server->on("/api/time", HTTP_POST, [](AsyncWebServerRequest* request) {
     if (request->hasParam("t", true)) {
       uint32_t t = strtoul(request->getParam("t", true)->value().c_str(), NULL, 10);
@@ -150,7 +165,8 @@ bool MyMesh::fmWebStart() {
   fm_server->begin();
   // .local name via mDNS: phones resolve it inside the WiFi, also when they keep mobile
   // data on ("use without internet"), where normal names would go to the mobile network
-  if (MDNS.begin(FM_WEB_MDNS_NAME)) {
+  fmWebHostName(fm_web_host, sizeof(fm_web_host), fm_web_ssid);
+  if (MDNS.begin(fm_web_host)) {
     MDNS.addService("http", "tcp", 80);
   }
   fm_web_running = true;
@@ -166,6 +182,47 @@ void MyMesh::fmWebStop() {
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_OFF);
   fm_web_running = false;
+}
+
+// mDNS host name from the public name: lower case a-z 0-9, umlauts spelled out, everything
+// else becomes '-' ("Base Camp Süd" -> "base-camp-sued"); max 63 characters
+void MyMesh::fmWebHostName(char* dest, size_t sz, const char* name) {
+  size_t n = 0;
+  bool dash = false;
+  for (const unsigned char* p = (const unsigned char*)name; *p && n + 3 < sz && n < 63; p++) {
+    unsigned char c = *p;
+    const char* rep = NULL;
+    if (c == 0xC3 && p[1]) {   // UTF-8 umlauts
+      switch (p[1]) {
+        case 0xA4: case 0x84: rep = "ae"; break;
+        case 0xB6: case 0x96: rep = "oe"; break;
+        case 0xBC: case 0x9C: rep = "ue"; break;
+        case 0x9F: rep = "ss"; break;
+      }
+      if (rep) p++;
+    }
+    if (rep) {
+      dest[n++] = rep[0];
+      dest[n++] = rep[1];
+      dash = false;
+    } else if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+      dest[n++] = c;
+      dash = false;
+    } else if (c >= 'A' && c <= 'Z') {
+      dest[n++] = c - 'A' + 'a';
+      dash = false;
+    } else if (n > 0 && !dash) {
+      dest[n++] = '-';
+      dash = true;
+    }
+  }
+  while (n > 0 && dest[n - 1] == '-') n--;
+  dest[n] = 0;
+  if (n == 0) StrHelper::strncpy(dest, FM_WEB_MDNS_FALLBACK, sz);
+}
+
+const char* MyMesh::fmWebCurrentHost() const {
+  return fm_web_host;
 }
 
 bool MyMesh::fmWebIsOn() const {
@@ -216,7 +273,7 @@ void MyMesh::fmWebLoop() {
   const char* end = buf + sizeof(buf) - 1;
   dp += snprintf(dp, end - dp, "{\"name\":");
   fmJsonStr(dp, end, fm_web_ssid);
-  dp += snprintf(dp, end - dp, ",\"repeater\":");
+  dp += snprintf(dp, end - dp, ",\"host\":\"%s.local\",\"repeater\":", fm_web_host);
   fmJsonStr(dp, end, _prefs.node_name);
   dp += snprintf(dp, end - dp,
     ",\"offgrid\":%s,\"freq\":%.4f,\"sf\":%u,\"bw\":%.1f,\"cr\":%u"
@@ -239,7 +296,7 @@ void MyMesh::fmSetWifi(bool on, char* reply) {
   char tmp[64];
   if (on) {
     if (fmWebStart()) {
-      snprintf(tmp, sizeof(tmp), "OK - WiFi '%s' on, http://fieldmesh.local", fm_web_ssid);
+      snprintf(tmp, sizeof(tmp), "OK - WiFi '%s' on, http://%s.local", fm_web_ssid, fm_web_host);
     } else {
       strcpy(tmp, "Err - WiFi could not start");
     }
@@ -259,6 +316,8 @@ void MyMesh::fmWebStop() { }
 bool MyMesh::fmWebIsOn() const { return false; }
 int MyMesh::fmWebStations() const { return 0; }
 const char* MyMesh::fmWebCurrentSsid() const { return ""; }
+const char* MyMesh::fmWebCurrentHost() const { return ""; }
+void MyMesh::fmWebHostName(char* dest, size_t sz, const char* name) { if (sz) dest[0] = 0; }
 void MyMesh::fmWebSsid(char* dest, size_t sz) { if (sz) dest[0] = 0; }
 void MyMesh::fmWebLoop() { }
 void MyMesh::fmSetWifi(bool on, char* reply) { if (reply) strcpy(reply, "Err - no WiFi on this board"); }

@@ -132,6 +132,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool fmWebIsOn() const;
   int  fmWebStations() const;
   const char* fmWebCurrentSsid() const;
+  const char* fmWebCurrentHost() const;   // "<name>" for http://<name>.local
+  void fmWebHostName(char* dest, size_t sz, const char* name);
   void fmWebSsid(char* dest, size_t sz);
   void fmWebLoop();
   bool fmHandleCommand(uint32_t sender_timestamp, const char* command, char* reply);
