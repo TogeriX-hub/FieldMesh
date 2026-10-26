@@ -7,10 +7,23 @@
 #ifdef FIELDMESH_REPEATER
 
 #include <Arduino.h>
+#include <Identity.h>
 #include <helpers/ConfigSerializer.h>
 #include "../companion_radio/OffGrid.h"   // shared Off-Grid parameters (EU/US chosen from the normal frequency)
 
 #define FM_REPEATER_PREFS_FILE  "/fm_repeater.json"
+#define FM_ROOM_IDENTITY_NAME   "fm_room"     // second identity (IdentityStore, next to "_main")
+
+#ifndef FM_ROOM_MAX_POSTS
+  #define FM_ROOM_MAX_POSTS     32            // ring buffer, same as upstream MAX_UNSYNCED_POSTS
+#endif
+#define FM_ROOM_POST_TEXT_LEN   (160-9)       // same as upstream MAX_POST_TEXT_LEN
+
+struct FmRoomPost {
+  mesh::Identity author;
+  uint32_t post_timestamp;   // by OUR clock
+  char text[FM_ROOM_POST_TEXT_LEN+1];
+};
 
 // FieldMesh settings live in their own file, so the upstream /prefs.json stays untouched.
 class FieldMeshRepeaterPrefs : public ConfigSerializer {
@@ -20,6 +33,9 @@ public:
   float   normal_bw = 0;
   uint8_t normal_sf = 0;
   uint8_t normal_cr = 0;
+  uint8_t room_enabled = 0;     // 1 = room server identity active
+  char    room_name[32] = "";   // empty -> repeater name
+  char    room_pass[16] = "";   // empty -> login without password (read + write)
 
 protected:
   void structure() override {
@@ -28,6 +44,9 @@ protected:
     def("n_bw", normal_bw);
     def("n_sf", normal_sf);
     def("n_cr", normal_cr);
+    def("room_en", room_enabled);
+    def("room_name", room_name, sizeof(room_name));
+    def("room_pass", room_pass, sizeof(room_pass));
   }
 };
 
@@ -36,6 +55,10 @@ class FieldMeshUIHost {
 public:
   virtual bool fmIsOffGrid() const = 0;
   virtual void fmSetOffGrid(bool on, char* reply) = 0;   // reply: short status text (may be NULL)
+  virtual bool fmIsRoomOn() const = 0;
+  virtual const char* fmRoomName() const = 0;
+  virtual void fmRoomCounts(int& clients, int& posts) = 0;
+  virtual void fmSetRoom(bool on, const char* name, char* reply) = 0;   // name NULL -> last name / repeater name
 };
 
 #endif

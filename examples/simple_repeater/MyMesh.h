@@ -122,6 +122,35 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void fmBegin();
   bool fmSavePrefs();
   bool fmHandleCommand(uint32_t sender_timestamp, const char* command, char* reply);
+
+  // Room server as a second identity (FieldMeshRoom.cpp). The repeater itself stays a
+  // normal repeater (own identity, own ACL); only packets for the room identity are
+  // taken out of the normal receive path.
+  mesh::LocalIdentity _room_id;
+  bool _room_id_loaded;
+  ClientACL _room_acl;           // RAM only: never load()/save(), ClientACL uses the fixed file /s_contacts of the repeater
+  FmRoomPost _room_posts[FM_ROOM_MAX_POSTS];   // cyclic queue
+  int _room_next_post_idx, _room_next_client_idx;
+  unsigned long _room_next_push;
+  uint16_t _room_num_posted, _room_num_pushes;
+  int _room_matching[MAX_CLIENTS];
+  uint8_t _room_reply[MAX_PACKET_PAYLOAD];
+
+  bool fmRoomActive() const { return _fm.room_enabled && _room_id_loaded; }
+  bool fmRoomLoadIdentity(bool create);
+  void fmRoomPrepare(mesh::Packet* pkt);   // set the room identity as sender (src hash)
+  bool fmRoomRecv(mesh::Packet* pkt);      // true: packet was for the room and is consumed
+  void fmRoomOnLogin(mesh::Packet* pkt, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len);
+  void fmRoomOnData(mesh::Packet* pkt, ClientInfo* client, const uint8_t* secret, uint8_t* data, size_t len);
+  void fmRoomOnPath(ClientInfo* client, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len);
+  int  fmRoomHandleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
+  void fmRoomStorePost(const mesh::Identity& author, const char* text);
+  void fmRoomPushPost(ClientInfo* client, FmRoomPost& post);
+  uint8_t fmRoomUnsyncedCount(ClientInfo* client);
+  bool fmRoomProcessAck(const uint8_t* data);
+  void fmRoomLoop();
+  void fmRoomSendAdvert(bool flood, int delay_millis);
+  int  fmRoomNumPosts() const;
 #endif
 #if defined(WITH_RS232_BRIDGE)
   RS232Bridge bridge;
@@ -185,6 +214,9 @@ protected:
   void onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) override;
   bool onPeerPathRecv(mesh::Packet* packet, int sender_idx, const uint8_t* secret, uint8_t* path, uint8_t path_len, uint8_t extra_type, uint8_t* extra, uint8_t extra_len) override;
   void onControlDataRecv(mesh::Packet* packet) override;
+#ifdef FIELDMESH_REPEATER
+  void onAckRecv(mesh::Packet* packet, uint32_t ack_crc) override;   // ACKs for room post pushes
+#endif
 
   void sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
 
@@ -271,6 +303,10 @@ public:
   // FieldMeshUIHost
   bool fmIsOffGrid() const override { return _fm.offgrid != 0; }
   void fmSetOffGrid(bool on, char* reply) override;
+  bool fmIsRoomOn() const override { return fmRoomActive(); }
+  const char* fmRoomName() const override { return _fm.room_name[0] ? _fm.room_name : _prefs.node_name; }
+  void fmRoomCounts(int& clients, int& posts) override { clients = _room_acl.getNumClients(); posts = fmRoomNumPosts(); }
+  void fmSetRoom(bool on, const char* name, char* reply) override;
 #endif
 
   #if defined(USE_LR2021)

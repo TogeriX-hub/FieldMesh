@@ -19,6 +19,10 @@ void MyMesh::fmBegin() {
   }
   // The radio params themselves are part of the upstream prefs (/prefs.json),
   // so an active Off-Grid mode survives a reboot without extra work here.
+
+  if (_fm.room_enabled && !fmRoomLoadIdentity(false)) {
+    _fm.room_enabled = 0;   // identity file missing (e.g. erased): room stays off until 'set roomserver'
+  }
 }
 
 bool MyMesh::fmSavePrefs() {
@@ -100,6 +104,51 @@ bool MyMesh::fmHandleCommand(uint32_t sender_timestamp, const char* command, cha
   }
   if (strcmp(command, "get offgrid") == 0) {
     sprintf(reply, "> %s (%.4f MHz)", _fm.offgrid ? "on" : "off", _prefs.freq);
+    return true;
+  }
+
+  // Room server (second identity, FieldMeshRoom.cpp)
+  if (memcmp(command, "set roomserver", 14) == 0 && (command[14] == 0 || command[14] == ' ')) {
+    char name[32];
+    const char* sp = &command[14];
+    while (*sp == ' ') sp++;
+    StrHelper::strncpy(name, sp, sizeof(name));
+    int n = strlen(name);
+    while (n > 0 && name[n-1] == ' ') name[--n] = 0;   // trim trailing spaces
+
+    if (n == 0) {
+      strcpy(reply, "Err - use: set roomserver <name>|on|off");
+    } else if (strcmp(name, "off") == 0) {
+      fmSetRoom(false, NULL, reply);
+    } else if (strcmp(name, "on") == 0) {
+      fmSetRoom(true, NULL, reply);   // last name, or the repeater name
+    } else {
+      fmSetRoom(true, name, reply);
+    }
+    return true;
+  }
+  if (strcmp(command, "get roomserver") == 0) {
+    if (fmRoomActive()) {
+      sprintf(reply, "> on: %s, %d clients, %d posts", fmRoomName(), _room_acl.getNumClients(), fmRoomNumPosts());
+    } else {
+      strcpy(reply, "> off");
+    }
+    return true;
+  }
+  if (memcmp(command, "set room.pass", 13) == 0 && (command[13] == 0 || command[13] == ' ')) {
+    const char* pw = &command[13];
+    while (*pw == ' ') pw++;
+    if (strlen(pw) >= sizeof(_fm.room_pass)) {
+      sprintf(reply, "Err - max %d chars", (int)sizeof(_fm.room_pass) - 1);
+    } else {
+      StrHelper::strncpy(_fm.room_pass, pw, sizeof(_fm.room_pass));
+      fmSavePrefs();
+      strcpy(reply, _fm.room_pass[0] ? "OK - room password set" : "OK - room open (no password)");
+    }
+    return true;
+  }
+  if (strcmp(command, "get room.pass") == 0) {
+    sprintf(reply, "> %s", _fm.room_pass[0] ? _fm.room_pass : "(none)");
     return true;
   }
   return false;

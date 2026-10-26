@@ -565,6 +565,9 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
   } else {
     recv_pkt_region = NULL;
   }
+#ifdef FIELDMESH_REPEATER
+  if (fmRoomRecv(pkt)) return ACTION_RELEASE;   // packet for the room identity (FieldMeshRoom.cpp)
+#endif
   return Mesh::onRecvPacket(pkt);
 }
 
@@ -881,6 +884,11 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   set_radio_at = revert_radio_at = 0;
 #ifdef FIELDMESH_REPEATER
   _fm_advert_after_radio = false;
+  _room_id_loaded = false;
+  memset(_room_posts, 0, sizeof(_room_posts));
+  _room_next_post_idx = _room_next_client_idx = 0;
+  _room_next_push = 0;
+  _room_num_posted = _room_num_pushes = 0;
 #endif
   _logging = false;
   region_load_active = false;
@@ -951,7 +959,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   // load persisted prefs
   _cli.loadPrefs(_fs);
 #ifdef FIELDMESH_REPEATER
-  fmBegin();   // FieldMesh prefs (Off-Grid state) from their own file
+  fmBegin();   // FieldMesh prefs (Off-Grid state, room) from their own file
 #endif
   acl.load(_fs, self_id);
   // TODO: key_store.begin();
@@ -1047,6 +1055,9 @@ void MyMesh::sendSelfAdvertisement(int delay_millis, bool flood) {
   } else {
     MESH_DEBUG_PRINTLN("ERROR: unable to create advertisement packet!");
   }
+#ifdef FIELDMESH_REPEATER
+  fmRoomSendAdvert(flood, delay_millis + 2000);   // room identity follows the repeater advert
+#endif
 }
 
 void MyMesh::updateAdvertTimer() {
@@ -1307,12 +1318,18 @@ void MyMesh::loop() {
     mesh::Packet *pkt = createSelfAdvert();
     uint32_t delay_millis = 0;
     if (pkt) sendFloodScoped(default_scope, pkt, delay_millis, _prefs.path_hash_mode + 1);
+#ifdef FIELDMESH_REPEATER
+    fmRoomSendAdvert(true, 2000);   // room identity advertises together with the repeater
+#endif
 
     updateFloodAdvertTimer(); // schedule next flood advert
     updateAdvertTimer();      // also schedule local advert (so they don't overlap)
   } else if (next_local_advert && millisHasNowPassed(next_local_advert)) {
     mesh::Packet *pkt = createSelfAdvert();
     if (pkt) sendZeroHop(pkt);
+#ifdef FIELDMESH_REPEATER
+    fmRoomSendAdvert(false, 2000);
+#endif
 
     updateAdvertTimer(); // schedule next local advert
   }
@@ -1340,6 +1357,10 @@ void MyMesh::loop() {
     acl.save(_fs);
     dirty_contacts_expiry = 0;
   }
+
+#ifdef FIELDMESH_REPEATER
+  fmRoomLoop();   // push new room posts to logged-in clients
+#endif
 
   // update uptime
   uint32_t now = millis();
