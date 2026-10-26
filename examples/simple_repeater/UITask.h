@@ -20,6 +20,7 @@ class UITask {
   uint8_t _fm_page = 0;
   char _fm_msg[24];
   unsigned long _fm_msg_until = 0;
+  unsigned long _fm_confirm_until = 0;   // second long press confirms a reset
 
   void fmRenderPage();
   void fmDrawHeader(const char* title);

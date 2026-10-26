@@ -159,7 +159,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void fmRoomLoadData();     // posts + users from flash, keeps the clock ahead of them
   void fmRoomSaveData();     // pending lazy writes
   void fmRoomBootPost();     // F1: system post with the reason of the (re)start
-  bool fmRoomBot(mesh::Packet* pkt, ClientInfo* client, const char* text);   // F2: true = was a bot command
+  bool fmRoomBot(mesh::Packet* pkt, ClientInfo* client, uint32_t sender_timestamp, const char* text);   // true = bot command or /CLI (not posted)
   void fmRoomQueuePrivate(ClientInfo* client, const char* text);
   bool fmBoxEnv(float& temp_c, float& hum_pct, bool& has_hum);   // F3: box sensor (or MCU temperature)
 #endif
@@ -318,6 +318,7 @@ public:
   const char* fmRoomName() const override { return _fm.room_name[0] ? _fm.room_name : _prefs.node_name; }
   void fmRoomCounts(int& clients, int& posts) override { clients = _room_acl.getNumClients(); posts = fmRoomNumPosts(); }
   void fmSetRoom(bool on, const char* name, char* reply) override;
+  void fmRoomReset() override;
 #endif
 
   #if defined(USE_LR2021)

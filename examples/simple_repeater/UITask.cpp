@@ -120,7 +120,7 @@ void UITask::renderCurrScreen() {
 #ifdef FIELDMESH_REPEATER
 // FieldMesh menu: click = next page, long press = action of the page.
 // Power off only on its own page (no accidental off on the status page).
-enum { FM_PAGE_STATUS = 0, FM_PAGE_OFFGRID, FM_PAGE_ROOM, FM_PAGE_WIFI, FM_PAGE_POWER, FM_PAGE_COUNT };
+enum { FM_PAGE_STATUS = 0, FM_PAGE_OFFGRID, FM_PAGE_ROOM, FM_PAGE_ROOM_RESET, FM_PAGE_WIFI, FM_PAGE_POWER, FM_PAGE_COUNT };
 
 void UITask::fmDrawHeader(const char* title) {
   char tmp[8];
@@ -187,6 +187,16 @@ void UITask::fmRenderPage() {
       break;
     }
 
+    case FM_PAGE_ROOM_RESET:
+      fmDrawHeader("Room reset");
+      _display->setCursor(0, 15);
+      _display->print("Deletes posts, users,");   // max 21 chars per line
+      _display->setCursor(0, 26);
+      _display->print("password. Name stays.");
+      _display->setCursor(0, 40);
+      _display->print(_fm_confirm_until && millis() < _fm_confirm_until ? "Hold again: RESET" : "Hold: reset room");
+      break;
+
     case FM_PAGE_WIFI:
       fmDrawHeader("WiFi / Dashboard");
       _display->setCursor(0, 20);
@@ -215,6 +225,7 @@ void UITask::fmOnClick() {
     _fm_page = FM_PAGE_STATUS;   // always wake up on the status page
   }
   _fm_msg_until = 0;
+  _fm_confirm_until = 0;   // leaving the page cancels a pending reset
   _next_refresh = 0;   // redraw immediately
 }
 
@@ -240,6 +251,19 @@ void UITask::fmOnLongPress() {
         _fm_host->fmSetRoom(on, NULL, NULL);   // last name, or the repeater name
         strcpy(_fm_msg, on ? "Room ON" : "Room OFF");
         _fm_msg_until = millis() + 3000;
+      }
+      break;
+    case FM_PAGE_ROOM_RESET:
+      if (_fm_host) {
+        if (_fm_confirm_until && millis() < _fm_confirm_until) {
+          _fm_confirm_until = 0;
+          _fm_host->fmRoomReset();
+          strcpy(_fm_msg, "Room reset done");
+        } else {
+          _fm_confirm_until = millis() + 5000;   // second long press within 5 s
+          strcpy(_fm_msg, "Hold again to confirm");
+        }
+        _fm_msg_until = millis() + 5000;
       }
       break;
     case FM_PAGE_POWER:

@@ -248,7 +248,7 @@ void MyMesh::fmRoomOnData(mesh::Packet* pkt, ClientInfo* client, const uint8_t* 
 
     if ((client->permissions & PERM_ACL_ROLE_MASK) == PERM_ACL_GUEST) return;   // read only: no post, no ACK
 
-    if (!is_retry && !fmRoomBot(pkt, client, (const char *)&data[5])) {   // !ping / !status: private reply, no post
+    if (!is_retry && !fmRoomBot(pkt, client, sender_timestamp, (const char *)&data[5])) {   // !commands, /CLI: private reply, no post
       fmRoomStorePost(client->id, (const char *)&data[5]);
     }
 
@@ -721,14 +721,54 @@ static bool fmIsCmd(const char* text, const char* cmd) {
   return *text == 0;   // nothing after the command
 }
 
-bool MyMesh::fmRoomBot(mesh::Packet* pkt, ClientInfo* client, const char* text) {
+bool MyMesh::fmRoomBot(mesh::Packet* pkt, ClientInfo* client, uint32_t sender_timestamp, const char* text) {
+  while (*text == ' ') text++;
+  bool is_cli = (text[0] == '/');
   bool is_ping = fmIsCmd(text, "!ping");
   bool is_status = fmIsCmd(text, "!status");
-  if (!is_ping && !is_status) return false;   // normal post (any other text, also e.g. a manual !SOS)
+  bool is_help = fmIsCmd(text, "!commands") || fmIsCmd(text, "!help");
+  if (!is_cli && !is_ping && !is_status && !is_help) return false;   // normal post (also other '!' texts, e.g. a manual !SOS)
 
-  if (!_room_bot_limiter.allow(getRTCClock()->getCurrentTime())) return true;   // too many: no reply, no post
+  // Admin = this key is a known admin of the REPEATER (same device key for all contacts).
+  // The room itself has no admin login.
+  ClientInfo* rep = acl.getClient(client->id.pub_key, PUB_KEY_SIZE);
+  bool is_admin = rep != NULL && rep->isAdmin();
+
+  if (!is_admin && !_room_bot_limiter.allow(getRTCClock()->getCurrentTime())) return true;   // too many: no reply, no post
 
   char msg[FM_ROOM_POST_TEXT_LEN+1];
+  if (is_cli) {
+    if (!is_admin) {
+      fmRoomQueuePrivate(client, "Admins only - log in to the repeater as admin with this device first");
+      return true;
+    }
+    char cmd[FM_ROOM_POST_TEXT_LEN+1];
+    char reply[200];
+    StrHelper::strncpy(cmd, &text[1], sizeof(cmd));
+    if (cmd[0] == 0) {
+      fmRoomQueuePrivate(client, "Usage: /<command>, e.g. /get radio - !commands for a list");
+      return true;
+    }
+    reply[0] = 0;
+    // Remote CLI: sender_timestamp != 0, so serial-only commands (get prv.key, erase, set freq ...) stay blocked.
+    handleCommand(sender_timestamp ? sender_timestamp : 1, cmd, reply);
+    if (set_radio_at) {
+      set_radio_at = futureMillis(8000);   // radio change (e.g. Off-Grid): let the reply reach the admin first
+    }
+    StrHelper::strncpy(msg, reply[0] ? reply : "OK", sizeof(msg));
+    for (char* c = msg; *c; c++) { if (*c == '\n' || *c == '\r') *c = ' '; }   // single line in the chat
+    fmRoomQueuePrivate(client, msg);
+    return true;
+  }
+  if (is_help) {
+    fmRoomQueuePrivate(client, "!ping = signal check, !status = box status, !commands = this list");
+    if (is_admin) {
+      fmRoomQueuePrivate(client, "Admin: /set offgrid on|off, /set roomserver <name>|on|off, /set room.pass <pw>, /get roomserver");
+      fmRoomQueuePrivate(client, "Admin: /room.clear posts|users|pass|name|all - any repeater command works with /, e.g. /get radio");
+    }
+    return true;
+  }
+
   if (is_ping) {
     char route[16];
     if (pkt->isRouteFlood()) {
@@ -787,6 +827,13 @@ int MyMesh::fmRoomNumPosts() const {
     if (_room_posts[k].post_timestamp != 0) n++;
   }
   return n;
+}
+
+void MyMesh::fmRoomReset() {
+  fmRoomClearPosts();
+  fmRoomClearUsers();
+  _fm.room_pass[0] = 0;   // open room again
+  fmSavePrefs();
 }
 
 void MyMesh::fmSetRoom(bool on, const char* name, char* reply) {

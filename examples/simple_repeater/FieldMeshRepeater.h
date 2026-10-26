@@ -71,6 +71,7 @@ public:
   virtual const char* fmRoomName() const = 0;
   virtual void fmRoomCounts(int& clients, int& posts) = 0;
   virtual void fmSetRoom(bool on, const char* name, char* reply) = 0;   // name NULL -> last name / repeater name
+  virtual void fmRoomReset() = 0;   // posts, users and password; name, key and on/off stay
 };
 
 #endif
