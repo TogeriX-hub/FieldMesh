@@ -2,7 +2,6 @@
 // Only compiled in with -D FIELDMESH_REPEATER=1.
 
 #include "MyMesh.h"
-#include <new>   // placement new (room client list reset)
 
 #ifdef FIELDMESH_REPEATER
 
@@ -144,18 +143,50 @@ bool MyMesh::fmHandleCommand(uint32_t sender_timestamp, const char* command, cha
     } else {
       StrHelper::strncpy(_fm.room_pass, pw, sizeof(_fm.room_pass));
       fmSavePrefs();
-      // Log out all room clients, so only those who know the new password get back in.
-      // NOT _room_acl.clear(): that deletes /s_contacts, the ACL file of the repeater.
-      // ClientACL has no file handle here (never loaded), so rebuild it in place.
-      _room_acl.~ClientACL();
-      new (&_room_acl) ClientACL();
-      _room_next_client_idx = 0;
+      fmRoomClearUsers();   // only those who know the new password get back in
       strcpy(reply, _fm.room_pass[0] ? "OK - room password set, all logged out" : "OK - room open (no password), all logged out");
     }
     return true;
   }
   if (strcmp(command, "get room.pass") == 0) {
     sprintf(reply, "> %s", _fm.room_pass[0] ? _fm.room_pass : "(none)");
+    return true;
+  }
+  if (memcmp(command, "room.clear", 10) == 0 && (command[10] == 0 || command[10] == ' ')) {
+    const char* what = &command[10];
+    while (*what == ' ') what++;
+    bool all = strcmp(what, "all") == 0;
+    if (all || strcmp(what, "posts") == 0) {
+      fmRoomClearPosts();
+    }
+    if (all || strcmp(what, "users") == 0) {
+      fmRoomClearUsers();
+    }
+    if (all || strcmp(what, "pass") == 0) {
+      _fm.room_pass[0] = 0;
+      fmSavePrefs();
+      fmRoomClearUsers();   // same rule as 'set room.pass'
+    }
+    if (all || strcmp(what, "name") == 0) {
+      _fm.room_name[0] = 0;   // back to the repeater name
+      fmSavePrefs();
+      fmRoomSendAdvert(false, 500);   // apps pick up the new name (only if the room is on)
+      fmRoomSendAdvert(true, 4000);
+    }
+
+    if (all) {
+      strcpy(reply, "OK - room posts, users, password and name cleared");
+    } else if (strcmp(what, "posts") == 0) {
+      strcpy(reply, "OK - all posts deleted");
+    } else if (strcmp(what, "users") == 0) {
+      strcpy(reply, "OK - all users logged out");
+    } else if (strcmp(what, "pass") == 0) {
+      strcpy(reply, "OK - room open (no password), all logged out");
+    } else if (strcmp(what, "name") == 0) {
+      sprintf(reply, "OK - room name is now '%s'", fmRoomName());
+    } else {
+      strcpy(reply, "Err - use: room.clear posts|users|pass|name|all");
+    }
     return true;
   }
   return false;

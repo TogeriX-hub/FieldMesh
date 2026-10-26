@@ -151,6 +151,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void fmRoomLoop();
   void fmRoomSendAdvert(bool flood, int delay_millis);
   int  fmRoomNumPosts() const;
+  void fmRoomClearPosts();
+  void fmRoomClearUsers();   // log out everyone
 #endif
 #if defined(WITH_RS232_BRIDGE)
   RS232Bridge bridge;

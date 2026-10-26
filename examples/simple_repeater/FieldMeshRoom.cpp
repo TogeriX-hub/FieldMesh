@@ -9,6 +9,7 @@
 // the room is disabled on purpose (the box is administered via the repeater identity).
 
 #include "MyMesh.h"
+#include <new>   // placement new (room client list reset)
 
 #ifdef FIELDMESH_REPEATER
 
@@ -501,6 +502,19 @@ void MyMesh::fmRoomSendAdvert(bool flood, int delay_millis) {
   } else {
     sendZeroHop(pkt, delay_millis);
   }
+}
+
+void MyMesh::fmRoomClearPosts() {
+  memset(_room_posts, 0, sizeof(_room_posts));
+  _room_next_post_idx = 0;
+}
+
+void MyMesh::fmRoomClearUsers() {
+  // NOT _room_acl.clear(): that deletes /s_contacts, the ACL file of the repeater.
+  // The room list is never loaded from a file, so rebuild it in place.
+  _room_acl.~ClientACL();
+  new (&_room_acl) ClientACL();
+  _room_next_client_idx = 0;
 }
 
 int MyMesh::fmRoomNumPosts() const {
