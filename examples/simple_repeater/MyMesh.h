@@ -161,6 +161,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void fmWebBuildNodes(struct FmJson& j);
   void fmWebBuildNetwork(struct FmJson& j);
   void fmWebBuildBoard(struct FmJson& j);
+  void fmWebBuildSetup(struct FmJson& j);
   bool fmWebStart();
   void fmWebStop();
   bool fmWebIsOn() const;

@@ -15,6 +15,7 @@
 #include <ESPmDNS.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
+#include "FieldMeshWebPage.h"   // FM_PAGE: the dashboard (HTML/CSS/JS in one string)
 
 #define FM_WEB_SNAPSHOT_INTERVAL  2000
 #define FM_WEB_MAX_STATIONS       10              // phones at the same time (ESP32-S3 allows up to 15)
@@ -55,7 +56,7 @@ static unsigned long fm_login_block_until = 0;
 static char fm_admin_cmd[160];
 static bool fm_admin_pending = false;
 static uint32_t fm_admin_seq = 0, fm_admin_done_id = 0;
-static char fm_admin_reply[200] = "";
+static char fm_admin_reply[640] = "";   // also holds the setup JSON (8 channel names)
 
 // post from the WiFi page, handed over to loop()
 static char fm_post_name[FM_WEB_POST_NAME_MAX + 1];
@@ -134,68 +135,6 @@ static void fmCleanInput(char* dest, size_t sz, const String& src) {
   while (n > 0 && dest[n - 1] == ' ') dest[--n] = 0;
 }
 
-// ---- the page (P5a: status only; full dashboard in P5e) ----
-static const char FM_PAGE[] PROGMEM = R"HTML(<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<title>FieldMesh</title>
-<style>
-:root{--bg:#0F1412;--surface:#171E1A;--border:#243029;--text:#E6EBE6;--muted:#9AA59C;--accent:#F2B544;--on-accent:#1B1405;--live:#6FD3A0;--bad:#FF8A7F}
-@media (prefers-color-scheme: light){:root{--bg:#F3F5F2;--surface:#FFFFFF;--border:#D9E0DA;--text:#16201A;--muted:#56625A;--accent:#F2B544;--on-accent:#1B1405;--live:#1F9D60;--bad:#B3261E}}
-body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-.wrap{max-width:560px;margin:0 auto;padding:16px}
-header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--border)}
-.kicker{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-h1{margin:2px 0 0;font-size:22px}
-.right{display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-size:12px;color:var(--muted)}
-.badge{font-size:12px;font-weight:800;letter-spacing:.06em;padding:4px 8px;border-radius:6px;background:var(--border);color:var(--text)}
-.badge.og{background:var(--accent);color:var(--on-accent)}
-.live{display:flex;align-items:center;gap:5px}.dot{width:8px;height:8px;border-radius:4px;background:var(--live)}
-.live.off{color:var(--bad)}.live.off .dot{background:var(--bad)}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:16px}
-.card{padding:12px;border-radius:12px;background:var(--surface);border:1px solid var(--border)}
-.lbl{font-size:12px;color:var(--muted)}.val{font-size:20px;font-weight:700;overflow-wrap:anywhere}
-.note{margin-top:16px;font-size:13px;color:var(--muted)}
-</style></head><body><div class="wrap">
-<header><div><div class="kicker">FieldMesh</div><h1 id="name">-</h1></div>
-<div class="right"><span id="mode" class="badge">-</span><span id="freq">-</span>
-<span id="live" class="live"><span class="dot"></span><span id="livet">connecting</span></span></div></header>
-<div class="grid">
-<div class="card"><div class="lbl">Running for</div><div class="val" id="up">-</div></div>
-<div class="card"><div class="lbl">Box clock</div><div class="val" id="clock">-</div></div>
-<div class="card"><div class="lbl">Board</div><div class="val" id="board">-</div></div>
-<div class="card"><div class="lbl">Phones on WiFi</div><div class="val" id="wifi">-</div></div>
-<div class="card"><div class="lbl">Packets in / out</div><div class="val" id="pk">-</div></div>
-<div class="card"><div class="lbl">Noise</div><div class="val" id="noise">-</div></div>
-</div>
-<p class="note">Address: <span id="addr">-</span> · fixed address for QR codes: http://192.168.4.1<br>Dashboard preview (P5a): Board, SOS, Mesh and Setup follow.</p>
-</div><script>
-var last=0,fails=0;
-function set(id,v){var e=document.getElementById(id);if(e.textContent!==v)e.textContent=v;}
-function dur(s){var d=Math.floor(s/86400),h=Math.floor(s/3600)%24,m=Math.floor(s/60)%60;return (d?d+' d ':'')+h+' h '+m+' min';}
-function hm(t){var d=new Date(t*1000);return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
-var moved=false;
-function toLocal(host){
-// The fixed address (QR code: 192.168.4.1) moves on to http://<name>.local, but only when this
-// phone can reach that name (iPhone: yes; Android before 12 often not: stay on the IP then).
-if(moved||!host||location.hostname===host)return;moved=true;
-var probe=fetch('http://'+host+'/api/ping',{mode:'no-cors',cache:'no-store'});
-var timeout=new Promise(function(_,rej){setTimeout(rej,2500);});
-Promise.race([probe,timeout]).then(function(){location.replace('http://'+host+'/');}).catch(function(){});}
-function draw(j){set('name',j.name);set('addr','http://'+j.host);toLocal(j.host);set('mode',j.offgrid?'OFF-GRID':'NORMAL');
-document.getElementById('mode').className='badge'+(j.offgrid?' og':'');
-set('freq',j.freq.toFixed(3)+' MHz SF'+j.sf);set('up',dur(j.uptime));set('clock',hm(j.time));
-set('board',j.room?(j.posts+' posts · '+j.users+' users'):'room off');set('wifi',String(j.stations));
-set('pk',j.rx+' / '+j.tx);set('noise',j.noise+' dBm');}
-function tick(){fetch('/api/status',{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
-last=Date.now();fails=0;draw(j);}).catch(function(){fails++;});}
-function live(){var e=document.getElementById('live');var age=last?Math.round((Date.now()-last)/1000):0;
-if(last&&age<8){e.className='live';set('livet','Live · updated '+age+' s ago');}
-else{e.className='live off';set('livet',last?'Offline · last data '+Math.round(age/60)+' min ago':'connecting');}}
-fetch('/api/time',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'t='+Math.floor(Date.now()/1000)}).catch(function(){});
-tick();setInterval(tick,3000);setInterval(live,1000);
-</script></body></html>)HTML";
 
 static void fmJsonStr(char*& dp, const char* end, const char* s) {
   if (dp < end) *dp++ = '"';
@@ -306,7 +245,7 @@ static void fmWebSetupRoutes() {
     String body = "{\"done\":false}";
     if (xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
       if (id != 0 && id == fm_admin_done_id) {
-        char buf[260];
+        static char buf[sizeof(fm_admin_reply) * 2 + 32];   // escaped reply; only used under the mutex
         FmJson j(buf, sizeof(buf));
         j.raw("{\"done\":true,\"reply\":");
         j.str(fm_admin_reply);
@@ -515,6 +454,23 @@ void MyMesh::fmWebBuildBoard(FmJson& j) {
   j.raw("]}");
 }
 
+void MyMesh::fmWebBuildSetup(FmJson& j) {
+  float normal = _fm.offgrid ? _fm.normal_freq : _prefs.freq;
+  j.f("{\"og\":%d,\"nf\":%.4f,\"of\":%.4f,\"room\":%d,\"rn\":", _fm.offgrid ? 1 : 0, normal,
+      offGridFreqFor(normal), fmRoomActive() ? 1 : 0);
+  j.str(fmRoomName());
+  j.raw(",\"rp\":");
+  j.str(_fm.room_pass);
+  j.raw(",\"rep\":");
+  j.str(_prefs.node_name);
+  j.raw(",\"ch\":[");
+  for (int i = 0; i < _fm_num_channels; i++) {
+    if (i) j.raw(",");
+    j.str(_fm_channels[i].name);
+  }
+  j.raw("]}");
+}
+
 bool MyMesh::fmWebStart() {
   if (fm_web_running) return true;
   if (fm_snap_mutex == NULL) fm_snap_mutex = xSemaphoreCreateMutex();
@@ -652,10 +608,16 @@ void MyMesh::fmWebLoop() {
     if (run) strcpy(cmd, fm_admin_cmd);
     xSemaphoreGive(fm_snap_mutex);
     if (run) {
-      char reply[200];
+      static char reply[sizeof(fm_admin_reply)];
       reply[0] = 0;
-      uint32_t now = getRTCClock()->getCurrentTime();
-      handleCommand(now ? now : 1, cmd, reply);   // may stop the WiFi (set wifi off)
+      if (strcmp(cmd, "fm.setup") == 0) {   // web only: current settings for the setup page
+        FmJson j(reply, sizeof(reply));
+        fmWebBuildSetup(j);
+        j.done(reply);
+      } else {
+        uint32_t now = getRTCClock()->getCurrentTime();
+        handleCommand(now ? now : 1, cmd, reply);   // may stop the WiFi (set wifi off)
+      }
       if (fm_snap_mutex && xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
         StrHelper::strncpy(fm_admin_reply, reply[0] ? reply : "OK", sizeof(fm_admin_reply));
         fm_admin_done_id = id;
@@ -663,6 +625,7 @@ void MyMesh::fmWebLoop() {
         xSemaphoreGive(fm_snap_mutex);
       }
       fm_next_snapshot = 0;   // show the change right away
+      fm_next_big_snapshot = 0;
       if (!fm_web_running) return;
     }
   }
