@@ -2,6 +2,7 @@
 // Only compiled in with -D FIELDMESH_REPEATER=1.
 
 #include "MyMesh.h"
+#include <new>   // placement new (room client list reset)
 
 #ifdef FIELDMESH_REPEATER
 
@@ -143,7 +144,13 @@ bool MyMesh::fmHandleCommand(uint32_t sender_timestamp, const char* command, cha
     } else {
       StrHelper::strncpy(_fm.room_pass, pw, sizeof(_fm.room_pass));
       fmSavePrefs();
-      strcpy(reply, _fm.room_pass[0] ? "OK - room password set" : "OK - room open (no password)");
+      // Log out all room clients, so only those who know the new password get back in.
+      // NOT _room_acl.clear(): that deletes /s_contacts, the ACL file of the repeater.
+      // ClientACL has no file handle here (never loaded), so rebuild it in place.
+      _room_acl.~ClientACL();
+      new (&_room_acl) ClientACL();
+      _room_next_client_idx = 0;
+      strcpy(reply, _fm.room_pass[0] ? "OK - room password set, all logged out" : "OK - room open (no password), all logged out");
     }
     return true;
   }
