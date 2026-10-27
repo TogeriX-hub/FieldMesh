@@ -1,0 +1,42 @@
+# FieldMesh: compile check for the FieldMesh devices (the upstream PR Build Check
+# does not build them). Separate file so upstream workflow changes merge cleanly.
+name: FieldMesh Build Check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: ['dev/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment:
+          - ThinkNode_M1_companion_radio_ble
+          - WioTrackerL1_companion_radio_ble
+          - t1000e_companion_radio_ble
+          - MeshTracker_X1_companion_radio_ble
+          - Heltec_t1_companion_radio_ble
+          - Station_G2_fieldmesh_repeater
+          - Station_G2_repeater
+
+    steps:
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Build ${{ matrix.environment }}
+        run: pio run -e ${{ matrix.environment }}
