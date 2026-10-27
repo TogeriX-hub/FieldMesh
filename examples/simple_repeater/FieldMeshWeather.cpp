@@ -28,18 +28,18 @@ bool MyMesh::fmWxValid() {
   return fabsf(lat - _fm_wx.lat) < FM_WX_SAME_LOC && fabsf(lon - _fm_wx.lon) < FM_WX_SAME_LOC;
 }
 
-void MyMesh::fmWxText(char* out, size_t sz) {
+void MyMesh::fmWxText(char* out, size_t sz, bool en) {
   out[0] = 0;
   float lat, lon;
   if (!fmWxLoc(lat, lon)) {
-    StrHelper::strncpy(out, "Wetter: Box hat keine Position. Admin: im Dashboard unter Setup setzen", sz);
+    StrHelper::strncpy(out, fmWxMsgNoPos(en), sz);
     return;
   }
   if (!fmWxValid()) {
-    StrHelper::strncpy(out, "Wetter: noch keine Daten. Ein Handy mit Internet im Box-WLAN lädt sie automatisch", sz);
+    StrHelper::strncpy(out, fmWxMsgNoData(en), sz);
     return;
   }
-  fmWxBuildText(_fm_wx, getRTCClock()->getCurrentTime(), out, sz);
+  fmWxBuildText(_fm_wx, getRTCClock()->getCurrentTime(), out, sz, en);
 }
 
 // "1|start|utc_off|lat|lon|t,pp,pr10,gust,code,day;t,pp,..." (built by the dashboard page)

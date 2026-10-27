@@ -717,7 +717,8 @@ bool MyMesh::fmRoomBot(mesh::Packet* pkt, ClientInfo* client, uint32_t sender_ti
   bool is_ping = fmIsCmd(text, "!ping");
   bool is_status = fmIsCmd(text, "!status");
   bool is_help = fmIsCmd(text, "!help");
-  bool is_wx = fmIsCmd(text, "!wetter") || fmIsCmd(text, "!weather");
+  bool is_wx_de = fmIsCmd(text, "!wetter");   // German answer
+  bool is_wx = is_wx_de || fmIsCmd(text, "!weather");
   bool is_cmds = strncasecmp(text, "!commands", 9) == 0 && (text[9] == 0 || text[9] == ' ');   // !commands [topic]
   if (!is_cli && !is_ping && !is_status && !is_help && !is_wx && !is_cmds) return false;   // normal post (also other '!' texts, e.g. a manual !SOS)
 
@@ -753,11 +754,11 @@ bool MyMesh::fmRoomBot(mesh::Packet* pkt, ClientInfo* client, uint32_t sender_ti
     return true;
   }
   if (is_help) {   // users: one message
-    fmRoomQueuePrivate(client, "!wetter = weather (answer to all), !ping = signal check, !status = box status. Admins: !commands");
+    fmRoomQueuePrivate(client, "!weather = weather to all (!wetter in German), !ping = signal check, !status = box status. Admins: !commands");
     return true;
   }
   if (is_wx) {   // answer to everyone: a post on the board
-    fmWxText(msg, sizeof(msg));
+    fmWxText(msg, sizeof(msg), !is_wx_de);
     fmRoomStorePost(_room_id, msg);
     return true;
   }

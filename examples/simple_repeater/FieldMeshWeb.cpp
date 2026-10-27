@@ -61,7 +61,7 @@ static unsigned long fm_login_block_until = 0;
 static char fm_admin_cmd[160];
 static bool fm_admin_pending = false;
 static uint32_t fm_admin_seq = 0, fm_admin_done_id = 0;
-static char fm_admin_reply[900] = "";   // also holds the setup JSON (8 channel names)
+static char fm_admin_reply[1200] = "";   // also holds the setup JSON (8 channel names)
 
 // weather data from a phone with internet, handed over to loop() (FieldMeshWeather.cpp)
 #define FM_WEB_WX_MAX   2400
@@ -555,7 +555,10 @@ void MyMesh::fmWebBuildSetup(FmJson& j) {
   j.f(",\"lp\":%u", (unsigned)_prefs.advert_loc_policy);   // 0 none, 1 share (GPS), 2 prefs (set lat/lon)
   j.f(",\"wxo\":%d,\"wla\":%.5f,\"wlo\":%.5f,\"wxt\":", _fm.wx_own ? 1 : 0, _fm.wx_lat, _fm.wx_lon);
   char wx[FM_ROOM_POST_TEXT_LEN + 1];
-  fmWxText(wx, sizeof(wx));   // preview of the '!wetter' answer
+  fmWxText(wx, sizeof(wx), true);    // previews of the '!weather' / '!wetter' answers
+  j.str(wx);
+  j.raw(",\"wxd\":");
+  fmWxText(wx, sizeof(wx), false);
   j.str(wx);
   j.raw(",\"ch\":[");
   for (int i = 0; i < _fm_num_channels; i++) {

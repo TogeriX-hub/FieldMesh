@@ -242,10 +242,11 @@ nav .bdg{position:absolute;top:6px;right:calc(50% - 20px);width:8px;height:8px;b
 <section class="card col" style="padding:14px;gap:10px"><h2>Weather</h2>
 <div class="setrow"><span><b id="s-wxl">-</b><small id="s-wxa">-</small></span><button type="button" class="btn plain" id="s-wxnow" data-act="wxnow" style="height:40px;font-size:14px;padding:0 12px;flex-shrink:0">Load now</button></div>
 <p class="msg" id="s-wxt" style="padding:10px 12px;border-radius:8px;background:var(--bg);border:1px solid var(--border)"></p>
+<p class="msg" id="s-wxd" style="padding:10px 12px;border-radius:8px;background:var(--bg);border:1px solid var(--border)"></p>
 <label for="s-wxin">Other place for the weather (coordinates, empty = box position)</label><input id="s-wxin" placeholder="z. B. 47,56960° N, 10,70040° O" autocapitalize="none" autocomplete="off">
 <p id="s-wxres" class="msg" hidden></p>
 <div style="display:flex;gap:8px"><button type="button" class="btn plain" id="s-wxbox" data-act="wxbox" style="flex:1;font-size:15px" hidden>Use box position</button><button type="button" class="btn ghost" id="s-wxsave" data-act="wxsave" style="flex:1" disabled>Save place</button></div>
-<span class="small">"!wetter" in the room answers everyone with this text. Phones with mobile data in this WiFi refresh the forecast every 3 h in the background (Open-Meteo).</span>
+<span class="small">"!weather" (English) and "!wetter" (German) in the room answer everyone with this text. Phones with mobile data in this WiFi refresh the forecast every 3 h in the background (Open-Meteo).</span>
 <p id="s-wxm" class="msg" hidden></p></section>
 
 <section class="card col" style="padding:14px;gap:10px"><h2>Team</h2><span class="hint" style="font-size:14px" id="s-team"></span></section>
@@ -542,7 +543,7 @@ function renderSetup(){
  if(S&&S.wx){setT('s-wxl',(SET.wxo?'Other place ':'Box position ')+S.wx.la.toFixed(4)+', '+S.wx.lo.toFixed(4));
   setT('s-wxa',S.wx.age<0?'no forecast yet':'forecast loaded '+ago(S.wx.age));}
  else{setT('s-wxl','No place');setT('s-wxa','set the box position first');}
- setT('s-wxt',SET.wxt||'');show('s-wxbox',!!SET.wxo);
+ setT('s-wxt',SET.wxt||'');setT('s-wxd',SET.wxd||'');show('s-wxbox',!!SET.wxo);
  setT('s-posd',SET.lp===0?'only used here: adverts carry no position ("gps advert prefs" shares it)':SET.lp===1?'adverts use the GPS position, not this one':'shared in adverts, used for distances and the radar');
  setT('s-ogd',SET.og?'Active on '+SET.of.toFixed(3)+' MHz, normal '+SET.nf.toFixed(3)+' MHz':'Normal '+SET.nf.toFixed(3)+' MHz, Off-Grid '+SET.of.toFixed(3)+' MHz');
  const rb=$('s-room');setT(rb,SET.room?'On':'Off');rb.setAttribute('aria-pressed',!!SET.room);

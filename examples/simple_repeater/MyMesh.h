@@ -207,7 +207,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   FmWx _fm_wx;
   bool fmWxLoc(float& lat, float& lon);              // box position or own location; false = none
   bool fmWxValid();                                  // data for the current location
-  void fmWxText(char* out, size_t sz);               // '!wetter' answer (German)
+  void fmWxText(char* out, size_t sz, bool en);      // '!weather' (en) / '!wetter' (German) answer
   bool fmWxStore(const char* data);                  // compact data from the dashboard
   void fmWxLoad();
   void fmWxSave();

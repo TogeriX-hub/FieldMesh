@@ -211,10 +211,10 @@ The FieldMesh Repeater turns a **Station G2** into a base station for a camp, a 
 
 - **Off-Grid** — switch the whole repeater to the Off-Grid frequency of your FieldMesh nodes and back, live, from the menu, the CLI or the dashboard
 - **Message board** — a room server as a **second identity** next to the repeater (own name and key, e.g. "BaseCamp"); the repeater keeps repeating
-- **Room commands** — `!wetter`, `!ping`, `!status` for everyone, `!commands` and `/<CLI command>` for the repeater admin, right from the room chat
+- **Room commands** — `!weather`, `!ping`, `!status` for everyone, `!commands` and `/<CLI command>` for the repeater admin, right from the room chat
 - **SOS on the board** — SOS messages heard in your SOS channels appear on the board and in the dashboard
 - **WiFi dashboard** — an open WiFi for phones with board, SOS, nodes (list and radar), network statistics and setup
-- **Weather** — phones in the WiFi that have mobile data load a 48 h forecast for the box; `!wetter` answers in the room even when nobody has internet out in the field
+- **Weather** — phones in the WiFi that have mobile data load a 48 h forecast for the box; `!weather` (or `!wetter` in German) answers in the room even when nobody has internet out in the field
 
 The transmit power is never changed by FieldMesh — keep the manufacturer's recommended setting for the Station G2.
 
@@ -252,7 +252,7 @@ The box posts on its own: a short note when it starts ("Box started (…)") and 
 | Command | Who | Answer |
 |---|---|---|
 | `!help` | everyone | The user commands (one message, only to you) |
-| `!wetter` / `!weather` | everyone | Weather for the box location, **to everyone** on the board (German) |
+| `!weather` / `!wetter` | everyone | Weather for the box location, **to everyone** on the board — in English (`!weather`) or German (`!wetter`) |
 | `!ping` | everyone | Signal check: SNR, RSSI and hops (only to you) |
 | `!status` | everyone | Uptime, mode, frequency, users, posts, box temperature (only to you) |
 | `!commands [topic]` | repeater admin | CLI commands by topic: `room`, `radio`, `wifi`, `sos`, `team`, `weather` |
@@ -280,11 +280,12 @@ There is **no captive portal**: the WiFi tells phones that it has no internet (l
 
 ### Weather
 
-The box has no internet. Every phone that opens the dashboard and has mobile data loads the forecast for the box location from [Open-Meteo](https://open-meteo.com) in the background when the data on the box is older than 3 hours — nobody has to do anything (or tap *Load now* in *Setup*). The box stores the next 48 hours and builds the `!wetter` answer from them at the moment someone asks, so one download is enough for about two days.
+The box has no internet. Every phone that opens the dashboard and has mobile data loads the forecast for the box location from [Open-Meteo](https://open-meteo.com) in the background when the data on the box is older than 3 hours — nobody has to do anything (or tap *Load now* in *Setup*). The box stores the next 48 hours and builds the answer from them at the moment someone asks, so one download is enough for about two days. `!weather` answers in English, `!wetter` in German:
 
 ```
+Weather: 16°C, mostly sunny. Rain from 17:00 (80 %). Night 8°C, tomorrow 8–16°C.
+Weather: 12°C, rain. Dry from about 19:00. Gusts up to 55 km/h from 15:00. Night 7°C, tomorrow 7–12°C.
 Wetter: 16°, meist sonnig. Regen ab 17 Uhr (80 %). Nacht 8°, morgen 8–16°.
-Wetter: 12°, Regen. Trocken ab ca. 19 Uhr. Böen bis 55 km/h ab 15 Uhr. Nacht 7°, morgen 7–12°.
 ```
 
 The answer gives the weather now, the most important event of the next 12 hours (thunderstorm, rain or snow, "possible" from 30 %, otherwise how long it stays dry), gusts above 50 km/h, the night low and tomorrow's range, and the age of the data when it is older than 6 hours. The weather location is the box position, or other coordinates set in *Setup* or with `set weather.loc`.
@@ -616,7 +617,7 @@ On purpose. The box has no captive portal: phones see a WiFi without internet an
 
 
 <details>
-<summary><strong>Repeater: the weather says "noch keine Daten" — why?</strong></summary>
+<summary><strong>Repeater: the weather says "no data yet" — why?</strong></summary>
 
 No phone with mobile data has opened the dashboard since the box location was set. Open the dashboard with mobile data on, or tap *Load now* in *Setup → Weather*. The box also needs a position (Setup → Box position) or a weather location.
 
