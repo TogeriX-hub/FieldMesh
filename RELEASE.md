@@ -42,6 +42,7 @@ Still based on MeshCore v1.18.0. One firmware file per device for all regions.
 
 - **Flood-routed DMs** are tagged `[DM]` in the message history instead of `[CH]`
 - **"!SOS kein GPS"** is now sent as `!SOS no GPS`
+- **E-ink display after auto-off (ThinkNode M1)** — since V6.0 the screen was only partly refreshed after the display turned off and on again. Fixed with the upstream MeshCore dev change (display off no longer clears the controller buffer or hibernates the panel)
 
 ### Updating from V6.0
 
