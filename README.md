@@ -268,7 +268,7 @@ The dashboard is an open WiFi on the box (up to 10 phones) and a web page that w
 |---|---|
 | **Board** | Posts with time; write to the board from the phone; SOS banner |
 | **SOS** | SOS messages heard by the box with position, distance and direction from the box, battery, "Open in map app" |
-| **Mesh → Nodes** | Your team first ("Show all" for everyone), sorted by last heard or distance; list or radar (250 m – 10 km); team members not heard for 30 min are dimmed |
+| **Mesh → Nodes** | Your team first ("Show all" for everyone), sorted by last heard or distance; list or radar (250 m – 10 km); team members not heard for 30 min are dimmed. "Last heard" counts adverts and also logins, posts and keep-alives to the room or the repeater |
 | **Mesh → Network** | Box status, activity of the last hour, airtime, packet types, neighbour repeaters, hash collisions, live packets |
 | **Setup** | Theme; after login with the repeater admin password: Off-Grid, room (name, password, clean up), SOS channels, box position, weather, firmware update, WiFi off |
 
