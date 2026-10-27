@@ -768,7 +768,7 @@ bool MyMesh::fmRoomBot(mesh::Packet* pkt, ClientInfo* client, uint32_t sender_ti
     while (*topic == ' ') topic++;
     const char* m;
     if (strcasecmp(topic, "room") == 0) {
-      m = "/set roomserver <name>|on|off, /set room.pass <pw>, /room.reset, /room.clear posts|users|pass|name|all, /get roomserver";
+      m = "/set roomserver <name>|on|off, /set room.pass <pw>, /room.reset, /room.clear posts|users|pass|name, /room.delete, /get roomserver";
     } else if (strcasecmp(topic, "radio") == 0) {
       m = "/set offgrid on|off, /get offgrid, /get radio. Box position: /set lat <v>, /set lon <v>";
     } else if (strcasecmp(topic, "wifi") == 0) {

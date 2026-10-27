@@ -218,9 +218,9 @@ nav .bdg{position:absolute;top:6px;right:calc(50% - 20px);width:8px;height:8px;b
 <button type="button" class="btn plain" id="s-cposts" data-act="cposts">Delete all posts…</button>
 <button type="button" class="btn plain" id="s-cusers" data-act="cusers">Log out all users…</button>
 <button type="button" class="btn plain" id="s-reset" data-act="rreset">Reset room…</button>
-<button type="button" class="btn plain" id="s-call" data-act="call">Clear everything…</button>
+<button type="button" class="btn plain" id="s-call" data-act="call">Delete room…</button>
 </div>
-<span class="small">Each button asks once more. Reset: posts, users and password, the name stays. Clear everything: also the name (back to the repeater name, the WiFi name changes). Changing the password logs everyone out. Turning the room on or off and renaming it changes the WiFi name: connect again afterwards.</span>
+<span class="small">Each button asks once more. Reset: posts, users and password, the name stays. Delete room: everything incl. name and key, and the room is turned off (the WiFi name changes back to the repeater name). Changing the password logs everyone out. Turning the room on or off and renaming it changes the WiFi name: connect again afterwards.</span>
 <p id="s-cm" class="msg" hidden></p></section>
 
 <section class="card col" style="padding:14px;gap:10px"><h2>SOS channels</h2>
@@ -656,7 +656,7 @@ document.addEventListener('click',e=>{
  else if(act==='rreset')arm('s-reset','Tap again','Reset room…',()=>run('s-cm',['room.reset']).then(()=>{$('s-rp')._dirty=false;}));
  else if(act==='cposts')arm('s-cposts','Tap again','Delete all posts…',()=>run('s-cm',['room.clear posts']).then(()=>{inflight['/api/board']=0;getBoard();}));
  else if(act==='cusers')arm('s-cusers','Tap again','Log out all users…',()=>run('s-cm',['room.clear users']));
- else if(act==='call')arm('s-call','Tap again','Clear everything…',()=>run('s-cm',['room.clear all']).then(()=>{$('s-rp')._dirty=false;$('s-rn')._dirty=false;}));
+ else if(act==='call')arm('s-call','Tap again','Delete room…',()=>run('s-cm',['room.delete']).then(()=>{$('s-rp')._dirty=false;$('s-rn')._dirty=false;}));
  else if(act==='chadd'){
   const n=$('s-chn').value.trim(),k=$('s-chk').value.trim();
   if(!n){msg('s-chm','Enter a channel name.',true);return;}
