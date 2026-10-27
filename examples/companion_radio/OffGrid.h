@@ -3,7 +3,7 @@
 // FieldMesh: Off-Grid radio parameters.
 // The Off-Grid frequency is chosen automatically from the normal (pre Off-Grid) frequency,
 // so one firmware per device serves both regions:
-//   below 900 MHz  -> EU 869.4625 MHz (SRD sub-band g1, 25 mW, 10% duty cycle, no LBT)
+//   below 900 MHz  -> EU 869.4625 MHz (SRD sub-band g3: 500 mW ERP, 10% duty cycle)
 //   900 MHz and up -> US 916.4625 MHz (915 MHz ISM band)
 // India (865-867 MHz) maps to EU and Japan/Korea (~920-923 MHz) to US - not compliant there,
 // accepted on purpose (see README).
