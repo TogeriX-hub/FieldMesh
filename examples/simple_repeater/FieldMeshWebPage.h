@@ -243,6 +243,8 @@ nav .bdg{position:absolute;top:6px;right:calc(50% - 20px);width:8px;height:8px;b
 <div class="setrow"><span><b id="s-wxl">-</b><small id="s-wxa">-</small></span><button type="button" class="btn plain" id="s-wxnow" data-act="wxnow" style="height:40px;font-size:14px;padding:0 12px;flex-shrink:0">Load now</button></div>
 <p class="msg" id="s-wxt" style="padding:10px 12px;border-radius:8px;background:var(--bg);border:1px solid var(--border)"></p>
 <p class="msg" id="s-wxd" style="padding:10px 12px;border-radius:8px;background:var(--bg);border:1px solid var(--border)"></p>
+<div class="setrow"><span><b>Units for "!weather"</b><small>"!wetter" (German) always °C and km/h</small></span>
+<div class="seg" role="group" aria-label="Weather units"><button type="button" id="s-wxm1" data-act="wxunits" data-v="metric">°C</button><button type="button" id="s-wxm2" data-act="wxunits" data-v="imperial">°F</button></div></div>
 <label for="s-wxin">Other place for the weather (coordinates, empty = box position)</label><input id="s-wxin" placeholder="z. B. 47,56960° N, 10,70040° O" autocapitalize="none" autocomplete="off">
 <p id="s-wxres" class="msg" hidden></p>
 <div style="display:flex;gap:8px"><button type="button" class="btn plain" id="s-wxbox" data-act="wxbox" style="flex:1;font-size:15px" hidden>Use box position</button><button type="button" class="btn ghost" id="s-wxsave" data-act="wxsave" style="flex:1" disabled>Save place</button></div>
@@ -543,7 +545,8 @@ function renderSetup(){
  if(S&&S.wx){setT('s-wxl',(SET.wxo?'Other place ':'Box position ')+S.wx.la.toFixed(4)+', '+S.wx.lo.toFixed(4));
   setT('s-wxa',S.wx.age<0?'no forecast yet':'forecast loaded '+ago(S.wx.age));}
  else{setT('s-wxl','No place');setT('s-wxa','set the box position first');}
- setT('s-wxt',SET.wxt||'');setT('s-wxd',SET.wxd||'');show('s-wxbox',!!SET.wxo);
+ setT('s-wxt',SET.wxt||'');setT('s-wxd',SET.wxd||'');
+ $('s-wxm1').setAttribute('aria-pressed',!SET.wxu);$('s-wxm2').setAttribute('aria-pressed',!!SET.wxu);show('s-wxbox',!!SET.wxo);
  setT('s-posd',SET.lp===0?'only used here: adverts carry no position ("gps advert prefs" shares it)':SET.lp===1?'adverts use the GPS position, not this one':'shared in adverts, used for distances and the radar');
  setT('s-ogd',SET.og?'Active on '+SET.of.toFixed(3)+' MHz, normal '+SET.nf.toFixed(3)+' MHz':'Normal '+SET.nf.toFixed(3)+' MHz, Off-Grid '+SET.of.toFixed(3)+' MHz');
  const rb=$('s-room');setT(rb,SET.room?'On':'Off');rb.setAttribute('aria-pressed',!!SET.room);
@@ -668,6 +671,7 @@ document.addEventListener('click',e=>{
   const p=posIn;run('s-pm',['set lat '+p.la,'set lon '+p.lo],'Position saved: '+p.la.toFixed(5)+', '+p.lo.toFixed(5)).then(r=>{if(!/^Err/.test(r||'')){$('s-pin').value='';posIn=null;renderPosIn();}});}
  else if(act==='wxnow'){msg('s-wxm','Loading…');wxFetch(true).then(()=>{msg('s-wxm','Forecast loaded.');setTimeout(()=>{inflight['/api/status']=0;getStatus();loadSetup();},1500);}).catch(e=>msg('s-wxm',e.message,true));}
  else if(act==='wxsave'&&wxIn&&!wxIn.err){const p=wxIn;run('s-wxm',['set weather.loc '+p.la+','+p.lo],'Weather place saved. Loading the forecast…').then(r=>{if(!/^Err/.test(r||'')){$('s-wxin').value='';wxIn=null;$('s-wxsave').disabled=true;show('s-wxres',false);setTimeout(()=>{wxTried=0;wxAuto();},500);}});}
+ else if(act==='wxunits'&&SET){const u=a.dataset.v;if((u==='imperial')!==!!SET.wxu)run('s-wxm',['set weather.units '+u],u==='imperial'?'"!weather" now in °F and mph.':'"!weather" now in °C and km/h.');}
  else if(act==='wxbox')run('s-wxm',['set weather.loc box'],'Weather follows the box position.').then(()=>setTimeout(()=>{wxTried=0;wxAuto();},500));
  else if(act==='chdel'&&SET){const c=SET.ch[parseInt(a.dataset.i)];if(c!=null)run('s-chm',['channel.del '+c]);}
  else if(act==='wifi')arm('s-wifi','Tap again: WiFi off','Turn WiFi off…',()=>{msg('s-bm','WiFi turns off. Turn it on again in the box menu or with "set wifi on".');adm('set wifi off').catch(()=>{});});

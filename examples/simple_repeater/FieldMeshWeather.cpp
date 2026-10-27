@@ -39,7 +39,7 @@ void MyMesh::fmWxText(char* out, size_t sz, bool en) {
     StrHelper::strncpy(out, fmWxMsgNoData(en), sz);
     return;
   }
-  fmWxBuildText(_fm_wx, getRTCClock()->getCurrentTime(), out, sz, en);
+  fmWxBuildText(_fm_wx, getRTCClock()->getCurrentTime(), out, sz, en, _fm.wx_imp != 0);
 }
 
 // "1|start|utc_off|lat|lon|t,pp,pr10,gust,code,day;t,pp,..." (built by the dashboard page)
@@ -136,16 +136,28 @@ bool MyMesh::fmWxHandleCommand(const char* command, char* reply) {
     sprintf(reply, "OK - weather for %.5f,%.5f (new data with the next phone online)", lat, lon);
     return true;
   }
+  if (memcmp(command, "set weather.units", 17) == 0 && (command[17] == 0 || command[17] == ' ')) {
+    const char* a = &command[17];
+    while (*a == ' ') a++;
+    if (strcmp(a, "metric") == 0 || strcmp(a, "imperial") == 0) {
+      _fm.wx_imp = a[0] == 'i' ? 1 : 0;
+      fmSavePrefs();
+      strcpy(reply, _fm.wx_imp ? "OK - !weather in °F and mph" : "OK - !weather in °C and km/h");
+    } else {
+      strcpy(reply, "Err - use: set weather.units metric|imperial");
+    }
+    return true;
+  }
   if (strcmp(command, "get weather") == 0) {
     float lat, lon;
     if (!fmWxLoc(lat, lon)) {
       strcpy(reply, "> no location (set the box position or: set weather.loc <lat>,<lon>)");
     } else if (!fmWxValid()) {
-      sprintf(reply, "> %s %.5f,%.5f, no data yet", _fm.wx_own ? "own" : "box", lat, lon);
+      sprintf(reply, "> %s %.5f,%.5f, no data yet, %s", _fm.wx_own ? "own" : "box", lat, lon, _fm.wx_imp ? "imperial" : "metric");
     } else {
       uint32_t now = getRTCClock()->getCurrentTime();
       unsigned long age = now > _fm_wx.fetched_at ? (now - _fm_wx.fetched_at) / 60 : 0;
-      sprintf(reply, "> %s %.5f,%.5f, data %lu min old, %u h", _fm.wx_own ? "own" : "box", lat, lon, age, (unsigned)_fm_wx.n);
+      sprintf(reply, "> %s %.5f,%.5f, data %lu min old, %u h, %s", _fm.wx_own ? "own" : "box", lat, lon, age, (unsigned)_fm_wx.n, _fm.wx_imp ? "imperial" : "metric");
     }
     return true;
   }

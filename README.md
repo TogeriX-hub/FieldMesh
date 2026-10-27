@@ -280,7 +280,7 @@ There is **no captive portal**: the WiFi tells phones that it has no internet (l
 
 ### Weather
 
-The box has no internet. Every phone that opens the dashboard and has mobile data loads the forecast for the box location from [Open-Meteo](https://open-meteo.com) in the background when the data on the box is older than 3 hours — nobody has to do anything (or tap *Load now* in *Setup*). The box stores the next 48 hours and builds the answer from them at the moment someone asks, so one download is enough for about two days. `!weather` answers in English, `!wetter` in German:
+The box has no internet. Every phone that opens the dashboard and has mobile data loads the forecast for the box location from [Open-Meteo](https://open-meteo.com) in the background when the data on the box is older than 3 hours — nobody has to do anything (or tap *Load now* in *Setup*). The box stores the next 48 hours and builds the answer from them at the moment someone asks, so one download is enough for about two days. `!weather` answers in English (°C and km/h, or °F and mph for US users — *Setup → Weather* or `set weather.units imperial`), `!wetter` in German:
 
 ```
 Weather: 16°C, mostly sunny. Rain from 17:00 (80 %). Night 8°C, tomorrow 8–16°C.
@@ -313,6 +313,7 @@ All MeshCore repeater commands work as usual. FieldMesh adds:
 | `team.key <12 hex> on` / `off` · `get nodes` | Team by key prefix / nodes heard |
 | `set wifi on` / `off` · `get wifi` | WiFi dashboard on/off (saved) |
 | `set weather.loc <lat>,<lon>` / `box` · `get weather` | Weather location: other coordinates / box position; status of the data |
+| `set weather.units metric` / `imperial` | `!weather` in °C and km/h (default) or °F and mph; `!wetter` is always metric |
 | `start ota` | With the dashboard on: points to *Setup → Firmware update*; otherwise the upstream OTA |
 
 A channel whose name contains "sos" is an SOS channel: `!SOS` messages there go to the board and the SOS tab. Up to 8 channels.

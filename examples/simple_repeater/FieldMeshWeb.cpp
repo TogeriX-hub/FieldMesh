@@ -553,7 +553,7 @@ void MyMesh::fmWebBuildSetup(FmJson& j) {
   j.raw(",\"rep\":");
   j.str(_prefs.node_name);
   j.f(",\"lp\":%u", (unsigned)_prefs.advert_loc_policy);   // 0 none, 1 share (GPS), 2 prefs (set lat/lon)
-  j.f(",\"wxo\":%d,\"wla\":%.5f,\"wlo\":%.5f,\"wxt\":", _fm.wx_own ? 1 : 0, _fm.wx_lat, _fm.wx_lon);
+  j.f(",\"wxo\":%d,\"wxu\":%d,\"wla\":%.5f,\"wlo\":%.5f,\"wxt\":", _fm.wx_own ? 1 : 0, _fm.wx_imp ? 1 : 0, _fm.wx_lat, _fm.wx_lon);
   char wx[FM_ROOM_POST_TEXT_LEN + 1];
   fmWxText(wx, sizeof(wx), true);    // previews of the '!weather' / '!wetter' answers
   j.str(wx);

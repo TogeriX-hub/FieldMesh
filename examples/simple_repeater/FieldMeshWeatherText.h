@@ -126,9 +126,13 @@ static inline const char* fmWxMsgNoData(bool en) {
             : "Wetter: noch keine Daten. Ein Handy mit Internet im Box-WLAN lädt sie automatisch";
 }
 
-// out: one mesh message (max sz-1 bytes); w must hold data for the current location
-static inline void fmWxBuildText(const FmWx& w, uint32_t now, char* out, size_t sz, bool en) {
+// out: one mesh message (max sz-1 bytes); w must hold data for the current location.
+// imperial (English only): degF and mph for US users; rules and thresholds stay metric.
+static inline void fmWxBuildText(const FmWx& w, uint32_t now, char* out, size_t sz, bool en, bool imperial = false) {
   out[0] = 0;
+  bool imp = en && imperial;
+  auto T = [imp](int c) { int n = c * 9 + 160; return imp ? (n >= 0 ? n + 2 : n - 2) / 5 : c; };   // degC -> degF (c*9/5+32), rounded
+  auto V = [imp](int kmh) { return imp ? (kmh * 621 + 500) / 1000 : kmh; };               // km/h -> mph
   int idx = now > w.start ? (int)((now - w.start) / 3600) : 0;
   if (idx >= w.n - 1) {
     fmWxCopy(out, en ? "Weather: data too old. A phone with internet in the box WiFi loads new data"
@@ -138,11 +142,11 @@ static inline void fmWxBuildText(const FmWx& w, uint32_t now, char* out, size_t 
   int end = idx + FM_WX_WINDOW;
   if (end > w.n) end = w.n;
   const FmWxHour& h0 = w.h[idx];
-  const char* deg = en ? "°C" : "°";
+  const char* deg = imp ? "°F" : (en ? "°C" : "°");
   char part[96], at[16];
 
   // 1. now
-  snprintf(part, sizeof(part), en ? "Weather: %d%s, %s." : "Wetter: %d%s, %s.", h0.t, deg, fmWxWord(h0.code, h0.day, en));
+  snprintf(part, sizeof(part), en ? "Weather: %d%s, %s." : "Wetter: %d%s, %s.", T(h0.t), deg, fmWxWord(h0.code, h0.day, en));
   fmWxAdd(out, sz, part);
 
   // 2. one event in the next hours: thunder > rain/snow > maybe > dry
@@ -201,7 +205,7 @@ static inline void fmWxBuildText(const FmWx& w, uint32_t now, char* out, size_t 
     char from[24] = "";
     if (gust_from > idx) snprintf(from, sizeof(from), en ? " from %s" : " ab %s", fmWxAt(at, sizeof(at), fmWxHour(w, gust_from), en));
     const char* g = gust_max >= FM_WX_STORM ? (en ? "Storm gusts" : "Sturmböen") : (en ? "Gusts" : "Böen");
-    snprintf(part, sizeof(part), en ? " %s up to %d km/h%s." : " %s bis %d km/h%s.", g, gust_max, from);
+    snprintf(part, sizeof(part), en ? " %s up to %d %s%s." : " %s bis %d %s%s.", g, V(gust_max), imp ? "mph" : "km/h", from);
     fmWxAdd(out, sz, part);
   }
 
@@ -223,14 +227,14 @@ static inline void fmWxBuildText(const FmWx& w, uint32_t now, char* out, size_t 
   }
   part[0] = 0;
   if (night_n > 0) {
-    snprintf(part, sizeof(part), en ? " Night %d%s%s" : " Nacht %d%s%s", night_min, deg, night_min < 0 ? (en ? " (frost)" : " (Frost)") : "");
+    snprintf(part, sizeof(part), en ? " Night %d%s%s" : " Nacht %d%s%s", T(night_min), deg, night_min < 0 ? (en ? " (frost)" : " (Frost)") : "");
   }
   if (dn >= 12) {
     char d[56];
     const char* when = fmWxHour(w, idx) < 5 ? (en ? " today" : " heute") : (en ? " tomorrow" : " morgen");
     const char* hot = dmax >= FM_WX_HOT ? (en ? " (hot)" : " (heiß)") : "";
-    if (dmin < 0) snprintf(d, sizeof(d), en ? "%s%s %d to %d%s%s" : "%s%s %d bis %d%s%s", part[0] ? "," : "", when, dmin, dmax, deg, hot);
-    else snprintf(d, sizeof(d), "%s%s %d–%d%s%s", part[0] ? "," : "", when, dmin, dmax, deg, hot);
+    if (T(dmin) < 0) snprintf(d, sizeof(d), en ? "%s%s %d to %d%s%s" : "%s%s %d bis %d%s%s", part[0] ? "," : "", when, T(dmin), T(dmax), deg, hot);
+    else snprintf(d, sizeof(d), "%s%s %d–%d%s%s", part[0] ? "," : "", when, T(dmin), T(dmax), deg, hot);
     fmWxCopy(part + strlen(part), d, sizeof(part) - strlen(part));
   }
   if (part[0]) {

@@ -119,6 +119,7 @@ public:
   uint8_t wx_own = 0;           // 1 = own weather location, 0 = box position
   float   wx_lat = 0;
   float   wx_lon = 0;
+  uint8_t wx_imp = 0;           // 1 = '!weather' in degF / mph (US), 0 = degC / km/h
 
 protected:
   void structure() override {
@@ -134,6 +135,7 @@ protected:
     def("wx_own", wx_own);
     def("wx_lat", wx_lat);
     def("wx_lon", wx_lon);
+    def("wx_imp", wx_imp);
   }
 };
 
