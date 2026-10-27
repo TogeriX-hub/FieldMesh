@@ -110,7 +110,7 @@ public:
 
       display.setTextSize(2);
       display.setColor(UIColor::primary_txt);
-      display.drawTextCentered(display.width() / 2, display.height() - 20, "v6");
+      display.drawTextCentered(display.width() / 2, display.height() - 20, "v6.1");
     } else {
       // ── Kleines Display (L1/Heltec V3/Techo, 64/80px) — Upstream v1.18 Layout ─
       int logoWidth = 128;
