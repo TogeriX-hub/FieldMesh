@@ -1,7 +1,53 @@
 # RELEASES
 
 All notable changes to FieldMesh are documented here.
-For full technical details, see the internal documentation PDF.
+For how to use the features, see the [README](README.md).
+
+---
+
+## [V6.1] - GPS Duty Cycle, Smarter Tracking & FieldMesh Repeater
+
+Still based on MeshCore v1.18.0. One firmware file per device for all regions.
+
+### New Features
+
+- **GPS duty cycle** — while GPS is on, the receiver takes a fix every 2 minutes and sleeps in between (timing modelled on Meshtastic). Hard sleep on T1000-E, MeshTracker X1 and Heltec Mesh Node T1, soft sleep via the standby pin on ThinkNode M1 and the Wio Tracker L1 family. Boards whose GPS cannot be switched off keep it running as in V6.0. T1000-E with GPS on: about 2–2½ days in our tests (no exact current measurement)
+- **Adaptive search time** — the search is graded by the satellites in view: 15 s indoors, up to 30 s at a window, up to 120 s when satellites are strong enough to decode, up to 240 s under clear sky; a longer search stops early when the sky is gone. Failed long searches back off 4/8/16 min, never more
+- **All satellite systems** — GPS, GLONASS, Galileo, BeiDou (and QZSS) are switched on where the receiver supports them; NMEA output reduced to the sentences FieldMesh needs
+- **Tracking cadence** (GPS-Share on) — adverts are sent when you moved ≥ 100 m (at most every 2 min) plus a heartbeat every 10 min, instead of a fixed timer. Replaces issue #28
+- **Fast movement** — at ≥ 30 km/h (car, bike) the GPS measures every 60 s and tracking may send every 60 s; back to 2 min three minutes after the last fast fix. Applies whenever GPS is on
+- **Fresh positions only** — adverts and SOS only include a fix that is at most 2 minutes old
+- **GPS and Tracking pages** keep the GPS awake while they are on screen (plus 60 s)
+- **ThinkNode M1 GPS switch** — the GPS runs only when the hardware switch and the setting are on; switching it on also turns the setting on
+- **Off-Grid region chosen automatically** — below 900 MHz → 869.4625 MHz (EU/UK), 900 MHz and above → 916.4625 MHz (US/AU). The alert shows the region ("Off-Grid: ON (EU)"). No separate US firmware any more
+- **Identity backup** — node identity and settings are copied to a second file system (QSPI flash on M1, L1, X1; a separate internal flash area on the T1000-E) and restored automatically if the main copy is lost. Protects against the identity reset some users saw when updating to V6.0. A factory reset also clears the backup
+- **SOS with battery level** — `!SOS 48.7636,9.1621 bat78%` / `!SOS no GPS bat78%`
+- **FieldMesh Repeater for the Station G2** — a normal MeshCore repeater with:
+  - **Off-Grid switch** (`set offgrid on|off`, G2 menu, dashboard), applied live without a reboot
+  - **Message board** — room server as a second identity next to the repeater (`set roomserver <name>`), posts and users survive a restart
+  - **Room commands** — `!weather` / `!wetter`, `!ping`, `!status` for everyone; `!commands` and `/<CLI command>` for the repeater admin
+  - **SOS on the board** — `!SOS` heard in the box's SOS channels is posted to the board
+  - **WiFi dashboard** — open WiFi with board, SOS list, nodes (list and radar), network statistics, team favourites and an admin setup page; reachable at `http://192.168.4.1` or `http://<room name>.local`
+  - **Weather** — phones with mobile data in the dashboard WiFi load a 48 h forecast (Open-Meteo); `!weather` answers in English (metric or imperial), `!wetter` in German
+  - **Firmware update from the dashboard**, G2 menu (Status, Off-Grid, Room, Room reset, WiFi, Power off), larger app partitions
+
+### Changes
+
+- **SOS alarm only in SOS channels** — `!SOS` raises the alarm only in a channel whose name contains "sos" (the same rule as for sending); in other channels, e.g. Public, it is shown as a normal message
+- Release files: 3 firmware files (M1, L1, T1000-E) instead of 6, plus the Station G2 repeater
+- Splash screen shows "v6.1"
+- Outdated PDF documentation (V1.00–V4.04) and the duplicate FAQ removed — the README is the documentation
+
+### Bug Fixes
+
+- **Flood-routed DMs** are tagged `[DM]` in the message history instead of `[CH]`
+- **"!SOS kein GPS"** is now sent as `!SOS no GPS`
+
+### Updating from V6.0
+
+- Settings, contacts and channels are kept; the identity backup is created on the first start
+- Updating from V5.x: export your private key in the MeshCore app first (see the V6.0 known issue)
+- Station G2: the first installation of the FieldMesh Repeater needs the full image at 0x0 — see the README
 
 ---
 
@@ -43,6 +89,14 @@ FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh featu
 - Contacts and channels are kept (file format unchanged)
 - Settings are migrated to `/prefs.json` — but see the known issue above
 - New home screen page: page indicator shows one more dot
+
+---
+
+## [V5.3] - MeshCore v1.15.0 Base
+
+### Changes
+
+- **MeshCore upstream alignment** — codebase updated to MeshCore v1.15.0 (default flood scope / regions, BLE DFU updates for nRF52 companions, button polarity fixes and more); no FieldMesh-specific feature changes in this release
 
 ---
 
