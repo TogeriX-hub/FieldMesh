@@ -1,0 +1,104 @@
+# FieldMesh: build the release files and put them on a draft release.
+#
+# Actions -> "FieldMesh Release" -> Run workflow, enter the version (e.g. v6.2).
+# The workflow builds the prebuilt devices from the selected branch (normally main),
+# names the files <env>_FieldMesh<version>.zip / _full.bin / _update.bin and creates a
+# DRAFT release with tag <version> on that commit. Paste the release notes into the
+# draft and publish it - the tag is created on publish.
+# With "create_release" unticked it only builds; the files are under the run's artifacts.
+#
+# Only devices tested on hardware get prebuilt files (see README).
+name: FieldMesh Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version, e.g. v6.2'
+        required: true
+        type: string
+      create_release:
+        description: 'Create a draft release with the files'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        environment:
+          - ThinkNode_M1_companion_radio_ble
+          - WioTrackerL1_companion_radio_ble
+          - t1000e_companion_radio_ble
+          - Station_G2_fieldmesh_repeater
+
+    steps:
+      - name: Check version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "Version must look like v6.2 or v6.2.1, got '$VERSION'"
+            exit 1
+          fi
+
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Build ${{ matrix.environment }}
+        run: pio run -e ${{ matrix.environment }}
+
+      - name: Collect files
+        env:
+          ENV_NAME: ${{ matrix.environment }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p out
+          BASE="${ENV_NAME}_FieldMesh${VERSION}"
+          if [ -f ".pio/build/${ENV_NAME}/firmware.zip" ]; then
+            # nRF52: DFU zip for the web flasher
+            cp ".pio/build/${ENV_NAME}/firmware.zip" "out/${BASE}.zip"
+          else
+            # ESP32: full image (0x0) and app-only update
+            pio run -e "${ENV_NAME}" -t mergebin
+            cp ".pio/build/${ENV_NAME}/firmware-merged.bin" "out/${BASE}_full.bin"
+            cp ".pio/build/${ENV_NAME}/firmware.bin" "out/${BASE}_update.bin"
+          fi
+          ls -la out
+
+      - name: Upload files
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.environment }}
+          path: out
+
+  release:
+    needs: build
+    if: ${{ inputs.create_release }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download files
+        uses: actions/download-artifact@v8
+        with:
+          merge-multiple: true
+          path: out
+
+      - name: Create draft release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: FieldMesh ${{ inputs.version }}
+          body: "Paste the release notes here."
+          draft: true
+          files: out/*
