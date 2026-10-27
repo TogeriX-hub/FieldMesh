@@ -28,7 +28,7 @@
 static AsyncWebServer* fm_server = NULL;
 static DNSServer* fm_dns = NULL;
 static SemaphoreHandle_t fm_snap_mutex = NULL;
-static char fm_snap[1024] = "{}";
+static char fm_snap[1280] = "{}";
 static volatile uint32_t fm_pending_time = 0;   // phone clock, handed over to loop()
 static bool fm_web_running = false;
 static bool fm_upstream_ota = false;   // upstream 'start ota' ran (own AP + server on port 80)
@@ -59,7 +59,12 @@ static unsigned long fm_login_block_until = 0;
 static char fm_admin_cmd[160];
 static bool fm_admin_pending = false;
 static uint32_t fm_admin_seq = 0, fm_admin_done_id = 0;
-static char fm_admin_reply[640] = "";   // also holds the setup JSON (8 channel names)
+static char fm_admin_reply[900] = "";   // also holds the setup JSON (8 channel names)
+
+// weather data from a phone with internet, handed over to loop() (FieldMeshWeather.cpp)
+#define FM_WEB_WX_MAX   2400
+static char* fm_wx_in = NULL;          // PSRAM
+static bool fm_wx_pending = false;     // guarded by fm_snap_mutex
 
 // post from the WiFi page, handed over to loop()
 static char fm_post_name[FM_WEB_POST_NAME_MAX + 1];
@@ -327,6 +332,22 @@ static void fmWebSetupRoutes() {
     res->addHeader("Cache-Control", "no-store");
     request->send(res);
   });
+  // weather from a phone with internet: anyone may send it (background refresh by every visitor);
+  // loop() only keeps data for the box's weather location
+  fm_server->on("/api/weather", HTTP_POST, [](AsyncWebServerRequest* request) {
+    String d = fmParam(request, "d");
+    if (d.length() < 20 || d.length() >= FM_WEB_WX_MAX || fm_wx_in == NULL) { request->send(400); return; }
+    bool ok = false;
+    if (xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+      if (!fm_wx_pending) {
+        memcpy(fm_wx_in, d.c_str(), d.length() + 1);
+        fm_wx_pending = true;
+        ok = true;
+      }
+      xSemaphoreGive(fm_snap_mutex);
+    }
+    request->send(ok ? 202 : 429);
+  });
   fm_server->on("/api/ping", HTTP_GET, [](AsyncWebServerRequest* request) {
     AsyncWebServerResponse* res = request->beginResponse(204);
     res->addHeader("Access-Control-Allow-Origin", "*");   // reachability check from the IP address
@@ -532,6 +553,10 @@ void MyMesh::fmWebBuildSetup(FmJson& j) {
   j.raw(",\"rep\":");
   j.str(_prefs.node_name);
   j.f(",\"lp\":%u", (unsigned)_prefs.advert_loc_policy);   // 0 none, 1 share (GPS), 2 prefs (set lat/lon)
+  j.f(",\"wxo\":%d,\"wla\":%.5f,\"wlo\":%.5f,\"wxt\":", _fm.wx_own ? 1 : 0, _fm.wx_lat, _fm.wx_lon);
+  char wx[FM_ROOM_POST_TEXT_LEN + 1];
+  fmWxText(wx, sizeof(wx));   // preview of the '!wetter' answer
+  j.str(wx);
   j.raw(",\"ch\":[");
   for (int i = 0; i < _fm_num_channels; i++) {
     if (i) j.raw(",");
@@ -551,6 +576,7 @@ bool MyMesh::fmWebStart() {
   fmSnapAlloc(fm_snap_nodes);
   fmSnapAlloc(fm_snap_net);
   fmSnapAlloc(fm_snap_board);
+  if (fm_wx_in == NULL) fm_wx_in = (char*)malloc(FM_WEB_WX_MAX);
 
   fmWebSsid(fm_web_ssid, sizeof(fm_web_ssid));
   WiFi.mode(WIFI_AP);
@@ -687,6 +713,20 @@ void MyMesh::fmWebLoop() {
     xSemaphoreGive(fm_snap_mutex);
   }
 
+  // weather from a phone
+  if (fm_wx_in && xSemaphoreTake(fm_snap_mutex, 0) == pdTRUE) {
+    bool run = fm_wx_pending;
+    xSemaphoreGive(fm_snap_mutex);
+    if (run) {
+      fmWxStore(fm_wx_in);   // web task does not touch the buffer while pending
+      if (xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        fm_wx_pending = false;
+        xSemaphoreGive(fm_snap_mutex);
+      }
+      fm_next_snapshot = 0;
+    }
+  }
+
   // admin command from the setup page: run as remote CLI (serial-only commands stay blocked)
   if (xSemaphoreTake(fm_snap_mutex, 0) == pdTRUE) {
     bool run = fm_admin_pending;
@@ -781,6 +821,15 @@ void MyMesh::fmWebLoop() {
     if (_fm_env_flags & 1) dp += snprintf(dp, end - dp, ",\"temp\":%.1f", _fm_env_temp);
     if (_fm_env_flags & 2) dp += snprintf(dp, end - dp, ",\"hum\":%.0f", _fm_env_hum);
     if (_fm_env_flags & 4) dp += snprintf(dp, end - dp, ",\"mcu\":%.0f", _fm_env_temp);
+    float wlat, wlon;   // weather: location and age of the data, phones refresh when > 3 h
+    if (fmWxLoc(wlat, wlon)) {
+      long age = -1;
+      if (fmWxValid()) {
+        uint32_t now = getRTCClock()->getCurrentTime();
+        age = now > _fm_wx.fetched_at ? (long)(now - _fm_wx.fetched_at) : 0;
+      }
+      dp += snprintf(dp, end - dp, ",\"wx\":{\"la\":%.5f,\"lo\":%.5f,\"age\":%ld,\"max\":%d}", wlat, wlon, age, FM_WX_REFRESH_S);
+    }
     dp += snprintf(dp, end - dp, ",\"duty_ms\":%lu,\"team\":%d,\"boot\":", (unsigned long)fmDutyMillisLastHour(), _fm_num_team);
     fmJsonStr(dp, end, _fm_boot_reason ? _fm_boot_reason : "");
     if (dp < end) *dp++ = '}';

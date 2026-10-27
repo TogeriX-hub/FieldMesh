@@ -202,6 +202,16 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void fmChannelsSave();
   bool fmChannelsHandleCommand(const char* command, char* reply);
 
+  // weather (FieldMeshWeather.cpp)
+  FmWx _fm_wx;
+  bool fmWxLoc(float& lat, float& lon);              // box position or own location; false = none
+  bool fmWxValid();                                  // data for the current location
+  void fmWxText(char* out, size_t sz);               // '!wetter' answer (German)
+  bool fmWxStore(const char* data);                  // compact data from the dashboard
+  void fmWxLoad();
+  void fmWxSave();
+  bool fmWxHandleCommand(const char* command, char* reply);
+
   bool fmRoomActive() const { return _fm.room_enabled && _room_id_loaded; }
   bool fmRoomLoadIdentity(bool create);
   void fmRoomPrepare(mesh::Packet* pkt);   // set the room identity as sender (src hash)

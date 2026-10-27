@@ -925,6 +925,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _fm_env_next = 0;
   _fm_boot_reason = NULL;
   memset(_fm_sos, 0, sizeof(_fm_sos));
+  memset(&_fm_wx, 0, sizeof(_fm_wx));
   _fm_sos_next = 0;
 #endif
   _logging = false;

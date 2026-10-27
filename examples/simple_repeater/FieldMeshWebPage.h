@@ -239,6 +239,15 @@ nav .bdg{position:absolute;top:6px;right:calc(50% - 20px);width:8px;height:8px;b
 <span class="small">Next to the box: Apple Maps → blue dot → share or copy the coordinates, then paste here. Google Maps links work too, short links do not.</span>
 <p id="s-pm" class="msg" hidden></p></section>
 
+<section class="card col" style="padding:14px;gap:10px"><h2>Weather</h2>
+<div class="setrow"><span><b id="s-wxl">-</b><small id="s-wxa">-</small></span><button type="button" class="btn plain" id="s-wxnow" data-act="wxnow" style="height:40px;font-size:14px;padding:0 12px;flex-shrink:0">Load now</button></div>
+<p class="msg" id="s-wxt" style="padding:10px 12px;border-radius:8px;background:var(--bg);border:1px solid var(--border)"></p>
+<label for="s-wxin">Other place for the weather (coordinates, empty = box position)</label><input id="s-wxin" placeholder="z. B. 47,56960° N, 10,70040° O" autocapitalize="none" autocomplete="off">
+<p id="s-wxres" class="msg" hidden></p>
+<div style="display:flex;gap:8px"><button type="button" class="btn plain" id="s-wxbox" data-act="wxbox" style="flex:1;font-size:15px" hidden>Use box position</button><button type="button" class="btn ghost" id="s-wxsave" data-act="wxsave" style="flex:1" disabled>Save place</button></div>
+<span class="small">"!wetter" in the room answers everyone with this text. Phones with mobile data in this WiFi refresh the forecast every 3 h in the background (Open-Meteo).</span>
+<p id="s-wxm" class="msg" hidden></p></section>
+
 <section class="card col" style="padding:14px;gap:10px"><h2>Team</h2><span class="hint" style="font-size:14px" id="s-team"></span></section>
 
 <section class="card col" style="padding:14px;gap:10px"><h2>Box</h2><span class="hint" style="font-size:14px" id="s-clock"></span>
@@ -486,6 +495,38 @@ function renderPosIn(){
  $('s-pchk').href=mapUrl(r.la,r.lo,'Box position (new)');}
 $('s-pin').addEventListener('input',e=>{posIn=parsePos(e.target.value);renderPosIn();});
 
+// ---- weather: phones with mobile data fetch the forecast for the box and hand it over ----
+let wxTried=0;
+async function wxFetch(manual){
+ if(!S||!S.wx)throw new Error('The box has no position yet.');
+ const w=S.wx;wxTried=Date.now();
+ const url='https://api.open-meteo.com/v1/forecast?latitude='+w.la+'&longitude='+w.lo
+  +'&hourly=temperature_2m,precipitation_probability,precipitation,weather_code,wind_gusts_10m,is_day'
+  +'&forecast_hours=48&timeformat=unixtime&timezone=auto&wind_speed_unit=kmh';
+ const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),10000);
+ let j;
+ try{const r=await fetch(url,{signal:ctl.signal,cache:'no-store'});if(!r.ok)throw 0;j=await r.json();}
+ catch(e){throw new Error('No internet on this phone (Open-Meteo not reachable).');}
+ finally{clearTimeout(tm);}
+ const h=j.hourly||{},T=h.time||[];
+ if(T.length<6)throw new Error('Open-Meteo sent no forecast.');
+ const v=(a,i)=>(a&&a[i]!=null?a[i]:0);
+ const rows=T.map((t,i)=>[Math.round(v(h.temperature_2m,i)),Math.round(v(h.precipitation_probability,i)),Math.min(255,Math.round(v(h.precipitation,i)*10)),Math.min(255,Math.round(v(h.wind_gusts_10m,i))),v(h.weather_code,i),v(h.is_day,i)].join(','));
+ const d='1|'+T[0]+'|'+(j.utc_offset_seconds||0)+'|'+w.la+'|'+w.lo+'|'+rows.slice(0,48).join(';');
+ const r=await post('/api/weather',{d:d});
+ if(r.status!==202)throw new Error('The box did not take the data, try again.');
+ return true;}
+function wxAuto(){ // in the background, like the clock: only when the box data is old
+ if(!S||!S.wx||Date.now()-wxTried<600000)return;
+ if(S.wx.age>=0&&S.wx.age<S.wx.max)return;
+ wxFetch(false).then(()=>setTimeout(()=>{inflight['/api/status']=0;getStatus();},1500)).catch(()=>{});}
+let wxIn=null;
+$('s-wxin').addEventListener('input',e=>{
+ wxIn=e.target.value.trim()?parsePos(e.target.value):null;
+ const res=$('s-wxres');$('s-wxsave').disabled=!(wxIn&&!wxIn.err);
+ if(!wxIn){show(res,false);return;}
+ res.className='msg'+(wxIn.err?' err':'');setT(res,wxIn.err||('Recognised: '+wxIn.la.toFixed(5)+', '+wxIn.lo.toFixed(5)));show(res,true);});
+
 // ---- setup ----
 function fill(id,v){const e=$(id);if(document.activeElement!==e&&!e._dirty&&e.value!==v)e.value=v;}
 ['s-rn','s-rp','s-chn','s-chk'].forEach(id=>$(id).addEventListener('input',e=>{e.target._dirty=true;}));
@@ -498,6 +539,10 @@ function renderSetup(){
   setT('s-clock',okClock(S.time)?'Box clock: '+new Date(boxNow()*1000).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})+'. Phones that open this page set it (forward only).':'Box clock not set yet.');}
  if(!SET)return;
  const og=$('s-og');setT(og,SET.og?'On':'Off');og.setAttribute('aria-pressed',!!SET.og);
+ if(S&&S.wx){setT('s-wxl',(SET.wxo?'Other place ':'Box position ')+S.wx.la.toFixed(4)+', '+S.wx.lo.toFixed(4));
+  setT('s-wxa',S.wx.age<0?'no forecast yet':'forecast loaded '+ago(S.wx.age));}
+ else{setT('s-wxl','No place');setT('s-wxa','set the box position first');}
+ setT('s-wxt',SET.wxt||'');show('s-wxbox',!!SET.wxo);
  setT('s-posd',SET.lp===0?'only used here: adverts carry no position ("gps advert prefs" shares it)':SET.lp===1?'adverts use the GPS position, not this one':'shared in adverts, used for distances and the radar');
  setT('s-ogd',SET.og?'Active on '+SET.of.toFixed(3)+' MHz, normal '+SET.nf.toFixed(3)+' MHz':'Normal '+SET.nf.toFixed(3)+' MHz, Off-Grid '+SET.of.toFixed(3)+' MHz');
  const rb=$('s-room');setT(rb,SET.room?'On':'Off');rb.setAttribute('aria-pressed',!!SET.room);
@@ -522,7 +567,7 @@ const inflight={};
 function get(url,cb){if(inflight[url])return;inflight[url]=1;
  fetch(url,{cache:'no-store'}).then(r=>r.ok?r.json():Promise.reject(r.status)).then(j=>{inflight[url]=0;cb(j);render();}).catch(()=>{inflight[url]=0;});}
 function post(url,data){return fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(data).toString()});}
-function getStatus(){get('/api/status',j=>{if(j.name==null)return;S=j;tS=Date.now();toLocal(j.host);});}
+function getStatus(){get('/api/status',j=>{if(j.name==null)return;S=j;tS=Date.now();toLocal(j.host);wxAuto();});}
 function getBoard(){get('/api/board',j=>{if(j.now==null)return;B=j;tB=Date.now();});}
 function getNodes(){get('/api/nodes',j=>{if(j.now==null)return;N=j;tN=Date.now();
  for(const x of j.nodes||[])if(x.k in pend&&!!x.tm===pend[x.k])delete pend[x.k];});}
@@ -620,6 +665,9 @@ document.addEventListener('click',e=>{
   run('s-chm',['channel.add '+n+(n[0]==='#'?'':' '+k)]).then(r=>{if(!/^Err/.test(r||'')){const a1=$('s-chn'),a2=$('s-chk');a1.value=a2.value='';a1._dirty=a2._dirty=false;}});}
  else if(act==='psave'&&posIn&&!posIn.err){
   const p=posIn;run('s-pm',['set lat '+p.la,'set lon '+p.lo],'Position saved: '+p.la.toFixed(5)+', '+p.lo.toFixed(5)).then(r=>{if(!/^Err/.test(r||'')){$('s-pin').value='';posIn=null;renderPosIn();}});}
+ else if(act==='wxnow'){msg('s-wxm','Loading…');wxFetch(true).then(()=>{msg('s-wxm','Forecast loaded.');setTimeout(()=>{inflight['/api/status']=0;getStatus();loadSetup();},1500);}).catch(e=>msg('s-wxm',e.message,true));}
+ else if(act==='wxsave'&&wxIn&&!wxIn.err){const p=wxIn;run('s-wxm',['set weather.loc '+p.la+','+p.lo],'Weather place saved. Loading the forecast…').then(r=>{if(!/^Err/.test(r||'')){$('s-wxin').value='';wxIn=null;$('s-wxsave').disabled=true;show('s-wxres',false);setTimeout(()=>{wxTried=0;wxAuto();},500);}});}
+ else if(act==='wxbox')run('s-wxm',['set weather.loc box'],'Weather follows the box position.').then(()=>setTimeout(()=>{wxTried=0;wxAuto();},500));
  else if(act==='chdel'&&SET){const c=SET.ch[parseInt(a.dataset.i)];if(c!=null)run('s-chm',['channel.del '+c]);}
  else if(act==='wifi')arm('s-wifi','Tap again: WiFi off','Turn WiFi off…',()=>{msg('s-bm','WiFi turns off. Turn it on again in the box menu or with "set wifi on".');adm('set wifi off').catch(()=>{});});
  else if(act==='logout'){post('/api/logout',{k:tok}).catch(()=>{});logoutLocal();}});

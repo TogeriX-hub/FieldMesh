@@ -93,6 +93,13 @@ struct FmFeedEntry {
 #define FM_CLOCK_FILE           "/fm_clock"          // clock high-water mark (no battery-backed clock on the G2)
 #define FM_CLOCK_SAVE_INTERVAL  300000               // 5 min
 
+// ---- weather (P5f, FieldMeshWeather.cpp) ----
+// The box has no internet: a phone in the dashboard WiFi that has mobile data fetches the
+// forecast for the box position (Open-Meteo) and hands it over. '!wetter' builds a short
+// German text from it. Only one place, the next 48 hours.
+#define FM_WX_FILE              "/fm_weather"
+#include "FieldMeshWeatherText.h"            // FmWx, FM_WX_HOURS, FM_WX_REFRESH_S, text rules
+
 #define FM_ROOM_POSTS_FILE      "/fm_room_posts"     // board survives a reboot
 #define FM_ROOM_CLIENTS_FILE    "/fm_room_clients"   // logged-in users survive a reboot
 #define FM_ROOM_SAVE_DELAY      10000                // lazy write after the last change (ms)
@@ -109,6 +116,9 @@ public:
   char    room_name[32] = "";   // empty -> repeater name
   char    room_pass[16] = "";   // empty -> login without password (read + write)
   uint8_t wifi_enabled = 0;     // 1 = WiFi dashboard on (also after a restart)
+  uint8_t wx_own = 0;           // 1 = own weather location, 0 = box position
+  float   wx_lat = 0;
+  float   wx_lon = 0;
 
 protected:
   void structure() override {
@@ -121,6 +131,9 @@ protected:
     def("room_name", room_name, sizeof(room_name));
     def("room_pass", room_pass, sizeof(room_pass));
     def("wifi_en", wifi_enabled);
+    def("wx_own", wx_own);
+    def("wx_lat", wx_lat);
+    def("wx_lon", wx_lon);
   }
 };
 

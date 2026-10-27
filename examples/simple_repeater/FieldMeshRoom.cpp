@@ -714,8 +714,10 @@ bool MyMesh::fmRoomBot(mesh::Packet* pkt, ClientInfo* client, uint32_t sender_ti
   bool is_cli = (text[0] == '/');
   bool is_ping = fmIsCmd(text, "!ping");
   bool is_status = fmIsCmd(text, "!status");
-  bool is_help = fmIsCmd(text, "!commands") || fmIsCmd(text, "!help");
-  if (!is_cli && !is_ping && !is_status && !is_help) return false;   // normal post (also other '!' texts, e.g. a manual !SOS)
+  bool is_help = fmIsCmd(text, "!help");
+  bool is_wx = fmIsCmd(text, "!wetter") || fmIsCmd(text, "!weather");
+  bool is_cmds = strncasecmp(text, "!commands", 9) == 0 && (text[9] == 0 || text[9] == ' ');   // !commands [topic]
+  if (!is_cli && !is_ping && !is_status && !is_help && !is_wx && !is_cmds) return false;   // normal post (also other '!' texts, e.g. a manual !SOS)
 
   // Admin = this key is a known admin of the REPEATER (same device key for all contacts).
   // The room itself has no admin login.
@@ -748,14 +750,39 @@ bool MyMesh::fmRoomBot(mesh::Packet* pkt, ClientInfo* client, uint32_t sender_ti
     fmRoomQueuePrivate(client, msg);
     return true;
   }
-  if (is_help) {
-    fmRoomQueuePrivate(client, "!ping = signal check, !status = box status, !commands = this list");
-    if (is_admin) {
-      fmRoomQueuePrivate(client, "Admin: /set offgrid on|off, /set roomserver <name>|on|off, /set room.pass <pw>, /get roomserver");
-      fmRoomQueuePrivate(client, "Admin: /room.clear posts|users|pass|name|all - any repeater command works with /, e.g. /get radio");
-      fmRoomQueuePrivate(client, "Admin: /channel.add #name or <name> <hexkey>, /channel.del <name>, /get channels, /get sos");
-      fmRoomQueuePrivate(client, "Admin: /set wifi on|off, /get wifi - WiFi dashboard at http://<room name>.local or 192.168.4.1");
+  if (is_help) {   // users: one message
+    fmRoomQueuePrivate(client, "!wetter = weather (answer to all), !ping = signal check, !status = box status. Admins: !commands");
+    return true;
+  }
+  if (is_wx) {   // answer to everyone: a post on the board
+    fmWxText(msg, sizeof(msg));
+    fmRoomStorePost(_room_id, msg);
+    return true;
+  }
+  if (is_cmds) {   // admins: one message per topic
+    if (!is_admin) {
+      fmRoomQueuePrivate(client, "Admins only - log in to the repeater as admin with this device first. Commands for everyone: !help");
+      return true;
     }
+    const char* topic = &text[9];
+    while (*topic == ' ') topic++;
+    const char* m;
+    if (strcasecmp(topic, "room") == 0) {
+      m = "/set roomserver <name>|on|off, /set room.pass <pw>, /room.reset, /room.clear posts|users|pass|name|all, /get roomserver";
+    } else if (strcasecmp(topic, "radio") == 0) {
+      m = "/set offgrid on|off, /get offgrid, /get radio. Box position: /set lat <v>, /set lon <v>";
+    } else if (strcasecmp(topic, "wifi") == 0) {
+      m = "/set wifi on|off, /get wifi. Dashboard: http://<room name>.local or 192.168.4.1, update: Setup > Firmware update";
+    } else if (strcasecmp(topic, "sos") == 0) {
+      m = "/channel.add #name or <name> <32 hex key>, /channel.del <name>, /get channels, /get sos";
+    } else if (strcasecmp(topic, "team") == 0) {
+      m = "/team.add <name>, /team.del <name>, /get team, /get nodes";
+    } else if (strcasecmp(topic, "weather") == 0) {
+      m = "/set weather.loc <lat>,<lon> or box, /get weather. Data comes from phones with internet in the box WiFi";
+    } else {
+      m = "!commands room|radio|wifi|sos|team|weather - any repeater command: /<command>, e.g. /get radio. Full list: README";
+    }
+    fmRoomQueuePrivate(client, m);
     return true;
   }
 
