@@ -1121,11 +1121,8 @@ bool MyMesh::isValidClientRepeatFreq(uint32_t f) const {
 }
 
 // Off-grid mode: save normal parameters and switch to off-grid settings (or back)
-// Off-grid settings: 869.4625 MHz, BW 125, SF 11, CR 5 (EU sub-band g1, no LBT)
-#define OFFGRID_FREQ  869.4625f
-#define OFFGRID_BW    125.0f
-#define OFFGRID_SF    11
-#define OFFGRID_CR    5
+// FieldMesh v6.1: off-grid frequency follows the region of the normal frequency (OffGrid.h)
+#include "OffGrid.h"
 
 void MyMesh::toggleOffGrid() {
   if (!_prefs.isRepeatEn()) {
@@ -1135,7 +1132,7 @@ void MyMesh::toggleOffGrid() {
     _prefs.normal_sf   = _prefs.sf;
     _prefs.normal_cr   = _prefs.cr;
     // Off-Grid-Parameter setzen
-    _prefs.freq = OFFGRID_FREQ;
+    _prefs.freq = offGridFreqFor(_prefs.normal_freq);   // EU < 900 MHz <= US
     _prefs.bw   = OFFGRID_BW;
     _prefs.sf   = OFFGRID_SF;
     _prefs.cr   = OFFGRID_CR;
@@ -1158,29 +1155,52 @@ void MyMesh::toggleOffGrid() {
 
 // V3: SOS-Nachricht in den SOS-Channel senden
 // Searches for a channel named "SOS" and sends "!SOS <pos>" or "!SOS no GPS"
+bool MyMesh::isSosChannel(const char* name) {
+  if (name == NULL) return false;
+  // Case-insensitive: accept "SOS", "sos", "#sos" etc.
+  for (const char* p = name; p[0] && p[1] && p[2]; p++) {
+    if (tolower(p[0]) == 's' && tolower(p[1]) == 'o' && tolower(p[2]) == 's') return true;
+  }
+  return false;
+}
+
 bool MyMesh::sendSOS() {
   for (int i = 0; i < MAX_GROUP_CHANNELS; i++) {
     ChannelDetails ch;
     if (!getChannel(i, ch)) continue;
-    // Case-insensitive: accept "SOS", "sos", "#sos" etc.
-    char name_lower[33];
-    for (int j = 0; j < 32 && ch.name[j]; j++) name_lower[j] = tolower(ch.name[j]);
-    name_lower[32] = 0;
-    if (strstr(name_lower, "sos") == NULL) continue;
+    if (!isSosChannel(ch.name)) continue;
 
     // Nachrichtentext zusammenbauen
     char text[80];
-    LocationProvider* loc = sensors.getLocationProvider();
-    if (loc != NULL && loc->isEnabled() && loc->isValid()) {
+    // FieldMesh v6.1: fresh fix (<= 2 min) from the GPS duty cycle
+    bool has_pos = _gps_cycle.hasFreshFix();
+    if (has_pos) {
       snprintf(text, sizeof(text), "!SOS %.4f,%.4f",
-        loc->getLatitude()  / 1000000.0,
-        loc->getLongitude() / 1000000.0);
+        _gps_cycle.latitude()  / 1000000.0,
+        _gps_cycle.longitude() / 1000000.0);
     } else {
-      strncpy(text, "!SOS kein GPS", sizeof(text));
+      strncpy(text, "!SOS no GPS", sizeof(text));
+    }
+    // FieldMesh v6.1: battery level, same scale as the battery icon of the UI
+#ifndef BATT_MIN_MILLIVOLTS
+  #define BATT_MIN_MILLIVOLTS 3000
+#endif
+#ifndef BATT_MAX_MILLIVOLTS
+  #define BATT_MAX_MILLIVOLTS 4200
+#endif
+    int mv = board.getBattMilliVolts();
+    if (mv > 0) {
+      int pct = ((mv - BATT_MIN_MILLIVOLTS) * 100) / (BATT_MAX_MILLIVOLTS - BATT_MIN_MILLIVOLTS);
+      if (pct < 0) pct = 0;
+      if (pct > 100) pct = 100;
+      size_t n = strlen(text);
+      snprintf(&text[n], sizeof(text) - n, " bat%d%%", pct);
     }
 
     uint32_t ts = getRTCClock()->getCurrentTimeUnique();
-    return sendGroupMessage(ts, ch.channel, _prefs.node_name, text, strlen(text));
+    bool sent = sendGroupMessage(ts, ch.channel, _prefs.node_name, text, strlen(text));
+    if (sent) _gps_cycle.onSosSent(has_pos);   // GPS on for 10 min, resend once with position
+    return sent;
   }
   return false;  // no SOS channel found
 }
@@ -2011,7 +2031,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       strcpy(dp, sensors.getSettingName(i));
       dp = strchr(dp, 0);
       *dp++ = ':';
-      strcpy(dp, sensors.getSettingValue(i));
+      strcpy(dp, _gps_cycle.reportSetting(sensors.getSettingName(i), sensors.getSettingValue(i)));  // FieldMesh v6.1
       dp = strchr(dp, 0);
     }
     _serial->writeFrame(out_frame, dp - (char *)out_frame);
@@ -2588,10 +2608,30 @@ void MyMesh::loop() {
     dirty_contacts_expiry = 0;
   }
 
-  // auto-advert timer: send 0-hop advert at configured interval
-  if (next_auto_advert && millisHasNowPassed(next_auto_advert)) {
-    advert();
-    next_auto_advert = futureMillis(AUTO_ADVERT_INTERVAL_MS);  // schedule next
+  // FieldMesh v6.1: GPS duty cycle
+  uint8_t gps_ev = _gps_cycle.loop(sensors, _prefs);
+  if (gps_ev & GpsCycle::EV_PREFS_CHANGED) savePrefs();
+  if (gps_ev & GpsCycle::EV_SOS_RESEND) sendSOS();   // first SOS went out without position
+
+  // FieldMesh v6.1: tracking (GPS sharing + GPS running) -> movement / heartbeat cadence,
+  // otherwise the fixed auto-advert timer as before
+  if (isAutoAdvertEnabled() && _gps_cycle.state() != GpsCycle::OFF) {
+    if (!_tracking_active) { _track.reset(millis()); _tracking_active = true; }
+    if (_track.poll(millis(), (gps_ev & GpsCycle::EV_FIX) != 0, _gps_cycle.latitude(),
+                    _gps_cycle.longitude(), _gps_cycle.satellites(), _gps_cycle.hasFreshFix(),
+                    _gps_cycle.isFast()) != TrackScheduler::NONE) {
+      bool with_pos = _gps_cycle.hasFreshFix();   // advert() uses the same check
+      advert();
+      _track.sent(millis(), with_pos, _gps_cycle.latitude(), _gps_cycle.longitude());
+    }
+    if (next_auto_advert) next_auto_advert = futureMillis(AUTO_ADVERT_INTERVAL_MS);  // fallback restarts later
+  } else {
+    _tracking_active = false;
+    // auto-advert timer: send 0-hop advert at configured interval
+    if (next_auto_advert && millisHasNowPassed(next_auto_advert)) {
+      advert();
+      next_auto_advert = futureMillis(AUTO_ADVERT_INTERVAL_MS);  // schedule next
+    }
   }
 
   checkClockJump();  // FieldMesh (#23)
@@ -2644,15 +2684,12 @@ bool MyMesh::advert() {
   mesh::Packet* pkt;
   bool send_gps = false;
   if (_prefs.advert_loc_policy != ADVERT_LOC_NONE) {
-    // Only include GPS if hardware GPS is active AND a current fix is available
-    // Cached/stale coordinates are intentionally ignored
-    LocationProvider* loc = sensors.getLocationProvider();
-    if (loc != NULL && loc->isEnabled() && loc->isValid()) {
-      send_gps = true;
-    }
+    // Only include GPS with a current fix - cached/stale coordinates are intentionally ignored
+    // FieldMesh v6.1: fresh fix (<= 2 min) from the GPS duty cycle
+    send_gps = _gps_cycle.hasFreshFix();
   }
   if (send_gps) {
-    pkt = createSelfAdvert(_prefs.node_name, sensors.node_lat, sensors.node_lon);
+    pkt = createSelfAdvert(_prefs.node_name, _gps_cycle.latitude() / 1000000.0, _gps_cycle.longitude() / 1000000.0);
   } else {
     pkt = createSelfAdvert(_prefs.node_name);
   }

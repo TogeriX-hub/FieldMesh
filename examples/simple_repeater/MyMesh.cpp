@@ -477,6 +477,9 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
 }
 
 void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
+#ifdef FIELDMESH_REPEATER
+  fmStatsRx(pkt);   // dashboard counters (FieldMeshStats.cpp)
+#endif
 #ifdef WITH_BRIDGE
   if (_prefs.bridge_pkt_src == 1) {
     bridge.sendPacket(pkt);
@@ -503,6 +506,9 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
 }
 
 void MyMesh::logTx(mesh::Packet *pkt, int len) {
+#ifdef FIELDMESH_REPEATER
+  fmStatsTx(pkt);
+#endif
 #ifdef WITH_BRIDGE
   if (_prefs.bridge_pkt_src == 0) {
     bridge.sendPacket(pkt);
@@ -565,11 +571,17 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
   } else {
     recv_pkt_region = NULL;
   }
+#ifdef FIELDMESH_REPEATER
+  if (fmRoomRecv(pkt)) return ACTION_RELEASE;   // packet for the room identity (FieldMeshRoom.cpp)
+#endif
   return Mesh::onRecvPacket(pkt);
 }
 
 void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const mesh::Identity &sender,
                             uint8_t *data, size_t len) {
+#ifdef FIELDMESH_REPEATER
+  fmNodeSeen(sender.pub_key, packet);   // dashboard: last heard (login to the repeater)
+#endif
   if (packet->getPayloadType() == PAYLOAD_TYPE_ANON_REQ) { // received an initial request by a possible admin
                                                            // client (unknown at this stage)
     uint32_t timestamp;
@@ -650,6 +662,9 @@ static bool isShare(const mesh::Packet *packet) {
 void MyMesh::onAdvertRecv(mesh::Packet *packet, const mesh::Identity &id, uint32_t timestamp,
                           const uint8_t *app_data, size_t app_data_len) {
   mesh::Mesh::onAdvertRecv(packet, id, timestamp, app_data, app_data_len); // chain to super impl
+#ifdef FIELDMESH_REPEATER
+  fmNodeHeard(packet, id, app_data, app_data_len);   // dashboard node table (FieldMeshStats.cpp)
+#endif
 
   // if this a zero hop advert (and not via 'Share'), add it to neighbours
   if (packet->getPathHashCount() == 0 && !isShare(packet)) {
@@ -668,6 +683,9 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
     return;
   }
   ClientInfo* client = acl.getClientByIdx(i);
+#ifdef FIELDMESH_REPEATER
+  fmNodeSeen(client->id.pub_key, packet);   // dashboard: last heard, also without an advert
+#endif
 
   if (type == PAYLOAD_TYPE_REQ) { // request (from a Known admin client!)
     uint32_t timestamp;
@@ -867,6 +885,9 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
       telemetry(MAX_PACKET_PAYLOAD - 4),
       discover_limiter(4, 120),  // max 4 every 2 minutes
       anon_limiter(4, 180)   // max 4 every 3 minutes
+#ifdef FIELDMESH_REPEATER
+      , _room_bot_limiter(6, 60)   // room bot: max 6 replies per minute in total
+#endif
 #if defined(WITH_RS232_BRIDGE)
       , bridge(&_prefs, WITH_RS232_BRIDGE, _mgr, &rtc)
 #endif
@@ -879,6 +900,40 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   next_local_advert = next_flood_advert = 0;
   dirty_contacts_expiry = 0;
   set_radio_at = revert_radio_at = 0;
+#ifdef FIELDMESH_REPEATER
+  _fm_advert_after_radio = false;
+  _room_id_loaded = false;
+  memset(_room_posts, 0, sizeof(_room_posts));
+  _room_next_post_idx = _room_next_client_idx = 0;
+  _room_next_push = 0;
+  _room_num_posted = _room_num_pushes = 0;
+  memset(_room_private, 0, sizeof(_room_private));
+  _room_next_private_idx = 0;
+  _room_posts_dirty_at = _room_clients_dirty_at = 0;
+  memset(_fm_channels, 0, sizeof(_fm_channels));
+  _fm_num_channels = 0;
+  _fm_clock_saved = 0;
+  _fm_clock_next_save = 0;
+  _fm_nodes = NULL;
+  _fm_max_nodes = 0;
+  _fm_num_team = 0;
+  memset(_fm_act, 0, sizeof(_fm_act));
+  _fm_team_dirty = false;
+  _fm_team_next_save = 0;
+  _fm_act_idx = 0;
+  _fm_act_next = 0;
+  _fm_act_air_mark = 0;
+  memset(_fm_type_counts, 0, sizeof(_fm_type_counts));
+  memset(_fm_feed, 0, sizeof(_fm_feed));
+  _fm_feed_next = 0;
+  _fm_env_temp = _fm_env_hum = 0;
+  _fm_env_flags = 0;
+  _fm_env_next = 0;
+  _fm_boot_reason = NULL;
+  memset(_fm_sos, 0, sizeof(_fm_sos));
+  memset(&_fm_wx, 0, sizeof(_fm_wx));
+  _fm_sos_next = 0;
+#endif
   _logging = false;
   region_load_active = false;
   recv_pkt_region = NULL;
@@ -947,6 +1002,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
   _fs = fs;
   // load persisted prefs
   _cli.loadPrefs(_fs);
+#ifdef FIELDMESH_REPEATER
+  fmBegin();   // FieldMesh prefs (Off-Grid state, room) from their own file
+#endif
   acl.load(_fs, self_id);
   // TODO: key_store.begin();
   region_map.load(_fs);
@@ -1041,6 +1099,9 @@ void MyMesh::sendSelfAdvertisement(int delay_millis, bool flood) {
   } else {
     MESH_DEBUG_PRINTLN("ERROR: unable to create advertisement packet!");
   }
+#ifdef FIELDMESH_REPEATER
+  fmRoomSendAdvert(flood, delay_millis + 2000);   // room identity follows the repeater advert
+#endif
 }
 
 void MyMesh::updateAdvertTimer() {
@@ -1281,6 +1342,10 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
       sendNodeDiscoverReq();
       strcpy(reply, "OK - Discover sent");
     }
+#ifdef FIELDMESH_REPEATER
+  } else if (fmHandleCommand(sender_timestamp, command, reply)) {
+    // FieldMesh command handled
+#endif
   } else{
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
   }
@@ -1297,12 +1362,18 @@ void MyMesh::loop() {
     mesh::Packet *pkt = createSelfAdvert();
     uint32_t delay_millis = 0;
     if (pkt) sendFloodScoped(default_scope, pkt, delay_millis, _prefs.path_hash_mode + 1);
+#ifdef FIELDMESH_REPEATER
+    fmRoomSendAdvert(true, 2000);   // room identity advertises together with the repeater
+#endif
 
     updateFloodAdvertTimer(); // schedule next flood advert
     updateAdvertTimer();      // also schedule local advert (so they don't overlap)
   } else if (next_local_advert && millisHasNowPassed(next_local_advert)) {
     mesh::Packet *pkt = createSelfAdvert();
     if (pkt) sendZeroHop(pkt);
+#ifdef FIELDMESH_REPEATER
+    fmRoomSendAdvert(false, 2000);
+#endif
 
     updateAdvertTimer(); // schedule next local advert
   }
@@ -1311,6 +1382,12 @@ void MyMesh::loop() {
     set_radio_at = 0;                                     // clear timer
     radio_driver.setParams(pending_freq, pending_bw, pending_sf, pending_cr);
     MESH_DEBUG_PRINTLN("Temp radio params");
+#ifdef FIELDMESH_REPEATER
+    if (_fm_advert_after_radio) {   // Off-Grid switch: normal TX->RX cycle on the new params
+      _fm_advert_after_radio = false;
+      sendSelfAdvertisement(500, false);
+    }
+#endif
   }
 
   if (revert_radio_at && millisHasNowPassed(revert_radio_at)) { // revert radio params to orig
@@ -1325,6 +1402,12 @@ void MyMesh::loop() {
     dirty_contacts_expiry = 0;
   }
 
+#ifdef FIELDMESH_REPEATER
+  fmRoomLoop();   // push new room posts to logged-in clients
+  fmStatsLoop();  // dashboard data: activity buckets, box sensor
+  fmWebLoop();    // WiFi dashboard: captive DNS, snapshot, phone clock
+#endif
+
   // update uptime
   uint32_t now = millis();
   uptime_millis += now - last_millis;
@@ -1333,6 +1416,9 @@ void MyMesh::loop() {
 
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
+#ifdef FIELDMESH_REPEATER
+  if (fmWebIsOn()) return true;   // WiFi access point: no sleep
+#endif
 #if defined(WITH_BRIDGE)
   if (bridge.isRunning()) return true;  // bridge needs WiFi radio, can't sleep
 #endif

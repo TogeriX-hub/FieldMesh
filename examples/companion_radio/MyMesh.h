@@ -24,6 +24,8 @@
 
 #include "DataStore.h"
 #include "NodePrefs.h"
+#include "GpsCycle.h"   // FieldMesh v6.1
+#include "TrackScheduler.h"   // FieldMesh v6.1
 
 #include <RTClib.h>
 #include <helpers/ArduinoHelpers.h>
@@ -308,6 +310,9 @@ private:
   AdvertPath advert_paths[ADVERT_PATH_TABLE_SIZE]; // circular table
 
   unsigned long next_auto_advert;  // millis() timestamp for next auto-advert (0=inactive)
+  GpsCycle _gps_cycle;             // FieldMesh v6.1: GPS duty cycle + fresh own position
+  TrackScheduler _track;           // FieldMesh v6.1: advert cadence while tracking
+  bool _tracking_active = false;
 
   // FieldMesh (#23): RTC jump detection — reference point (RTC seconds + millis) of the last check
   uint32_t _clk_ref_rtc;
@@ -315,6 +320,8 @@ private:
   void checkClockJump();
 
 public:
+  GpsCycle& gpsCycle() { return _gps_cycle; }   // FieldMesh v6.1 (UI: keep-awake, own position)
+
   // Auto-advert is active when GPS sharing is enabled
   bool isAutoAdvertEnabled() const {
     return _prefs.advert_loc_policy == ADVERT_LOC_SHARE;
@@ -326,6 +333,9 @@ public:
 
   // V3: SOS-Nachricht in den SOS-Channel senden
   bool sendSOS();
+  // v6.1: SOS channel = name contains "sos" (case-insensitive, e.g. "SOS", "#sos").
+  // Used for sending and for the alarm: "!SOS" only raises the alarm in such a channel.
+  static bool isSosChannel(const char* name);
 
   // Enable/disable GPS sharing and auto-advert together (called from UI button)
   void setGPSAdvertEnabled(bool enabled) {

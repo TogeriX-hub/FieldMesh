@@ -75,6 +75,8 @@ class MicroNMEALocationProvider : public LocationProvider {
     bool _uart_seen = false;
     bool _nmea_seen = false;
     bool _fix_seen = false;
+    SentenceCallback _sentence_cb = NULL;   // FieldMesh
+    void* _sentence_ctx = NULL;
 
     static uint32_t ageMs(unsigned long timestamp) {
         return (uint32_t)(millis() - timestamp);
@@ -157,6 +159,8 @@ public :
         }
     }
 
+    void setSentenceCallback(SentenceCallback cb, void* ctx) override { _sentence_cb = cb; _sentence_ctx = ctx; }   // FieldMesh
+
     void syncTime() override { nmea.clear(); LocationProvider::syncTime(); }
     long getLatitude() override { return nmea.getLatitude(); }
     long getLongitude() override { return nmea.getLongitude(); }
@@ -218,6 +222,7 @@ public :
                     _nmea_checksum_ok++;
                     _last_nmea_ms = millis();
                     _nmea_seen = true;
+                    if (_sentence_cb) _sentence_cb(nmea.getSentence(), _sentence_ctx);   // FieldMesh
 
                     // Refresh fix age only when a newly parsed GGA/RMC sentence
                     // carries a valid fix. Other valid NMEA sentences must not
