@@ -61,7 +61,7 @@ FieldMesh corrects the frequency ranges to legal values and adds a **one-press O
 
 | Your normal frequency | Off-Grid uses |
 |---|---|
-| below 900 MHz (EU/UK) | **869.4625 MHz** / BW125 / SF11 / CR5 (EU sub-band g1, 10% duty cycle, no LBT required) |
+| below 900 MHz (EU/UK) | **869.4625 MHz** / BW125 / SF11 / CR5 (EU sub-band g3: 500 mW ERP, 10% duty cycle) |
 | 900 MHz and above (US/AU) | **916.4625 MHz** / BW125 / SF11 / CR5 |
 
 **Off-Grid uses a completely separate frequency from your normal MeshCore network.** For example, the EU/UK Narrow preset runs on 869.618 MHz / BW62.5. Off-Grid runs on 869.4625 MHz / BW125. The two signals don't overlap — there is a ~62 kHz gap between them. You can run Off-Grid mode at a festival or in the field without interfering with the wider MeshCore network around you.
@@ -73,7 +73,7 @@ Frequency ranges are set correctly for legal operation:
 |Region       |Range                              |
 |-------------|-----------------------------------|
 |EU 433 MHz   |433.050 – 434.790 MHz              |
-|EU 869 MHz   |869.400 – 869.650 MHz (Sub-Band g1)|
+|EU 869 MHz   |869.400 – 869.650 MHz (Sub-Band g3)|
 |US/AU 915 MHz|915.000 – 928.000 MHz              |
 
 > Off-Grid has no frequency for other regions (e.g. India, Japan, Korea). Do not use Off-Grid there.
@@ -381,7 +381,7 @@ pio run -e Station_G2_fieldmesh_repeater -t mergebin     # firmware-merged.bin =
 - Message send supports channels only — no direct message (DM) sending via device UI
 - Repeater: switching from a stock repeater needs one full-image flash; back up the key first (see [Getting started](#getting-started))
 - Repeater: the dashboard WiFi is open (no password) — anyone in range can read the board and see node positions; setup actions need the admin password
-- Repeater: weather only arrives when a phone with mobile data opens the dashboard
+- Repeater: weather only arrives when a phone with mobile data opens the dashboard; some Android phones keep all traffic on the box WiFi and cannot load it
 
 -----
 
