@@ -517,7 +517,7 @@ async function wxFetch(manual){
  if(r.status!==202)throw new Error('The box did not take the data, try again.');
  return true;}
 function wxAuto(){ // in the background, like the clock: only when the box data is old
- if(!S||!S.wx||Date.now()-wxTried<600000)return;
+ if(!S||!S.wx||Date.now()-wxTried<120000)return;   // after a failed try: again in 2 min
  if(S.wx.age>=0&&S.wx.age<S.wx.max)return;
  wxFetch(false).then(()=>setTimeout(()=>{inflight['/api/status']=0;getStatus();},1500)).catch(()=>{});}
 let wxIn=null;
@@ -585,9 +585,9 @@ function toLocal(host){
  // The fixed address (QR code: 192.168.4.1) moves on to http://<name>.local, but only when this
  // phone can reach that name (iPhone: yes; Android before 12 often not: stay on the IP then).
  if(moved||!host||location.hostname===host)return;moved=true;
- const probe=fetch('http://'+host+'/api/ping',{mode:'no-cors',cache:'no-store'});
- const timeout=new Promise((_,rej)=>setTimeout(rej,2500));
- Promise.race([probe,timeout]).then(()=>location.replace('http://'+host+'/')).catch(()=>{});}
+ const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),2500);   // really stop the probe (no endless loading)
+ fetch('http://'+host+'/api/ping',{mode:'no-cors',cache:'no-store',signal:ctl.signal})
+  .then(()=>{clearTimeout(tm);location.replace('http://'+host+'/');}).catch(()=>clearTimeout(tm));}
 
 // ---- admin ----
 function logoutLocal(){tok=null;ss('fm-tok',null);SET=null;render();}

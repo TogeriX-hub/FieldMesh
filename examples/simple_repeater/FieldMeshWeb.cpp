@@ -1,4 +1,7 @@
-// FieldMesh repeater: WiFi dashboard (P5a: access point, captive portal, live status, clock).
+// FieldMesh repeater: WiFi dashboard (access point, live status, board, mesh, setup, weather).
+// No captive portal: the WiFi says it has no internet (like a printer), so phones keep using
+// mobile data for everything else. The dashboard is reached via the QR code on the box
+// (http://192.168.4.1) and then moves on to http://<name>.local.
 // Only compiled in with -D FIELDMESH_REPEATER=1 on ESP32.
 //
 // Threading: the web server (ESPAsyncWebServer) answers requests in its own FreeRTOS task.
@@ -11,7 +14,7 @@
 #if defined(FIELDMESH_REPEATER) && defined(ESP32)
 
 #include <WiFi.h>
-#include <DNSServer.h>
+#include <esp_netif.h>
 #include <ESPmDNS.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
@@ -26,7 +29,6 @@
 #define FM_WEB_CLOCK_MAX_STEP     (365UL * 86400) // s: a phone further ahead is not trusted
 
 static AsyncWebServer* fm_server = NULL;
-static DNSServer* fm_dns = NULL;
 static SemaphoreHandle_t fm_snap_mutex = NULL;
 static char fm_snap[1280] = "{}";
 static volatile uint32_t fm_pending_time = 0;   // phone clock, handed over to loop()
@@ -361,10 +363,8 @@ static void fmWebSetupRoutes() {
     }
     request->send(204);
   });
-  // Captive portal: the phones' connectivity checks and every unknown address lead to the page.
-  // Apple: /hotspot-detect.html, Android: /generate_204, Windows: /connecttest.txt ...
-  fm_server->onNotFound([](AsyncWebServerRequest* request) {
-    request->redirect("http://192.168.4.1/");
+  fm_server->onNotFound([](AsyncWebServerRequest* request) {   // unknown paths: the dashboard
+    request->redirect("/");
   });
 }
 
@@ -584,9 +584,16 @@ bool MyMesh::fmWebStart() {
     WiFi.mode(WIFI_OFF);
     return false;
   }
-  if (fm_dns == NULL) fm_dns = new DNSServer();
-  fm_dns->setErrorReplyCode(DNSReplyCode::NoError);
-  fm_dns->start(53, "*", WiFi.softAPIP());   // every name -> the box
+  // DHCP without gateway and DNS server: phones see a local-only WiFi ("no internet") and send
+  // everything else over mobile data at once (no captive portal, no hijacked names)
+  esp_netif_t* ap = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+  if (ap) {
+    uint8_t no_offer = 0;   // dhcps_offer_t without OFFER_ROUTER / OFFER_DNS
+    esp_netif_dhcps_stop(ap);
+    esp_netif_dhcps_option(ap, ESP_NETIF_OP_SET, ESP_NETIF_ROUTER_SOLICITATION_ADDRESS, &no_offer, sizeof(no_offer));
+    esp_netif_dhcps_option(ap, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER, &no_offer, sizeof(no_offer));
+    esp_netif_dhcps_start(ap);
+  }
 
   if (fm_server == NULL) {
     fm_server = new AsyncWebServer(80);
@@ -614,7 +621,6 @@ void MyMesh::fmWebStop() {
   if (!fm_web_running) return;
   MDNS.end();
   fm_server->end();
-  fm_dns->stop();
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_OFF);
   fm_web_running = false;
@@ -687,7 +693,6 @@ void MyMesh::fmWebLoop() {
     ESP.restart();
   }
   if (!fm_web_running) return;
-  fm_dns->processNextRequest();
 
   // phone clock from the page: only forward (upstream rule), only plausible steps
   uint32_t t = fm_pending_time;
