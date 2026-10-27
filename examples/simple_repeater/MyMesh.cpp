@@ -579,6 +579,9 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
 
 void MyMesh::onAnonDataRecv(mesh::Packet *packet, const uint8_t *secret, const mesh::Identity &sender,
                             uint8_t *data, size_t len) {
+#ifdef FIELDMESH_REPEATER
+  fmNodeSeen(sender.pub_key, packet);   // dashboard: last heard (login to the repeater)
+#endif
   if (packet->getPayloadType() == PAYLOAD_TYPE_ANON_REQ) { // received an initial request by a possible admin
                                                            // client (unknown at this stage)
     uint32_t timestamp;
@@ -680,6 +683,9 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
     return;
   }
   ClientInfo* client = acl.getClientByIdx(i);
+#ifdef FIELDMESH_REPEATER
+  fmNodeSeen(client->id.pub_key, packet);   // dashboard: last heard, also without an advert
+#endif
 
   if (type == PAYLOAD_TYPE_REQ) { // request (from a Known admin client!)
     uint32_t timestamp;

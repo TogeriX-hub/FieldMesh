@@ -148,6 +148,7 @@ bool MyMesh::fmRoomRecv(mesh::Packet* pkt) {
 }
 
 void MyMesh::fmRoomOnLogin(mesh::Packet* pkt, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) {
+  fmNodeSeen(sender.pub_key, pkt);   // dashboard: last heard, also when the login fails
   if (len < 8) return;
   uint32_t sender_timestamp, sender_sync_since;
   memcpy(&sender_timestamp, data, 4);
@@ -223,6 +224,7 @@ void MyMesh::fmRoomOnLogin(mesh::Packet* pkt, const uint8_t* secret, const mesh:
 }
 
 void MyMesh::fmRoomOnData(mesh::Packet* pkt, ClientInfo* client, const uint8_t* secret, uint8_t* data, size_t len) {
+  fmNodeSeen(client->id.pub_key, pkt);   // dashboard: posts, keep-alive, status requests count as heard
   uint8_t type = pkt->getPayloadType();
 
   if (type == PAYLOAD_TYPE_TXT_MSG && len > 5) {   // a new post

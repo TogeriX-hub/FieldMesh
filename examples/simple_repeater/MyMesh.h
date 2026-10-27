@@ -148,6 +148,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void fmStatsRx(const mesh::Packet* pkt);
   void fmStatsTx(const mesh::Packet* pkt);
   void fmNodeHeard(const mesh::Packet* pkt, const mesh::Identity& id, const uint8_t* app_data, size_t app_data_len);
+  void fmNodeSeen(const uint8_t* pub_key, const mesh::Packet* pkt);   // room/repeater login or data: update "last heard"
   FmNode* fmNodeFind(const uint8_t* key, int key_len);
   const char* fmNodeNameByHash(uint8_t hash);   // NULL if unknown or ambiguous
   bool fmTeamHas(const uint8_t* pub_key) const;

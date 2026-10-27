@@ -92,6 +92,21 @@ void MyMesh::fmNodeHeard(const mesh::Packet* pkt, const mesh::Identity& id, cons
 
 // ---- team ----
 
+// A known node talked to the room or the repeater (login, post, keep-alive): it is still in
+// reach, even if it sends no adverts. Only nodes already in the table (name from an advert, or
+// a team member restored after a restart); position stays as it was.
+void MyMesh::fmNodeSeen(const uint8_t* pub_key, const mesh::Packet* pkt) {
+  if (_fm_nodes == NULL) return;
+  FmNode* n = fmNodeFind(pub_key, PUB_KEY_SIZE);
+  if (n == NULL) return;
+  n->heard_at = getRTCClock()->getCurrentTime();
+  if (pkt->isRouteFlood()) {   // direct-routed packets do not tell the hop count
+    n->hops = pkt->getPathHashCount();
+    if (n->hops == 0) n->snr4 = (int8_t)(pkt->getSNR() * 4);   // SNR is only the node's own with 0 hops
+  }
+  if (fmTeamHas(n->pub_key)) _fm_team_dirty = true;
+}
+
 bool MyMesh::fmTeamHas(const uint8_t* pub_key) const {
   for (int i = 0; i < _fm_num_team; i++) {
     if (memcmp(_fm_team[i], pub_key, PUB_KEY_SIZE) == 0) return true;
