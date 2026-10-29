@@ -5,6 +5,7 @@
 #include <WiFi.h>
 #endif
 #include <Mesh.h>
+#include "ChannelText.h"   // FieldMesh: sender name / SOS channel rules
 
 #define CMD_APP_START                 1
 #define CMD_SEND_TXT_MSG              2
@@ -571,16 +572,7 @@ void MyMesh::onSignedMessageRecv(const ContactInfo &from, mesh::Packet *pkt, uin
 // Returns true if a name was found; out_name is filled in.
 // Only ": " is used as separator — node names like "Juno48 | DE.BW" contain " | " as part of the name.
 bool MyMesh::extractSenderName(const char* text, char* out_name, int max_len) {
-  const char* colon = strstr(text, ": ");
-  if (colon != NULL) {
-    int len = (int)(colon - text);
-    if (len > 0 && len < max_len) {
-      strncpy(out_name, text, len);
-      out_name[len] = 0;
-      return true;
-    }
-  }
-  return false;  // format not recognised
+  return fmExtractSenderName(text, out_name, max_len);   // ChannelText.h (unit-tested)
 }
 
 // V5: Favourite check for channel messages.
@@ -1156,12 +1148,8 @@ void MyMesh::toggleOffGrid() {
 // V3: SOS-Nachricht in den SOS-Channel senden
 // Searches for a channel named "SOS" and sends "!SOS <pos>" or "!SOS no GPS"
 bool MyMesh::isSosChannel(const char* name) {
-  if (name == NULL) return false;
   // Case-insensitive: accept "SOS", "sos", "#sos" etc.
-  for (const char* p = name; p[0] && p[1] && p[2]; p++) {
-    if (tolower(p[0]) == 's' && tolower(p[1]) == 'o' && tolower(p[2]) == 's') return true;
-  }
-  return false;
+  return fmIsSosChannelName(name);   // ChannelText.h (unit-tested)
 }
 
 bool MyMesh::sendSOS() {
