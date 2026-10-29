@@ -12,6 +12,12 @@
 #define LED_CYCLE_MILLIS  4000
 #endif
 
+// v6.2: single LED (T1000-E), RECHERCHE_LED_Buzzer_Headless.md section 7
+#define LED_BOOT_MILLIS       2000   // LED on after start
+#define LED_SOS_BLINK_MILLIS   100   // received SOS: fast blink (on/off each 100 ms)
+#define LED_PULSE_MILLIS      1200   // tracking: one soft pulse per LED_CYCLE_MILLIS ...
+#define LED_PULSE_MAX          255   // ... up to this PWM level
+
 #if defined(PIN_STATUS_LED_R) && defined(PIN_STATUS_LED_G) && defined(PIN_STATUS_LED_B)
 #define STATUS_LED_RGB 1
 #ifndef LOW_BATT_MILLIVOLTS
@@ -355,6 +361,35 @@ static void statusLedWheel(uint8_t pos) {   // smooth hue sweep, 0..255
 }
 #endif
 
+#if defined(PIN_STATUS_LED) && !defined(STATUS_LED_RGB)
+// v6.2: PWM only while pulsing. analogWrite(pin, 0) would keep the PWM module (and the 16 MHz
+// clock) running, so the pin is handed back and the module stopped after each pulse.
+// Confirmed on the T1000-E with a test build (29.10.2026).
+static bool led_pwm_on = false;
+static const uint32_t LED_ANALOG_TOKEN = 0x676f6c41;   // owner token used by analogWrite() ('Alog')
+
+static void ledPwmWrite(uint8_t value) {
+  analogWrite(PIN_STATUS_LED, value);
+  led_pwm_on = true;
+}
+
+static void ledPwmRelease() {   // back to a plain digital pin, LED off
+  if (!led_pwm_on) return;
+  for (int i = 0; i < HWPWM_MODULE_NUM; i++) {
+    if (HwPWMx[i]->isOwner(LED_ANALOG_TOKEN) && HwPWMx[i]->pin2channel(PIN_STATUS_LED) >= 0) {
+      HwPWMx[i]->removePin(PIN_STATUS_LED);
+      if (HwPWMx[i]->usedChannelCount() == 0) {
+        HwPWMx[i]->stop();
+        HwPWMx[i]->releaseOwnership(LED_ANALOG_TOKEN);
+      }
+    }
+  }
+  pinMode(PIN_STATUS_LED, OUTPUT);
+  digitalWrite(PIN_STATUS_LED, !LED_STATE_ON);
+  led_pwm_on = false;
+}
+#endif
+
 void UITask::userLedHandler() {
   // v6.2: SOS countdown - LED blinks with each beep (T1000-E green, X1 red)
   static bool countdown_led = false;
@@ -365,6 +400,7 @@ void UITask::userLedHandler() {
     analogWrite(PIN_STATUS_LED_G, 0);
     analogWrite(PIN_STATUS_LED_B, 0);
 #elif defined(PIN_STATUS_LED)
+    ledPwmRelease();
     digitalWrite(PIN_STATUS_LED, on ? LED_STATE_ON : !LED_STATE_ON);
 #endif
     countdown_led = true;
@@ -468,25 +504,49 @@ void UITask::userLedHandler() {
     }
   }
 #elif defined(PIN_STATUS_LED)
-  static int state = 0;
-  static int next_change = 0;
-  static int last_increment = 0;
+  // v6.2 (T1000-E): boot 2 s on, received SOS fast blink, tracking soft pulse, otherwise
+  // a short flash every 4 s. Unread messages are no longer shown.
+  static bool flash_on = false;
+  static unsigned long next_change = 0;
+  static bool led_held = false;   // boot light / SOS blink may have left the LED on
+  unsigned long now = millis();
 
-  int cur_time = millis();
-  if (cur_time > next_change) {
-    if (state == 0) {
-      state = 1;
-      if (_msgcount > 0) {
-        last_increment = LED_ON_MSG_MILLIS;
-      } else {
-        last_increment = LED_ON_MILLIS;
-      }
-      next_change = cur_time + last_increment;
+  if (now - ui_started_at < LED_BOOT_MILLIS) {
+    ledPwmRelease();
+    digitalWrite(PIN_STATUS_LED, LED_STATE_ON);
+    led_held = true;
+    return;
+  }
+  if (_sos_active) {
+    ledPwmRelease();
+    digitalWrite(PIN_STATUS_LED, ((now / LED_SOS_BLINK_MILLIS) & 1) ? LED_STATE_ON : !LED_STATE_ON);
+    led_held = true;
+    return;
+  }
+  if (led_held) {   // back to normal: LED off, next flash in a second
+    led_held = false;
+    digitalWrite(PIN_STATUS_LED, !LED_STATE_ON);
+    flash_on = false;
+    next_change = now + 1000;
+  }
+  // tracking = GPS-Share on and the GPS cycle running (same condition as MyMesh::loop())
+  if (the_mesh.isAutoAdvertEnabled() && the_mesh.gpsCycle().state() != GpsCycle::OFF) {
+    unsigned long ph = now % LED_CYCLE_MILLIS;
+    if (ph < LED_PULSE_MILLIS) {
+      unsigned long half = LED_PULSE_MILLIS / 2;
+      unsigned long v = ph < half ? ph : LED_PULSE_MILLIS - ph;
+      ledPwmWrite((uint8_t)(v * LED_PULSE_MAX / half));
     } else {
-      state = 0;
-      next_change = cur_time + LED_CYCLE_MILLIS - last_increment;
+      ledPwmRelease();
     }
-    digitalWrite(PIN_STATUS_LED, state == LED_STATE_ON);
+    return;
+  }
+
+  ledPwmRelease();
+  if ((long)(now - next_change) >= 0) {   // late loop -> flash a bit longer, never skipped
+    flash_on = !flash_on;
+    next_change = now + (flash_on ? LED_ON_MILLIS : LED_CYCLE_MILLIS - LED_ON_MILLIS);
+    digitalWrite(PIN_STATUS_LED, flash_on ? LED_STATE_ON : !LED_STATE_ON);
   }
 #endif
 }
@@ -495,6 +555,9 @@ void UITask::userLedHandler() {
   hardware-agnostic pre-shutdown activity should be done here 
 */
 void UITask::shutdown(bool restart){
+#if defined(PIN_STATUS_LED) && !defined(STATUS_LED_RGB)
+  ledPwmRelease();   // v6.2: the board may drive the LED pin while powering off
+#endif
 
   #ifdef PIN_BUZZER
   /* note: we have a choice here -
