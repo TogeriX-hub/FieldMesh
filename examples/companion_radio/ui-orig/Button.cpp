@@ -62,6 +62,14 @@ void Button::update() {
         _state = IDLE;
     }
     
+    // v6.2: click + hold - a press that started within the multi-click window after exactly
+    // one click becomes CLICK_HOLDING instead of a long press (power off)
+    if (_state == PRESSED && _holdAfterClick && (now - _pressTime) > BUTTON_CLICK_HOLD_MS) {
+        _state = CLICK_HOLDING;
+        _clickCount = 0;
+        triggerEvent(CLICK_HOLD_START);
+    }
+
     // Handle long press while button is held
     if (_state == PRESSED && (now - _pressTime) > BUTTON_LONG_PRESS_TIME_MS) {
         triggerEvent(LONG_PRESS);
@@ -83,12 +91,19 @@ void Button::handleStateChange() {
     
     if (_currentState) {
         // Button pressed
+        // v6.2: second press within the multi-click window after exactly one click
+        _holdAfterClick = (_state == WAITING_FOR_MULTI_CLICK && _clickCount == 1);
         _pressTime = now;
         _state = PRESSED;
         triggerEvent(ANY_PRESS);
     } else {
         // Button released
-        if (_state == PRESSED) {
+        if (_state == CLICK_HOLDING) {          // v6.2: end of click + hold
+            _state = IDLE;
+            _clickCount = 0;
+            _holdAfterClick = false;
+            triggerEvent(CLICK_HOLD_END);
+        } else if (_state == PRESSED) {
             uint32_t pressDuration = now - _pressTime;
             
             if (pressDuration < BUTTON_LONG_PRESS_TIME_MS) {
@@ -129,6 +144,12 @@ void Button::triggerEvent(EventType event) {
             break;
         case LONG_PRESS:
             if (_onLongPress) _onLongPress();
+            break;
+        case CLICK_HOLD_START:                             // v6.2
+            if (_onClickHoldStart) _onClickHoldStart();
+            break;
+        case CLICK_HOLD_END:                               // v6.2
+            if (_onClickHoldEnd) _onClickHoldEnd();
             break;
         default:
             break;

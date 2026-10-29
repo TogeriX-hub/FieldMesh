@@ -23,6 +23,12 @@
 #define USER_BTN_PRESSED LOW
 #endif
 
+// v6.2: SOS by click + hold (RECHERCHE_LED_Buzzer_Headless.md 7a)
+#define SOS_HOLD_MILLIS        5000   // hold this long to send
+#define SOS_BEEP_FIRST_MILLIS  1000   // countdown beep interval at the start ...
+#define SOS_BEEP_LAST_MILLIS    150   // ... and at the end
+#define SOS_LED_ON_MILLIS        60   // LED on with each countdown beep
+
 // 'meshcore', 128x13px
 static const uint8_t meshcore_logo [] PROGMEM = {
     0x3c, 0x01, 0xe3, 0xff, 0xc7, 0xff, 0x8f, 0x03, 0x87, 0xfe, 0x1f, 0xfe, 0x1f, 0xfe, 0x1f, 0xfe, 
@@ -85,6 +91,8 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   _userButton->onQuintuplePress([this]() { handleButtonQuintuplePress(); });  // V2.02
   _userButton->onLongPress([this]() { handleButtonLongPress(); });
   _userButton->onAnyPress([this]() { handleButtonAnyPress(); });
+  _userButton->onClickHoldStart([this]() { handleButtonClickHoldStart(); });   // v6.2
+  _userButton->onClickHoldEnd([this]() { handleButtonClickHoldEnd(); });       // v6.2
 #endif
 
   // Initialize analog button if available
@@ -100,6 +108,8 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
   _userButtonAnalog->onQuintuplePress([this]() { handleButtonQuintuplePress(); });  // V2.02
   _userButtonAnalog->onLongPress([this]() { handleButtonLongPress(); });
   _userButtonAnalog->onAnyPress([this]() { handleButtonAnyPress(); });
+  _userButtonAnalog->onClickHoldStart([this]() { handleButtonClickHoldStart(); });   // v6.2
+  _userButtonAnalog->onClickHoldEnd([this]() { handleButtonClickHoldEnd(); });       // v6.2
 #endif
   ui_started_at = millis();
 }
@@ -346,6 +356,31 @@ static void statusLedWheel(uint8_t pos) {   // smooth hue sweep, 0..255
 #endif
 
 void UITask::userLedHandler() {
+  // v6.2: SOS countdown - LED blinks with each beep (T1000-E green, X1 red)
+  static bool countdown_led = false;
+  if (_sos_holding) {
+    bool on = (millis() - _sos_last_beep) < SOS_LED_ON_MILLIS;
+#ifdef STATUS_LED_RGB
+    analogWrite(PIN_STATUS_LED_R, on ? 255 : 0);
+    analogWrite(PIN_STATUS_LED_G, 0);
+    analogWrite(PIN_STATUS_LED_B, 0);
+#elif defined(PIN_STATUS_LED)
+    digitalWrite(PIN_STATUS_LED, on ? LED_STATE_ON : !LED_STATE_ON);
+#endif
+    countdown_led = true;
+    return;
+  }
+  if (countdown_led) {   // countdown over: LED off, normal pattern continues
+    countdown_led = false;
+#ifdef STATUS_LED_RGB
+    analogWrite(PIN_STATUS_LED_R, 0);
+    analogWrite(PIN_STATUS_LED_G, 0);
+    analogWrite(PIN_STATUS_LED_B, 0);
+#elif defined(PIN_STATUS_LED)
+    digitalWrite(PIN_STATUS_LED, !LED_STATE_ON);
+#endif
+  }
+
 #ifdef STATUS_LED_RGB
   static bool booted = false;
   static bool flourish_active = false;
@@ -493,12 +528,13 @@ void UITask::loop() {
       _userButtonAnalog->update();
     }
   #endif
+  if (_sos_holding) sosCountdownLoop();   // v6.2
   userLedHandler();
 
 #ifdef PIN_BUZZER
   if (buzzer.isPlaying()) {
     buzzer.loop();
-  } else {
+  } else if (!_sos_holding) {   // v6.2: countdown beeps must stay audible
     // V5: restore quiet state after a forced tone has finished playing
     if (_buzzer_restore_quiet) {
       buzzer.quiet(_node_prefs->buzzer_quiet);
@@ -690,6 +726,71 @@ void UITask::handleButtonLongPress() {
   }
 }
 // ── SOS ───────────────────────────────────────────────────────────────────────
+
+// v6.2: plays a tone even while the buzzer is quiet (quiet state is restored afterwards)
+void UITask::playForced(const char* melody) {
+#ifdef PIN_BUZZER
+  buzzer.quiet(false);
+  buzzer.play(melody);
+  _buzzer_restore_quiet = true;
+#else
+  (void)melody;
+#endif
+}
+
+// v6.2: click + hold started - countdown to SOS (RECHERCHE_LED_Buzzer_Headless.md 7a).
+// A received SOS alarm keeps running (no short press was triggered).
+void UITask::handleButtonClickHoldStart() {
+  MESH_DEBUG_PRINTLN("UITask: click + hold -> SOS countdown");
+  _sos_holding = true;
+  _sos_hold_start = millis();
+  _sos_next_beep = _sos_hold_start;
+  _sos_last_beep = 0;
+}
+
+// v6.2: released before the countdown ended - nothing is sent
+void UITask::handleButtonClickHoldEnd() {
+  if (!_sos_holding) return;   // already sent
+  MESH_DEBUG_PRINTLN("UITask: SOS countdown cancelled");
+  _sos_holding = false;
+  playForced("sos_cancel:d=16,o=5,b=200:e,c");   // short descending tone
+}
+
+// v6.2: countdown beeps get faster; after SOS_HOLD_MILLIS the SOS is sent
+void UITask::sosCountdownLoop() {
+  unsigned long now = millis();
+  unsigned long held = now - _sos_hold_start;
+
+  if (held >= SOS_HOLD_MILLIS) {
+    _sos_holding = false;
+    if (the_mesh.sendSOS()) {
+      MESH_DEBUG_PRINTLN("UITask: SOS sent");
+      playForced("sos_sent:d=2,o=6,b=100:c");   // one long tone (1.2 s)
+#ifdef HAS_DRV2605
+      bool q = vibration.isQuiet();   // always vibrate, also when vibration is off
+      vibration.quiet(false);
+      vibration.trigger(true);
+      vibration.quiet(q);
+#endif
+      sprintf(_alert, "SOS sent!");
+    } else {
+      MESH_DEBUG_PRINTLN("UITask: SOS failed (no SOS channel?)");
+      playForced("sos_fail:d=16,o=4,b=140:c,p,c,p,c");   // three short low tones
+      sprintf(_alert, "No SOS channel!");
+    }
+    _need_refresh = true;
+    return;
+  }
+
+  if ((long)(now - _sos_next_beep) >= 0) {
+    _sos_last_beep = now;
+    // interval shrinks linearly from SOS_BEEP_FIRST_MILLIS to SOS_BEEP_LAST_MILLIS
+    unsigned long interval = SOS_BEEP_FIRST_MILLIS
+        - (held * (SOS_BEEP_FIRST_MILLIS - SOS_BEEP_LAST_MILLIS)) / SOS_HOLD_MILLIS;
+    _sos_next_beep = now + interval;
+    playForced("sos_tick:d=32,o=7,b=200:c");
+  }
+}
 
 // V5: SOS alarm received — siren loops until short press
 // Called by UITask::onChannelMessageRecv() when !SOS is detected (V6: listener)
