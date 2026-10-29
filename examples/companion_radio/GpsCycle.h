@@ -280,6 +280,10 @@ public:
     _sos_until = millis() + KEEP_AWAKE_SOS_MS;
   }
 
+  // v6.2: the radio moved to another network (Off-Grid toggle, new radio parameters) - a
+  // pending resend would reach people who never got the first SOS, so it is dropped
+  void cancelSosResend() { _sos_pending = false; }
+
   // value of a sensor setting as shown to the app: while hard-sleeping the board reports
   // "gps" = "0", but for the user the GPS is still on
   const char* reportSetting(const char* name, const char* value) const {

@@ -1140,6 +1140,7 @@ void MyMesh::toggleOffGrid() {
     }
     _prefs.setRepeatEn(false);
   }
+  _gps_cycle.cancelSosResend();   // v6.2: no SOS resend into the other network
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);  // V6: wrapper method (radio_set_params() removed upstream)
   savePrefs();
   advert();  // V4.07: RX restart via normal TX->RX cycle of the wrapper
@@ -1606,6 +1607,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       savePrefs();
 
       radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
+      _gps_cycle.cancelSosResend();   // FieldMesh v6.2: no SOS resend into the other network
       MESH_DEBUG_PRINTLN("OK: CMD_SET_RADIO_PARAMS: f=%d, bw=%d, sf=%d, cr=%d", freq, bw, (uint32_t)sf,
                          (uint32_t)cr);
 

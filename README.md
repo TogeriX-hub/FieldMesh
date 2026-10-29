@@ -87,7 +87,7 @@ Long-press the button on the SOS page to open a two-step confirmation screen (ac
 !SOS no GPS bat78%
 ```
 
-The position is used if the last fix is at most 2 minutes old. Sending an SOS switches the GPS on if it was off, and it stays on afterwards (v6.2). For 10 minutes after sending, the GPS runs without pause; if the first SOS went out without a position, it is sent once more as soon as a fix is available. ThinkNode M1: if the hardware GPS switch is off, the display shows "GPS switch is off!" — turn it on within the 10 minutes and the SOS is still resent with position.
+The position is used if the last fix is at most 2 minutes old. Sending an SOS switches the GPS on if it was off, and it stays on afterwards (v6.2). For 10 minutes after sending, the GPS runs without pause; if the first SOS went out without a position, it is sent once more as soon as a fix is available. ThinkNode M1: if the hardware GPS switch is off, the display shows "GPS switch is off!" — turn it on within the 10 minutes and the SOS is still resent with position. Switching Off-Grid on or off (or changing the radio settings) drops a pending resend, so it never goes out into a network that did not get the first SOS.
 
 On the receiving end: an `!SOS` message **in an SOS channel** (name contains "sos") triggers a buzzer alarm that overrides quiet mode and loops until manually acknowledged. The alert screen shows the sending node's name. Normal messages are suppressed while an SOS alert is active. `!SOS` in any other channel (e.g. Public) is shown as a normal message — no alarm (v6.1).
 
