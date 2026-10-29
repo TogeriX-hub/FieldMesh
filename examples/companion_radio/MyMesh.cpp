@@ -1187,7 +1187,17 @@ bool MyMesh::sendSOS() {
 
     uint32_t ts = getRTCClock()->getCurrentTimeUnique();
     bool sent = sendGroupMessage(ts, ch.channel, _prefs.node_name, text, strlen(text));
-    if (sent) _gps_cycle.onSosSent(has_pos);   // GPS on for 10 min, resend once with position
+    if (sent) {
+      // FieldMesh v6.2: SOS switches the GPS on and leaves it on (position also helps later
+      // telemetry requests). Tracking/GPS-Share stays as it is. ThinkNode M1: the hardware
+      // switch keeps priority - the setting is stored, the GPS runs once the switch is on.
+      if (!_prefs.gps_enabled && sensors.getSettingByKey("gps") != NULL) {
+        _prefs.gps_enabled = 1;
+        if (GpsCycle::hardwareSwitchOn()) sensors.setSettingValue("gps", "1");
+        savePrefs();
+      }
+      _gps_cycle.onSosSent(has_pos);   // GPS on for 10 min, resend once with position
+    }
     return sent;
   }
   return false;  // no SOS channel found

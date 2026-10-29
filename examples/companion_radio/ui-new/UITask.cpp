@@ -2003,6 +2003,10 @@ public:
         if (the_mesh.sendSOS()) {
           _task->notify(UIEventType::ack);
           _task->showAlert("SOS sent!", 2000);
+#ifdef PIN_GPS_SWITCH
+          // v6.2: SOS switched the GPS setting on, but the hardware switch has priority
+          if (!GpsCycle::hardwareSwitchOn()) _task->showAlertNext("GPS switch is off!", 4000);
+#endif
         } else {
           _task->showAlert("No SOS channel!", 2000);
         }
@@ -2063,6 +2067,8 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
 
   ui_started_at = millis();
   _alert_expiry = 0;
+  _alert_next[0] = 0;
+  _alert_next_ms = 0;
 
   splash = new SplashScreen(this);
   home = new HomeScreen(this, &rtc_clock, sensors, node_prefs);
@@ -2085,6 +2091,13 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
 void UITask::showAlert(const char* text, int duration_millis) {
   strcpy(_alert, text);
   _alert_expiry = millis() + duration_millis;
+}
+
+// v6.2: second alert, shown when the current one expires (e.g. "SOS sent!" -> hint)
+void UITask::showAlertNext(const char* text, int duration_millis) {
+  strncpy(_alert_next, text, sizeof(_alert_next) - 1);
+  _alert_next[sizeof(_alert_next) - 1] = 0;
+  _alert_next_ms = duration_millis;
 }
 
 void UITask::notify(UIEventType t) {
@@ -2556,6 +2569,12 @@ void UITask::loop() {
   if (_display != NULL && _display->isOn() && curr == home
       && (((HomeScreen*)home)->isOnTrackingPage() || ((HomeScreen*)home)->isOnGpsPage())) {
     the_mesh.gpsCycle().keepAwake(GpsCycle::KEEP_AWAKE_PAGE_MS);
+  }
+
+  if (_alert_next[0] && millis() >= _alert_expiry) {   // v6.2: queued second alert
+    showAlert(_alert_next, _alert_next_ms);
+    _alert_next[0] = 0;
+    _next_refresh = 0;
   }
 
   if (_display != NULL && _display->isOn()) {

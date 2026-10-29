@@ -148,8 +148,10 @@ private:
     if (!enabled) {
       // GPS was switched off by the user/app/switch: their code already stopped the
       // hardware; the cycle only forgets its state.
+      // v6.2: a pending SOS resend survives until its window ends (M1: switch turned on
+      // after the SOS -> the first fix is still reported)
       _state = OFF;
-      _sos_pending = false;
+      if (_sos_pending && (int32_t)(now - _sos_until) > 0) _sos_pending = false;
       return ev;
     }
 

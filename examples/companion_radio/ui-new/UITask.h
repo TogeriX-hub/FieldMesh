@@ -63,6 +63,8 @@ class UITask : public AbstractUITask {
   NodePrefs* _node_prefs;
   char _alert[80];
   unsigned long _alert_expiry;
+  char _alert_next[32];          // v6.2: shown right after the current alert expires
+  int _alert_next_ms;
   int _msgcount;
   int _num_unread;               // V5: internal unread counter (independent of _msgcount)
   char _latest_fav_name[33];     // V5: name of the most recent favourite with a message
@@ -144,6 +146,7 @@ public:
 #endif
 
   void showAlert(const char* text, int duration_millis);
+  void showAlertNext(const char* text, int duration_millis);   // v6.2: queued after the current alert
 
   // Getter
   int         getMsgCount()  const { return _msgcount; }
