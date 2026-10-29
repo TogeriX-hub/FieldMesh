@@ -604,26 +604,9 @@ void UITask::handleButtonDoublePress() {
 
 void UITask::handleButtonTriplePress() {
   MESH_DEBUG_PRINTLN("UITask: triple press triggered");
-#if defined(PIN_BUZZER) && defined(HAS_DRV2605)
-  // cycle alert modes: Buzz+Vibe -> Buzz only -> Vibe only -> Silent
-  int mode = (_node_prefs->buzzer_quiet ? 2 : 0) | (_node_prefs->vibe_quiet ? 1 : 0);
-  mode = (mode + 1) & 3;
-  _node_prefs->buzzer_quiet = (mode & 2) ? 1 : 0;
-  _node_prefs->vibe_quiet = (mode & 1) ? 1 : 0;
-  buzzer.quiet(_node_prefs->buzzer_quiet);
-  vibration.quiet(_node_prefs->vibe_quiet);
-  // audible/tactile confirmation of the new mode (no screen on some boards)
-  if (!_node_prefs->buzzer_quiet) notify(UIEventType::ack);
-  if (!_node_prefs->vibe_quiet) vibration.trigger(true);
-  switch (mode) {
-    case 0: sprintf(_alert, "Alerts: Buzz+Vibe"); break;
-    case 1: sprintf(_alert, "Alerts: Buzz only"); break;
-    case 2: sprintf(_alert, "Alerts: Vibe only"); break;
-    default: sprintf(_alert, "Alerts: Silent"); break;
-  }
-  the_mesh.savePrefs();
-  _need_refresh = true;
-#elif defined(PIN_BUZZER)
+  // v6.2: buzzer on/off only, on all devices (the X1 Buzz+Vibe cycle from upstream is gone,
+  // vibe_quiet is no longer changed by the button)
+#if defined(PIN_BUZZER)
   if (buzzer.isQuiet()) {
     buzzer.quiet(false);
     buzzer.play("buz_on:d=16,o=6,b=200:c,e");
@@ -646,15 +629,17 @@ void UITask::handleButtonTriplePress() {
 void UITask::handleButtonQuadruplePress() {
   MESH_DEBUG_PRINTLN("UITask: quad press triggered");
   if (_sensors != NULL) {
-    // toggle GPS on/off
+    // v6.2: GPS and tracking (GPS-Share) together: both on -> both off, otherwise both on.
+    // GPS without tracking stays possible via the app
     int num = _sensors->getNumSettings();
     for (int i = 0; i < num; i++) {
       if (strcmp(_sensors->getSettingName(i), "gps") == 0) {
         // v6.1: decide by the setting (the board reports "0" while the GPS duty cycle sleeps)
         // and store it, so the choice survives a reboot
-        if (_node_prefs->gps_enabled) {
+        if (_node_prefs->gps_enabled && the_mesh.isAutoAdvertEnabled()) {
           _sensors->setSettingValue("gps", "0");
           _node_prefs->gps_enabled = 0;
+          the_mesh.setGPSAdvertEnabled(false);   // v6.2: tracking off too (saves prefs)
           sprintf(_alert, "GPS: Disabled");
 #ifdef PIN_BUZZER
           buzzer.quiet(false);
@@ -664,6 +649,7 @@ void UITask::handleButtonQuadruplePress() {
         } else {
           _sensors->setSettingValue("gps", "1");
           _node_prefs->gps_enabled = 1;
+          the_mesh.setGPSAdvertEnabled(true);    // v6.2: tracking on too (saves prefs)
           sprintf(_alert, "GPS: Enabled");
 #ifdef PIN_BUZZER
           buzzer.quiet(false);
