@@ -80,7 +80,7 @@ Frequency ranges are set correctly for legal operation:
 
 ### SOS System
 
-Long-press the button on the SOS page to open a two-step confirmation screen (accidental trigger protection). FieldMesh looks for a channel whose name contains "sos" (case-insensitive) and sends your position and battery level:
+Long-press the button on the SOS page to open a two-step confirmation screen (accidental trigger protection). On devices without a display (T1000-E), click once, then press again and hold for 5 seconds (v6.2, see [Headless devices](#ui--usability)). FieldMesh looks for a channel whose name contains "sos" (case-insensitive) and sends your position and battery level:
 
 ```
 !SOS 48.7636,9.1621 bat78%
@@ -169,28 +169,46 @@ Headless devices (no display, single button) support a focused set of features:
 
 - receive and relay mesh messages, GPS tracking
 - toggle Off-Grid mode
-- receive SOS alarms via buzzer (sending SOS needs a screen for the two-step confirmation)
-- send adverts, toggle GPS, toggle buzzer mute
+- send SOS (click + hold) and receive SOS alarms via buzzer
+- send adverts, toggle GPS + tracking, toggle buzzer mute
 
 | Button | Action |
 |---|---|
 | 1× | Acknowledge an SOS alarm |
+| 1× + hold 5 s | Send SOS (v6.2, see below) |
 | 2× | Send an advert now |
 | 3× | Buzzer on/off |
-| 4× | GPS on/off (saved, survives a restart) |
+| 4× | GPS and tracking (GPS-Share) on/off together (v6.2, saved, survives a restart) |
 | 5× | Off-Grid on/off |
 | Long press | Power off (within the first 8 s after power-on: CLI rescue mode) |
 
-GPS-Share (tracking) is switched in the MeshCore app (location sharing in the advert settings).
+**Sending SOS (v6.2):** press once, then press again within half a second and **hold**. The buzzer beeps faster and faster and the LED blinks along. After 5 seconds the SOS is sent (one long tone). Release earlier to cancel (short descending tone) — nothing is sent. Three short low tones mean no SOS channel was found. A normal long press without a click before still powers off.
+
+**4×** switches GPS and tracking together: if both are on, both go off; otherwise both go on. GPS without tracking can still be set in the MeshCore app.
 
 All actions give forced buzzer feedback — even when the buzzer is muted:
 
 | Tone | Meaning |
 |---|---|
-| Ascending (c → e) | Feature turned on (GPS, buzzer, Off-Grid) |
-| Descending (e → c) | Feature turned off |
+| Ascending (c → e) | Feature turned on (GPS + tracking, buzzer, Off-Grid) |
+| Descending (e → c) | Feature turned off / SOS countdown cancelled |
 | Double beep | Advert sent |
+| Faster and faster beeps | SOS countdown (click + hold) |
+| Long tone | SOS sent |
+| Three short low tones | SOS not sent — no SOS channel |
 | Continuous siren | SOS alarm received — press once to acknowledge |
+
+**Status LED (T1000-E, v6.2):**
+
+| LED | Meaning |
+|---|---|
+| On for 2 s | Starting |
+| Short flash every 4 s | Normal |
+| Soft pulse every 4 s | Tracking on (GPS + GPS-Share) |
+| Blinking faster and faster | SOS countdown |
+| Fast blinking | SOS alarm received |
+
+Off-Grid, charging and low battery are not shown on the LED.
 
 The Off-Grid state is saved and restored on boot. To check it without a display: press 5×, listen (ascending = was off, now on; descending = was on, now off), then press 5× again to return to the original state.
 
@@ -374,7 +392,6 @@ pio run -e Station_G2_fieldmesh_repeater -t mergebin     # firmware-merged.bin =
 - Tested on ThinkNode M1, Wio Tracker L1, T1000-E and Station G2 — other hardware untested
 - Off-Grid knows EU/UK and US/AU frequencies only — do not use it in other regions (e.g. India, Japan, Korea)
 - SOS needs a channel whose name contains "sos" — for sending and for the alarm
-- Headless devices can receive SOS but not send it
 - Tracking page shows a maximum of 3 contacts (favourited in the companion app)
 - Message history is RAM-only — stored messages are lost on reboot (intentional)
 - Text input and send is available on Wio Tracker L1 only — the ThinkNode M1 single button does not support text composition
@@ -406,7 +423,7 @@ If a node appears in RECENT but not in TRACKING, it most likely:
 Your position is only available if your device has a valid GPS fix.
 
 Make sure:
-- GPS is enabled (via long press on the GPS screen, 4× press on headless devices, or the hardware switch on the M1)
+- GPS is enabled (via long press on the GPS screen, 4× press on headless devices — switches tracking on too — or the hardware switch on the M1)
 - your device has a GPS fix (not "GPS NO FIX")
 
 Without a GPS fix, no position can be sent or displayed.
@@ -537,13 +554,14 @@ Switching between modes does not require manual reconfiguration.
 <details>
 <summary><strong>How does the SOS feature work?</strong></summary>
 
-The SOS function is protected by a two-step confirmation to prevent accidental triggering.
+The SOS function is protected against accidental triggering: a two-step confirmation on devices with a display, a 5-second click + hold with a beeping countdown on devices without one.
 
 When activated:
 - `!SOS` is sent in your SOS channel (name contains "sos")
 - your GPS position is included if the last fix is at most 2 minutes old, otherwise "no GPS"
 - your battery level is added
-- the GPS stays on for 10 minutes and sends the position once more if the first SOS had none
+- the GPS is switched on if it was off and stays on (v6.2)
+- the GPS runs for 10 minutes and sends the position once more if the first SOS had none — unless you switch Off-Grid or change the radio settings in the meantime
 
 </details>
 
@@ -553,9 +571,10 @@ When activated:
 
 When an `!SOS` message is received in an SOS channel:
 
-- a dedicated screen opens
+- a dedicated screen opens (devices with a display)
 - the sender's node name is displayed
 - the buzzer (if available) will sound
+- the LED blinks fast (T1000-E)
 
 The alarm will continue until manually confirmed. `!SOS` in other channels (e.g. Public) does not trigger the alarm.
 
