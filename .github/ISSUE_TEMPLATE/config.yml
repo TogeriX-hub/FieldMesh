@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Problem with stock MeshCore
+    url: https://github.com/meshcore-dev/MeshCore/issues
+    about: Issues that also happen without FieldMesh belong to the MeshCore project.
+  - name: Security issue
+    url: https://github.com/TogeriX-hub/FieldMesh/security/advisories/new
+    about: Please report security problems privately, not as a public issue.

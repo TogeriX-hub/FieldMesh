@@ -1,0 +1,30 @@
+name: Feature idea
+description: An idea that fits the outdoor / off-grid use case.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: situation
+    attributes:
+      label: Situation
+      description: Where were you and what were you trying to do? (hiking, festival, camp, group tour ...)
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: What should FieldMesh do?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: devices
+    attributes:
+      label: Devices
+      multiple: true
+      options:
+        - All devices
+        - With display (ThinkNode M1, Wio Tracker L1)
+        - Headless (T1000-E)
+        - FieldMesh Repeater (Station G2)

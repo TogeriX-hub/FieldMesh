@@ -1,0 +1,55 @@
+name: Hardware test report
+description: You tried FieldMesh on a device - tell us what works and what does not.
+labels: ["hardware"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports for the untested devices (Heltec Mesh Node T1, SenseCAP MeshTracker X1, Wio Tracker L1 E-Ink, Wio Tracker L1 1W) and for new devices are very welcome.
+        Partial results help too - just tick what you tried.
+
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      placeholder: Heltec Mesh Node T1
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: Build environment
+      placeholder: Heltec_t1_companion_radio_ble
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: FieldMesh version or commit
+      placeholder: v6.1
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: works
+    attributes:
+      label: What works
+      options:
+        - label: Boots, splash screen shows FieldMesh
+        - label: Display and button / joystick navigation
+        - label: GPS fix and position in adverts
+        - label: Tracking page (favourites with distance)
+        - label: Off-Grid toggle on and off
+        - label: Sending SOS
+        - label: Receiving SOS (alarm and buzzer)
+        - label: Message history
+        - label: Battery reading
+        - label: Pairing with the companion app
+
+  - type: textarea
+    id: problems
+    attributes:
+      label: What does not work / notes
+      description: Anything odd - wrong pins, display glitches, battery drain, crashes.

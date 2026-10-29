@@ -1,0 +1,105 @@
+name: Bug report
+description: Something in FieldMesh does not work as described in the README.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time! The questions below are the ones that are needed to reproduce most problems.
+        If the same happens with stock MeshCore, please report it to [MeshCore](https://github.com/meshcore-dev/MeshCore/issues) instead.
+
+  - type: dropdown
+    id: device
+    attributes:
+      label: Device
+      options:
+        - Elecrow ThinkNode M1
+        - Seeed Wio Tracker L1
+        - Seeed T1000-E
+        - Station G2 (FieldMesh Repeater)
+        - Other (built from source, name it below)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: FieldMesh version
+      description: Shown on the splash screen or in the release file name.
+      placeholder: v6.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: region
+    attributes:
+      label: Normal radio setting
+      description: The preset / frequency you use outside Off-Grid mode.
+      options:
+        - EU/UK 869 MHz (e.g. EU/UK Narrow)
+        - EU 433 MHz
+        - US/AU 915 MHz
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: offgrid
+    attributes:
+      label: Off-Grid mode
+      options:
+        - "Off"
+        - "On"
+        - Happens in both
+        - Happens when switching
+    validations:
+      required: true
+
+  - type: dropdown
+    id: app
+    attributes:
+      label: Companion app connected?
+      description: Some features (message history, alerts) behave differently while the app is connected.
+      options:
+        - "No"
+        - Yes, iOS
+        - Yes, Android
+        - Not relevant (repeater)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How was this version installed?
+      options:
+        - Fresh install
+        - Update from an older FieldMesh version
+        - Update from stock MeshCore
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Switch Off-Grid on
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: more
+    attributes:
+      label: Logs, photos, anything else
+      description: A photo of the display or a USB serial log helps a lot. Device not in the list? Name it and the build environment here.
