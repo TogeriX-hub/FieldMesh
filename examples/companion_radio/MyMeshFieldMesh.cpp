@@ -90,7 +90,7 @@ void MyMesh::toggleOffGrid() {
     }
     _prefs.setRepeatEn(false);
   }
-  _gps_cycle.cancelSosResend();   // v6.2: no SOS resend into the other network
+  fmOnNetworkChange();   // v6.2: no SOS resend / queued relay into the other network
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);  // V6: wrapper method (radio_set_params() removed upstream)
   savePrefs();
   advert();  // V4.07: RX restart via normal TX->RX cycle of the wrapper
@@ -238,6 +238,30 @@ uint32_t MyMesh::fmRelayDelay(const mesh::Packet* packet) {
 uint32_t MyMesh::fmFloodTimeoutExtra() const {
   if (!_prefs.isRepeatEn()) return 0;
   return fmFloodTimeoutExtraMs(fmFloodSlotMs(_prefs.sf, _prefs.bw));
+}
+
+// C: someone else relayed this advert first -> drop our queued relay of it. Only adverts
+// (they come again every few minutes); messages, SOS and ACKs are always relayed.
+// Called from filterRecvFloodPacket(), i.e. before the duplicate check and before the
+// next send attempt, so a relay that is still waiting for a free channel is caught too.
+void MyMesh::fmFilterRelay(mesh::Packet* packet) {
+  if (!fmFloodCancelOnDuplicate(packet->getPayloadType())) return;
+  uint8_t hash[MAX_HASH_SIZE];
+  packet->calculatePacketHash(hash);
+  int i = fmFloodFindQueuedRelay(*_mgr, hash);
+  if (i >= 0) {
+    _mgr->free(_mgr->removeOutboundByIdx(i));
+    _fm_relay_skipped++;
+  }
+}
+
+// Network change (Off-Grid toggled, new radio parameters from the app): nothing heard in one
+// network may be sent into the other one. Relays can wait up to ~22 s (+ busy channel) in
+// Off-Grid. Own queued packets (path 0) stay.
+void MyMesh::fmOnNetworkChange() {
+  _gps_cycle.cancelSosResend();   // v6.2: no SOS resend into the other network
+  int n = fmFloodDropQueuedRelays(*_mgr);
+  if (n > 0) MESH_DEBUG_PRINTLN("FieldMesh: network change, %d queued relays dropped", n);
 }
 
 // ── Loop: GPS cycle, tracking, auto-advert, clock jump ───────────────────────

@@ -319,12 +319,16 @@ private:
   void fmSendSelfAdvert(mesh::Packet* pkt);    // advert(): flood in Off-Grid, zero-hop otherwise
   uint32_t fmRelayDelay(const mesh::Packet* packet);   // getRetransmitDelay() in Off-Grid (FloodPolicy.h)
   uint32_t fmFloodTimeoutExtra() const;                // calcFloodTimeoutMillisFor(): extra time in Off-Grid
+  void fmFilterRelay(mesh::Packet* packet);            // filterRecvFloodPacket() in Off-Grid: drop duplicate advert relay
+  void fmOnNetworkChange();                            // Off-Grid toggled / new radio params: drop SOS resend + queued relays
+  uint32_t _fm_relay_skipped = 0;                      // queued advert relays dropped because another node relayed first
 
   // v6.2 Off-Grid managed flooding: wait for a free channel instead of forcing after 4 s
   uint32_t getCADFailMaxDuration() const override;
 
 public:
   GpsCycle& gpsCycle() { return _gps_cycle; }   // FieldMesh v6.1 (UI: keep-awake, own position)
+  uint32_t getRelaySkipped() const { return _fm_relay_skipped; }   // FieldMesh v6.2: Off-Grid flooding counter
 
   // Auto-advert is active when GPS sharing is enabled
   bool isAutoAdvertEnabled() const {

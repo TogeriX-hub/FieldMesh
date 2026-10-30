@@ -482,6 +482,7 @@ void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packe
 }
 
 bool MyMesh::filterRecvFloodPacket(mesh::Packet* packet) {
+  if (_prefs.isRepeatEn()) fmFilterRelay(packet);   // FieldMesh: Off-Grid, advert already relayed by another node
   // REVISIT: try to determine which Region (from transport_codes[1]) that Sender is indicating for replies/responses
   //    if unknown, fallback to finding Region from transport_codes[0], the 'scope' used by Sender
   return false;
@@ -1459,7 +1460,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       savePrefs();
 
       radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
-      _gps_cycle.cancelSosResend();   // FieldMesh v6.2: no SOS resend into the other network
+      fmOnNetworkChange();   // FieldMesh v6.2: no SOS resend / queued relay into the other network
       MESH_DEBUG_PRINTLN("OK: CMD_SET_RADIO_PARAMS: f=%d, bw=%d, sf=%d, cr=%d", freq, bw, (uint32_t)sf,
                          (uint32_t)cr);
 
