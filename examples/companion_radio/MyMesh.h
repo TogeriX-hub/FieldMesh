@@ -298,7 +298,7 @@ private:
   // ---- FieldMesh ------------------------------------------------------------------------
   // All FieldMesh members of MyMesh are in this block. The methods are implemented in
   // MyMeshFieldMesh.cpp; MyMesh.cpp only calls the fm*() hooks at a few places
-  // (list: claude/RECHERCHE_Upstream_Touchpoints.md). Keeps upstream syncs simple.
+  // (list: UPSTREAM_SYNC.md). Keeps upstream syncs simple.
   bool _app_initialized = false;        // true after CMD_APP_START handshake completed
   unsigned long next_auto_advert = 0;   // millis() timestamp for next auto-advert (0=inactive)
   GpsCycle _gps_cycle;             // FieldMesh v6.1: GPS duty cycle + fresh own position

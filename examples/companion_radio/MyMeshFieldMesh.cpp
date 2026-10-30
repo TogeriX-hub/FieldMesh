@@ -3,7 +3,7 @@
 // Same class as MyMesh.cpp, only a separate file: everything FieldMesh adds to MyMesh is
 // implemented here, MyMesh.cpp only calls the fm*() hooks at a few places. Upstream never
 // touches this file, so upstream syncs only have to check those hook lines
-// (see claude/RECHERCHE_Upstream_Touchpoints.md).
+// (see UPSTREAM_SYNC.md).
 
 #include "MyMesh.h"
 
