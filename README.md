@@ -78,6 +78,25 @@ Frequency ranges are set correctly for legal operation:
 
 > Off-Grid has no frequency for other regions (e.g. India, Japan, Korea). Do not use Off-Grid there.
 
+#### Smarter relaying in Off-Grid (v6.2)
+
+In Off-Grid every FieldMesh device relays. With many devices close together (festival, camp, ski area) that used to mean every packet was sent again by everyone at once — packets collided and the channel filled up. Since v6.2 FieldMesh uses the **managed flooding of Meshtastic**, a method proven in the field. Our simulations: 20 devices get about the delivery that 10 devices had before (adverts and messages ~92 % instead of ~65 %), with half the airtime.
+
+- **Wait for a free channel:** a device waits up to 30 s for a free channel instead of sending over others after 4 s.
+- **Far devices relay first:** the relay delay depends on how well the packet was heard. A device that hears the sender weakly (probably further away) relays early, devices close to the sender wait longer.
+- **No duplicate adverts:** if a device hears that another one already relayed an advert, it drops its own relay. **Messages and SOS are always relayed**, exactly as before.
+- **FieldMesh Repeater (Station G2) relays last:** it always relays, but if a phone-free device relayed first, it waits until all of them had their turn (Meshtastic `ROUTER_LATE`). A badly placed box (in the car, in the valley) fills gaps instead of talking over the group.
+- Switching Off-Grid on or off drops all relays still waiting, so nothing heard in one network is sent into the other.
+
+What you notice:
+
+- Messages take a few seconds longer per hop (about 1–22 s at SF11 instead of 0–4 s). Direct messages get 44 s more time for the delivery confirmation, so they are not shown as failed while the reply is on its way. If the repeater is the only link between two groups, it can take ~15 s longer.
+- In thin networks without a repeater (one device as the only link between two groups) a few more adverts (positions) can get lost; messages arrive more reliably than before. A FieldMesh Repeater at that spot fixes it.
+- If you set an interference threshold (`int.thresh`) and there is constant noise, a device in Off-Grid sends only after 30 s instead of 4 s.
+- Counters (Off-Grid only): RADIO page of the ThinkNode M1 shows `Flood TX` and `Relay skip` (adverts not relayed because another device did), the Wio Tracker L1 shows `Skip` next to the TX power. Repeater: dashboard → Network → *Relays sent late*, CLI `get offgrid`.
+
+Normal operation (Off-Grid off) is unchanged. Devices with v6.1 or stock MeshCore in the same Off-Grid network keep working; they relay as before.
+
 ### SOS System
 
 Long-press the button on the SOS page to open a two-step confirmation screen (accidental trigger protection). On devices without a display (T1000-E), click once, then press again and hold for 5 seconds (v6.2, see [Headless devices](#ui--usability)). FieldMesh looks for a channel whose name contains "sos" (case-insensitive) and sends your position and battery level:
@@ -317,7 +336,7 @@ All MeshCore repeater commands work as usual. FieldMesh adds:
 
 | Command | What it does |
 |---|---|
-| `set offgrid on` / `off` · `get offgrid` | Off-Grid on/off (frequency from the normal frequency: EU 869.4625 / US 916.4625 MHz); normal settings are restored |
+| `set offgrid on` / `off` · `get offgrid` | Off-Grid on/off (frequency from the normal frequency: EU 869.4625 / US 916.4625 MHz); normal settings are restored. `get offgrid` also shows the relays sent late (v6.2) |
 | `set roomserver <name>` | Board on with this name |
 | `set roomserver on` / `off` · `get roomserver` | Board on (last name, else the repeater name) / off |
 | `set room.pass <pw>` · `get room.pass` | Room password; `set room.pass` without a password = open. Logs everybody out |
