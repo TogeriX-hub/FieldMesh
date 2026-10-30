@@ -195,6 +195,7 @@ void MyMesh::fmTeamSave() {
 // ---- counters ----
 
 void MyMesh::fmStatsRx(const mesh::Packet* pkt) {
+  FM_FLOOD_LOG_EV("RX", pkt, pkt->getRawLength());   // diagnostic builds only (FloodLog.h)
   FmActBucket& b = _fm_act[_fm_act_idx];
   if (b.rx < 0xFFFF) b.rx++;
   uint8_t type = pkt->getPayloadType() & 0x0F;
@@ -219,6 +220,7 @@ void MyMesh::fmStatsRx(const mesh::Packet* pkt) {
 }
 
 void MyMesh::fmStatsTx(const mesh::Packet* pkt) {
+  FM_FLOOD_LOG_EV("TX", pkt, pkt->getRawLength());   // diagnostic builds only (FloodLog.h)
   FmActBucket& b = _fm_act[_fm_act_idx];
   if (b.tx < 0xFFFF) b.tx++;
 }
@@ -232,6 +234,13 @@ uint32_t MyMesh::fmDutyMillisLastHour() {
 }
 
 void MyMesh::fmStatsLoop() {
+#ifdef FM_FLOOD_LOG
+  static unsigned long fm_log_mode_at = 0;   // MODE line every minute: device name in every log
+  if (millis() - fm_log_mode_at >= 60000UL) {
+    fm_log_mode_at = millis();
+    FM_FLOOD_LOG_MODE(_fm.offgrid != 0, _prefs.freq, _prefs.bw, _prefs.sf, _prefs.node_name);
+  }
+#endif
   if (_fm_team_dirty && (_fm_team_next_save == 0 || millisHasNowPassed(_fm_team_next_save))) {
     fmTeamSave();
   }

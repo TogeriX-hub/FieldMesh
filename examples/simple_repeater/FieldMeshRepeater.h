@@ -12,6 +12,7 @@
 #include <helpers/ConfigSerializer.h>
 #include "../companion_radio/OffGrid.h"   // shared Off-Grid parameters (EU/US chosen from the normal frequency)
 #include "../companion_radio/FloodPolicy.h"   // shared Off-Grid managed flooding rules (v6.2)
+#include "../companion_radio/FloodLog.h"      // flooding diagnostics (only with -D FM_FLOOD_LOG=1)
 
 #define FM_REPEATER_PREFS_FILE  "/fm_repeater.json"
 #define FM_ROOM_IDENTITY_NAME   "fm_room"     // second identity (IdentityStore, next to "_main")

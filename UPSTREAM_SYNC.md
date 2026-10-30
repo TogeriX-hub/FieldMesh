@@ -36,7 +36,7 @@ git diff <upstream-tag> HEAD --stat -- src variants examples platformio.ini
 ### 1. FieldMesh-only files - no conflicts
 
 `examples/companion_radio/`: `MyMeshFieldMesh.cpp`, `OffGrid.h`, `GpsCycle.h`, `TrackScheduler.h`,
-`ChannelText.h`, `IdentityBackup.h`, `GpsLog.h`, `FloodPolicy.h` ·
+`ChannelText.h`, `IdentityBackup.h`, `GpsLog.h`, `FloodPolicy.h`, `FloodLog.h` ·
 `examples/simple_repeater/`: `FieldMesh*.cpp`, `FieldMesh*.h` ·
 `variants/station_g2/partitions_fieldmesh.csv` · `test/test_fieldmesh_*` ·
 `.github/workflows/fieldmesh-*.yml` · `.github/ISSUE_TEMPLATE/` · `README.md`, `RELEASE.md`,

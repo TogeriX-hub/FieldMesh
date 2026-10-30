@@ -57,6 +57,7 @@ void MyMesh::fmBegin() {
   }
   // The radio params themselves are part of the upstream prefs (/prefs.json),
   // so an active Off-Grid mode survives a reboot without extra work here.
+  FM_FLOOD_LOG_MODE(_fm.offgrid != 0, _prefs.freq, _prefs.bw, _prefs.sf, _prefs.node_name);
 
   if (_fm.room_enabled && !fmRoomLoadIdentity(false)) {
     _fm.room_enabled = 0;   // identity file missing (e.g. erased): room stays off until 'set roomserver'
@@ -131,7 +132,9 @@ uint32_t MyMesh::getCADFailMaxDuration() const {
 // getRetransmitDelay() (e.g. discover responses) keep the upstream delay.
 uint32_t MyMesh::fmRelayDelay(const mesh::Packet* packet) {
   if (!_fm.offgrid || !fmFloodIsQueuedRelay(packet)) return 0;
-  return fmFloodRelayDelay(packet->getSNR(), fmFloodSlotMs(_prefs.sf, _prefs.bw), getRNG()->nextInt(0, 0x10000));
+  uint32_t d = fmFloodRelayDelay(packet->getSNR(), fmFloodSlotMs(_prefs.sf, _prefs.bw), getRNG()->nextInt(0, 0x10000));
+  FM_FLOOD_LOG_EV("Q", packet, d);
+  return d;
 }
 
 bool MyMesh::filterRecvFloodPacket(mesh::Packet* packet) {
@@ -146,6 +149,7 @@ bool MyMesh::filterRecvFloodPacket(mesh::Packet* packet) {
     _mgr->queueOutbound(q, q->getPathHashCount(), futureMillis(d));   // same priority as Mesh::routeRecvPacket
     _fm_late.add(hash);
     _fm_relay_late++;
+    FM_FLOOD_LOG_EV("LATE", q, d);
   }
   return false;   // never drop: the normal duplicate check follows
 }
@@ -155,6 +159,8 @@ bool MyMesh::filterRecvFloodPacket(mesh::Packet* packet) {
 void MyMesh::fmOnNetworkChange() {
   int n = fmFloodDropQueuedRelays(*_mgr);
   if (n > 0) MESH_DEBUG_PRINTLN("FieldMesh: network change, %d queued relays dropped", n);
+  FM_FLOOD_LOG_EV("NET", NULL, n);
+  FM_FLOOD_LOG_MODE(_fm.offgrid != 0, _prefs.freq, _prefs.bw, _prefs.sf, _prefs.node_name);
 }
 
 void MyMesh::fmSetOffGrid(bool on, char* reply) {

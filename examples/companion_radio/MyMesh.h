@@ -322,6 +322,11 @@ private:
   void fmFilterRelay(mesh::Packet* packet);            // filterRecvFloodPacket() in Off-Grid: drop duplicate advert relay
   void fmOnNetworkChange();                            // Off-Grid toggled / new radio params: drop SOS resend + queued relays
   uint32_t _fm_relay_skipped = 0;                      // queued advert relays dropped because another node relayed first
+#ifdef FM_FLOOD_LOG
+  void logRx(mesh::Packet* packet, int len, float score) override;   // FloodLog.h, diagnostic builds only
+  void logTx(mesh::Packet* packet, int len) override;
+  void logTxFail(mesh::Packet* packet, int len) override;
+#endif
 
   // v6.2 Off-Grid managed flooding: wait for a free channel instead of forcing after 4 s
   uint32_t getCADFailMaxDuration() const override;
