@@ -29,12 +29,45 @@
 //   floodlog clear  delete the log
 // Companion: read by FloodLog::pollSerial(). Repeater: through its normal serial CLI
 // (MyMesh::fmHandleCommand), only from USB.
-
-#ifdef FM_FLOOD_LOG
+//
+// Companions log packet events only while Off-Grid (begin(fs, true)): in normal mode the
+// public mesh around would fill the small log and overwrite the test. MODE and NET are always
+// stored. The repeater logs always (large log; in normal mode it shows that nothing heard
+// Off-Grid reached the normal mesh).
+//
+// fmDiagLogCleanup() (always compiled): firmware updates keep the file system, so log files of a
+// diagnostic build would stay on the device forever. Every build deletes the files of the
+// diagnostic logs it does not include (exact names only), at boot.
 
 #include <Arduino.h>
 #include <Packet.h>
 #include <helpers/IdentityStore.h>   // FILESYSTEM
+
+inline void fmDiagLogCleanup(FILESYSTEM* fs) {
+  if (fs == NULL) return;
+  char name[20];
+#ifndef FM_FLOOD_LOG
+  for (unsigned i = 0; i < 32; i++) {   // flood log segments (FloodLog.h)
+    snprintf(name, sizeof(name), "/fm_fl%u.seg", i);
+    if (fs->exists(name)) fs->remove(name);
+  }
+  if (fs->exists("/fm_fl.idx")) fs->remove("/fm_fl.idx");
+#endif
+#ifndef FM_GPS_LOG
+  for (unsigned i = 0; i < 8; i++) {    // GPS log segments (GpsLog.h)
+    snprintf(name, sizeof(name), "/fm_gps%u.seg", i);
+    if (fs->exists(name)) fs->remove(name);
+  }
+  static const char* const gps_files[] = { "/fm_gps.idx", "/fm_gps0.log", "/fm_gps1.log", "/fm_gpsb0.log",
+                                           "/fm_gpsb1.log", "/fm_gpsr.log", "/fm_gpsr.idx" };
+  for (unsigned i = 0; i < sizeof(gps_files) / sizeof(gps_files[0]); i++) {
+    if (fs->exists(gps_files[i])) fs->remove(gps_files[i]);
+  }
+#endif
+  (void)name;
+}
+
+#ifdef FM_FLOOD_LOG
 
 class FloodLog {
 public:
@@ -60,8 +93,9 @@ public:
   static constexpr uint16_t SEG_RECS = 64;
   static constexpr int BUF_RECS = 16;
 
-  void begin(FILESYSTEM* fs) {
+  void begin(FILESYSTEM* fs, bool only_offgrid) {
     _fs = fs;
+    _only_offgrid = only_offgrid;
     if (_fs == NULL) return;
     _seg = 0;
     File f = openRead(IDX_FILE);
@@ -78,6 +112,7 @@ public:
   }
 
   void add(uint8_t ev, const mesh::Packet* p, uint32_t rtc, uint32_t extra) {
+    if (_only_offgrid && !_offgrid && ev != NET) return;   // companion in normal mode
     Rec& r = _buf[_n];
     memset(&r, 0, sizeof(r));
     r.ms = millis();
@@ -96,6 +131,7 @@ public:
   }
 
   void mode(uint32_t rtc, bool offgrid, float freq, float bw, uint8_t sf) {
+    _offgrid = offgrid;
     Rec& r = _buf[_n];
     memset(&r, 0, sizeof(r));
     r.ms = millis();
@@ -145,6 +181,8 @@ public:
 
 private:
   FILESYSTEM* _fs = NULL;
+  bool _only_offgrid = false;
+  bool _offgrid = false;
   Rec  _buf[BUF_RECS];
   int  _n = 0;
   unsigned long _first_buffered = 0;

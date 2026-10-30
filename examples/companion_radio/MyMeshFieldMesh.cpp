@@ -159,8 +159,9 @@ bool MyMesh::sendSOS() {
 
 // begin(): restore auto-advert timer - active when GPS sharing was enabled
 void MyMesh::fmBegin() {
+  fmDiagLogCleanup(_store->getSecondaryFS());   // log files of diagnostic builds not in this one
 #ifdef FM_FLOOD_LOG
-  _fm_flog.begin(_store->getSecondaryFS());   // diagnostic builds only (FloodLog.h)
+  _fm_flog.begin(_store->getSecondaryFS(), true);   // diagnostic builds only (FloodLog.h), Off-Grid only
 #endif
   FM_FLOOD_LOG_MODE(_prefs.isRepeatEn(), _prefs.freq, _prefs.bw, _prefs.sf);
   if (_prefs.advert_loc_policy == ADVERT_LOC_SHARE) {

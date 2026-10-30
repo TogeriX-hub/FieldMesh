@@ -47,8 +47,9 @@ void MyMesh::fmInitMembers() {
 void MyMesh::fmBegin() {
   fmClockRestore();   // before anything gets a timestamp
   _fm_boot_reason = board.getResetReasonString(board.getResetReason());   // for the dashboard
+  fmDiagLogCleanup(_fs);   // log files of diagnostic builds not in this one
 #ifdef FM_FLOOD_LOG
-  _fm_flog.begin(_fs);   // diagnostic builds only (FloodLog.h)
+  _fm_flog.begin(_fs, false);   // diagnostic builds only (FloodLog.h), always
 #endif
 
   if (fmFsExists(_fs, FM_REPEATER_PREFS_FILE)) {
