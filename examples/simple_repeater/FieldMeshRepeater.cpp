@@ -218,7 +218,7 @@ bool MyMesh::fmHandleCommand(uint32_t sender_timestamp, const char* command, cha
     return true;
   }
   if (strcmp(command, "get offgrid") == 0) {
-    sprintf(reply, "> %s (%.4f MHz)", _fm.offgrid ? "on" : "off", _prefs.freq);
+    sprintf(reply, "> %s (%.4f MHz, late relays %lu)", _fm.offgrid ? "on" : "off", _prefs.freq, (unsigned long)_fm_relay_late);
     return true;
   }
 

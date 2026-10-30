@@ -582,12 +582,27 @@ public:
       display.print(tmp);
 
       // tx power,  noise floor
+      // v6.2 Off-Grid flooding: relays skipped because another node relayed the advert first
+      bool fm_offgrid = the_mesh.isOffGridActive();
+      bool fm_large = display.height() >= 128;
       display.setCursor(0, 42);
-      sprintf(tmp, "TX: %ddBm", _node_prefs->tx_power_dbm);
+      if (fm_offgrid && !fm_large) {   // L1: no free line, counter next to the TX power
+        sprintf(tmp, "TX: %ddBm  Skip: %lu", _node_prefs->tx_power_dbm, (unsigned long)the_mesh.getRelaySkipped());
+      } else {
+        sprintf(tmp, "TX: %ddBm", _node_prefs->tx_power_dbm);
+      }
       display.print(tmp);
       display.setCursor(0, 53);
       sprintf(tmp, "Noise floor: %d", radio_driver.getNoiseFloor());
       display.print(tmp);
+      if (fm_offgrid && fm_large) {
+        display.setCursor(0, 64);
+        sprintf(tmp, "Flood TX: %lu", (unsigned long)the_mesh.getNumSentFlood());
+        display.print(tmp);
+        display.setCursor(0, 75);
+        sprintf(tmp, "Relay skip: %lu", (unsigned long)the_mesh.getRelaySkipped());
+        display.print(tmp);
+      }
 #if ENV_INCLUDE_GPS == 1
     } else if (_page == HomePage::GPS) {
       LocationProvider* nmea = sensors.getLocationProvider();

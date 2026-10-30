@@ -480,13 +480,13 @@ void MyMesh::fmWebBuildNetwork(FmJson& j) {
     groups++;
   }
   j.f("],\"st\":{\"rx\":%lu,\"tx\":%lu,\"rf\":%lu,\"rd\":%lu,\"sf\":%lu,\"sd\":%lu,\"df\":%lu,\"dd\":%lu"
-      ",\"err\":%lu,\"rxair\":%lu,\"txair\":%lu,\"snr\":%.1f,\"rssi\":%d}}",
+      ",\"err\":%lu,\"rxair\":%lu,\"txair\":%lu,\"snr\":%.1f,\"rssi\":%d,\"rl\":%lu}}",
       (unsigned long)radio_driver.getPacketsRecv(), (unsigned long)radio_driver.getPacketsSent(),
       (unsigned long)getNumRecvFlood(), (unsigned long)getNumRecvDirect(),
       (unsigned long)getNumSentFlood(), (unsigned long)getNumSentDirect(),
       (unsigned long)((SimpleMeshTables *)getTables())->getNumFloodDups(), (unsigned long)((SimpleMeshTables *)getTables())->getNumDirectDups(),
       (unsigned long)radio_driver.getPacketsRecvErrors(), (unsigned long)(getReceiveAirTime() / 1000), (unsigned long)(getTotalAirTime() / 1000),
-      radio_driver.getLastSNR(), (int)radio_driver.getLastRSSI());
+      radio_driver.getLastSNR(), (int)radio_driver.getLastRSSI(), (unsigned long)_fm_relay_late);
 }
 
 void MyMesh::fmWebBuildBoard(FmJson& j) {

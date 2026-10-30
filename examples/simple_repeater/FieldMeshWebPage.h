@@ -449,7 +449,8 @@ function renderNet(){
  setH('n-radio','<span>Received<b>'+t.rx+'</b></span><span>Sent<b>'+t.tx+'</b></span>'
   +'<span>Flood / direct in<b>'+t.rf+' / '+t.rd+'</b></span><span>Duplicates dropped<b>'+((t.df||0)+(t.dd||0))+'</b></span>'
   +'<span>TX airtime<b>'+sec(t.txair||0)+'</b></span><span>RX airtime<b>'+sec(t.rxair||0)+'</b></span>'
-  +'<span>Last packet<b>SNR '+(t.snr!=null?t.snr.toFixed(1):'-')+' · '+t.rssi+' dBm</b></span><span>Receive errors<b>'+t.err+'</b></span>');
+  +'<span>Last packet<b>SNR '+(t.snr!=null?t.snr.toFixed(1):'-')+' · '+t.rssi+' dBm</b></span><span>Receive errors<b>'+t.err+'</b></span>'
+  +'<span>Flood / direct out<b>'+t.sf+' / '+t.sd+'</b></span><span>Relays sent late (Off-Grid)<b>'+(t.rl||0)+'</b></span>');
  const c=W.types||[],sum=c.reduce((a,b)=>a+b,0)||1,grp=[['Adverts',[4]],['Messages',[2]],['Channel msgs',[5,6]],['ACKs',[3]],['Paths',[8]],['Requests',[0,1,7]],['Other',[9,10,11,12,13,14,15]]];
  setH('n-types',grp.map(g=>{const p=Math.round(g[1].reduce((a,i)=>a+(c[i]||0),0)/sum*100);
   return'<div class="ptrow"><span>'+g[0]+'</span><div class="hbar"><i style="width:'+p+'%"></i></div><span class="mono" style="text-align:right">'+p+' %</span></div>';}).join(''));
