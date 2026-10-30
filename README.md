@@ -85,7 +85,7 @@ In Off-Grid every FieldMesh device relays. With many devices close together (fes
 - **Wait for a free channel:** a device waits up to 30 s for a free channel instead of sending over others after 4 s.
 - **Far devices relay first:** the relay delay depends on how well the packet was heard. A device that hears the sender weakly (probably further away) relays early, devices close to the sender wait longer.
 - **No duplicate adverts:** if a device hears that another one already relayed an advert, it drops its own relay. **Messages and SOS are always relayed**, exactly as before.
-- **FieldMesh Repeater (Station G2) relays last:** it always relays, but if a phone-free device relayed first, it waits until all of them had their turn (Meshtastic `ROUTER_LATE`). A badly placed box (in the car, in the valley) fills gaps instead of talking over the group.
+- **FieldMesh Repeater (Station G2) relays last:** it always relays, but if another device relayed first, it waits until the companions had their turn (Meshtastic `ROUTER_LATE`). A badly placed box (in the car, in the valley) fills gaps instead of talking over the group.
 - Switching Off-Grid on or off drops all relays still waiting, so nothing heard in one network is sent into the other.
 
 What you notice:
