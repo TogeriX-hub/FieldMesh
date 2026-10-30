@@ -11,6 +11,7 @@
 #include <Mesh.h>
 #include "ChannelText.h"   // FieldMesh: sender name / SOS channel rules
 #include "OffGrid.h"       // FieldMesh v6.1: off-grid frequency follows the region of the normal frequency
+#include "FloodPolicy.h"   // FieldMesh v6.2: Off-Grid managed flooding
 
 // Auto-advert interval: 5 minutes in milliseconds
 // To change, adjust the 5 and recompile
@@ -216,6 +217,27 @@ void MyMesh::fmSendSelfAdvert(mesh::Packet* pkt) {
   } else {
     sendZeroHop(pkt);
   }
+}
+
+// ── Off-Grid managed flooding (v6.2, FloodPolicy.h) ──────────────────────────
+// Only while Off-Grid (repeat on); normal operation keeps the upstream behaviour.
+
+// A: wait up to 30 s for a free channel instead of transmitting over others after 4 s.
+// The radio wrappers clear stuck preamble/header flags themselves (_preambleMillis / _maxPayloadMillis).
+uint32_t MyMesh::getCADFailMaxDuration() const {
+  if (_prefs.isRepeatEn()) return FM_FLOOD_CAD_MAX_MS;
+  return mesh::Mesh::getCADFailMaxDuration();
+}
+
+// B: relay delay like a Meshtastic client - weak signal relays early, strong signal waits longer.
+uint32_t MyMesh::fmRelayDelay(const mesh::Packet* packet) {
+  return fmFloodRelayDelay(packet->getSNR(), fmFloodSlotMs(_prefs.sf, _prefs.bw), getRNG()->nextInt(0, 0x10000));
+}
+
+// B: flood-routed direct messages / requests get more time for the reply
+uint32_t MyMesh::fmFloodTimeoutExtra() const {
+  if (!_prefs.isRepeatEn()) return 0;
+  return fmFloodTimeoutExtraMs(fmFloodSlotMs(_prefs.sf, _prefs.bw));
 }
 
 // ── Loop: GPS cycle, tracking, auto-advert, clock jump ───────────────────────

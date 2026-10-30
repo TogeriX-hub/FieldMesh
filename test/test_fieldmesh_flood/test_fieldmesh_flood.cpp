@@ -286,3 +286,10 @@ TEST(FieldMeshFlood, LateSetIgnoresAZeroPrefix) {
   uint8_t zero[MAX_HASH_SIZE] = {0};
   EXPECT_FALSE(set.contains(zero));
 }
+
+// ── send timeout (flood-routed direct messages) ─────────────────────────────────
+
+TEST(FieldMeshFlood, TimeoutExtraCoversTwoWorstCaseRelays) {
+  EXPECT_EQ(2u * 272u * 81u, fmFloodTimeoutExtraMs(SLOT_SF11));   // 44 s at SF11/125
+  EXPECT_GE(fmFloodTimeoutExtraMs(SLOT_SF11), 2 * fmFloodRelayDelay(40.0f, SLOT_SF11, 0xFFFF));
+}

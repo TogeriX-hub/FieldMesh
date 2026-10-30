@@ -53,6 +53,13 @@ inline uint32_t fmFloodLateDelay(float snr, uint32_t slot_ms) {
   return (2 * FM_FLOOD_CW_MAX + (1UL << fmFloodCwSize(snr))) * slot_ms;
 }
 
+// Extra send timeout for flood-routed direct messages and requests while Off-Grid. Every relay
+// on the way and back may now wait up to one late window; two worst-case windows are added on top
+// of the upstream timeout (SF11/125: +44 s), so a delivered message is not reported as failed.
+inline uint32_t fmFloodTimeoutExtraMs(uint32_t slot_ms) {
+  return 2 * fmFloodLateDelay(FM_FLOOD_SNR_MAX, slot_ms);
+}
+
 // Only adverts are dropped when someone else already relayed them. Messages (incl. SOS), ACKs,
 // paths and everything else are always relayed, as today.
 inline bool fmFloodCancelOnDuplicate(uint8_t payload_type) {

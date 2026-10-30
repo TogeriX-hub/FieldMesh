@@ -317,6 +317,11 @@ private:
   void fmNoteAdvertGps(AdvertPath* p);         // onDiscoveredContact(): GPS info of the advert
   mesh::Packet* fmCreateSelfAdvert();          // advert(): position only with a fresh fix
   void fmSendSelfAdvert(mesh::Packet* pkt);    // advert(): flood in Off-Grid, zero-hop otherwise
+  uint32_t fmRelayDelay(const mesh::Packet* packet);   // getRetransmitDelay() in Off-Grid (FloodPolicy.h)
+  uint32_t fmFloodTimeoutExtra() const;                // calcFloodTimeoutMillisFor(): extra time in Off-Grid
+
+  // v6.2 Off-Grid managed flooding: wait for a free channel instead of forcing after 4 s
+  uint32_t getCADFailMaxDuration() const override;
 
 public:
   GpsCycle& gpsCycle() { return _gps_cycle; }   // FieldMesh v6.1 (UI: keep-awake, own position)
