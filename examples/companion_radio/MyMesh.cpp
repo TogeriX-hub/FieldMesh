@@ -1041,7 +1041,7 @@ static FreqRange repeat_freq_ranges[] = {
   #else
   // FieldMesh: erweiterte Bereiche (Upstream: nur Einzelfrequenzen)
   { 433050, 434790 },  // EU 433 MHz ISM-Band (SRD, legal ab 433.050)
-  { 869400, 869650 },  // EU 869 MHz SRD sub-band g1 (25 mW, 10% duty cycle, no LBT)
+  { 869400, 869650 },  // EU 869 MHz SRD sub-band g3 (500 mW, 10% duty cycle)
   { 915000, 928000 }   // US/AU 915 MHz ISM-Band
   #endif
 };
