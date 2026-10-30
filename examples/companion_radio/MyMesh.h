@@ -71,10 +71,6 @@
 #include <helpers/BaseChatMesh.h>
 #include <helpers/TransportKeyStore.h>
 
-// Auto-advert interval: 5 minutes in milliseconds
-// To change, adjust the 5 and recompile
-#define AUTO_ADVERT_INTERVAL_MS  (5UL * 60UL * 1000UL)
-
 /* -------------------------------------------------------------------------------------- */
 
 #define REQ_TYPE_GET_STATUS             0x01 // same as _GET_STATS
@@ -89,7 +85,7 @@ struct AdvertPath {
   uint8_t pubkey_prefix[7];
   uint8_t path_len;
   char    name[32];
-  uint32_t recv_timestamp;     // always updated — used for RECENT page
+  uint32_t recv_timestamp;
   uint8_t path[MAX_PATH_SIZE];
   bool has_gps;                // true if at least one advert with GPS was received
   uint32_t gps_timestamp;      // timestamp of last GPS advert — used for TRACKING page
@@ -225,15 +221,6 @@ public:
   // To check if there is pending work
   bool hasPendingWork() const;
 
-  // V5: send channel message from UI (wrapper for sendGroupMessage, analogous to sendSOS)
-  bool sendChannelMessage(uint8_t channel_idx, const char* text);
-
-  // V5: favourite check for channel messages (extract sender name from text)
-  bool isSenderFavorite(const char* text);
-
-  // V6: extract sender name from channel message text ("NodeName: text") — used by UI listener
-  static bool extractSenderName(const char* text, char* out_name, int max_len);
-
 private:
   void writeOKFrame();
   void writeErrFrame(uint8_t err_code);
@@ -272,7 +259,6 @@ private:
   uint32_t _most_recent_lastmod;
   uint32_t _active_ble_pin;
   bool _iter_started;
-  bool _app_initialized;  // true after CMD_APP_START handshake completed
   bool _cli_rescue;
   bool send_unscoped;   // force un-scoped flood (instead of using send_scope)
   char cli_command[80];
@@ -309,15 +295,28 @@ private:
   #define ADVERT_PATH_TABLE_SIZE   16
   AdvertPath advert_paths[ADVERT_PATH_TABLE_SIZE]; // circular table
 
-  unsigned long next_auto_advert;  // millis() timestamp for next auto-advert (0=inactive)
+  // ---- FieldMesh ------------------------------------------------------------------------
+  // All FieldMesh members of MyMesh are in this block. The methods are implemented in
+  // MyMeshFieldMesh.cpp; MyMesh.cpp only calls the fm*() hooks at a few places
+  // (list: claude/RECHERCHE_Upstream_Touchpoints.md). Keeps upstream syncs simple.
+  bool _app_initialized = false;        // true after CMD_APP_START handshake completed
+  unsigned long next_auto_advert = 0;   // millis() timestamp for next auto-advert (0=inactive)
   GpsCycle _gps_cycle;             // FieldMesh v6.1: GPS duty cycle + fresh own position
   TrackScheduler _track;           // FieldMesh v6.1: advert cadence while tracking
   bool _tracking_active = false;
 
   // FieldMesh (#23): RTC jump detection — reference point (RTC seconds + millis) of the last check
-  uint32_t _clk_ref_rtc;
-  unsigned long _clk_ref_ms;
+  uint32_t _clk_ref_rtc = 0;
+  unsigned long _clk_ref_ms = 0;        // 0 = not anchored yet (first loop() sets the reference)
   void checkClockJump();
+
+  // Hooks called from MyMesh.cpp
+  void fmBegin();                              // begin(): restore the auto-advert timer
+  void fmLoop();                               // loop(): GPS cycle, tracking, auto-advert, clock jump
+  void fmUpdateAutoAdvertTimer();              // advert_loc_policy changed (app)
+  void fmNoteAdvertGps(AdvertPath* p);         // onDiscoveredContact(): GPS info of the advert
+  mesh::Packet* fmCreateSelfAdvert();          // advert(): position only with a fresh fix
+  void fmSendSelfAdvert(mesh::Packet* pkt);    // advert(): flood in Off-Grid, zero-hop otherwise
 
 public:
   GpsCycle& gpsCycle() { return _gps_cycle; }   // FieldMesh v6.1 (UI: keep-awake, own position)
@@ -326,6 +325,9 @@ public:
   bool isAutoAdvertEnabled() const {
     return _prefs.advert_loc_policy == ADVERT_LOC_SHARE;
   }
+
+  // Enable/disable GPS sharing and auto-advert together (called from UI button)
+  void setGPSAdvertEnabled(bool enabled);
 
   // Off-Grid Mode: Radio-Parameter sichern/wiederherstellen + client_repeat setzen
   bool isOffGridActive() const { return _prefs.isRepeatEn(); }
@@ -337,21 +339,15 @@ public:
   // Used for sending and for the alarm: "!SOS" only raises the alarm in such a channel.
   static bool isSosChannel(const char* name);
 
-  // Enable/disable GPS sharing and auto-advert together (called from UI button)
-  void setGPSAdvertEnabled(bool enabled) {
-    _prefs.advert_loc_policy = enabled ? ADVERT_LOC_SHARE : ADVERT_LOC_NONE;
-    if (enabled) {
-      // V3.05: only start timer if not already running (no reset on repeated toggle)
-      // On first enable: send immediately and start timer
-      if (next_auto_advert == 0) {
-        advert();
-        next_auto_advert = futureMillis(AUTO_ADVERT_INTERVAL_MS);
-      }
-    } else {
-      next_auto_advert = 0;
-    }
-    savePrefs();
-  }
+  // V5: send channel message from UI (wrapper for sendGroupMessage, analogous to sendSOS)
+  bool sendChannelMessage(uint8_t channel_idx, const char* text);
+
+  // V5: favourite check for channel messages (extract sender name from text)
+  bool isSenderFavorite(const char* text);
+
+  // V6: extract sender name from channel message text ("NodeName: text") — used by UI listener
+  static bool extractSenderName(const char* text, char* out_name, int max_len);
+  // ---- end FieldMesh ----------------------------------------------------------------------
 };
 
 extern MyMesh the_mesh;
