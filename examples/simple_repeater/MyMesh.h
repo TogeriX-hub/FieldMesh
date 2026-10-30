@@ -118,6 +118,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
 #ifdef FIELDMESH_REPEATER
   FieldMeshRepeaterPrefs _fm;
   bool _fm_advert_after_radio;   // send a zero-hop advert right after the pending radio params are applied
+  FmFloodLateSet _fm_late;       // relays already moved to the late window (Off-Grid flooding)
+  uint32_t _fm_relay_late;       // relays moved to the late window because another node relayed first
+  uint32_t fmRelayDelay(const mesh::Packet* packet);   // getRetransmitDelay() in Off-Grid, 0 = not handled
+  void fmOnNetworkChange();      // Off-Grid switch applied: drop queued relays
 
   void fmInitMembers();   // constructor: initial values of the FieldMesh members
   void fmBegin();
@@ -304,6 +308,9 @@ protected:
   void onAckRecv(mesh::Packet* packet, uint32_t ack_crc) override;   // ACKs for room post pushes
   int searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel channels[], int max_matches) override;   // channel list of the box
   void onGroupDataRecv(mesh::Packet* packet, uint8_t type, const mesh::GroupChannel& channel, uint8_t* data, size_t len) override;   // SOS -> board
+  // Off-Grid managed flooding (v6.2, FieldMeshRepeater.cpp)
+  uint32_t getCADFailMaxDuration() const override;          // wait for a free channel instead of forcing after 4 s
+  bool filterRecvFloodPacket(mesh::Packet* packet) override;   // late window (Meshtastic ROUTER_LATE)
 #endif
 
   void sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);

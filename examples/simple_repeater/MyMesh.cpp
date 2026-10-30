@@ -551,6 +551,10 @@ int MyMesh::calcRxDelay(float score, uint32_t air_time) const {
 }
 
 uint32_t MyMesh::getRetransmitDelay(const mesh::Packet *packet) {
+#ifdef FIELDMESH_REPEATER
+  uint32_t fm_delay = fmRelayDelay(packet);   // Off-Grid managed flooding (0 = not Off-Grid / not a relay)
+  if (fm_delay) return fm_delay;
+#endif
   uint32_t t = (_radio->getEstAirtimeFor(packet->getPathByteLen() + packet->payload_len + 2) * _prefs.tx_delay_factor);
   return getRNG()->nextInt(0, 5*t + 1);
 }
@@ -1351,6 +1355,7 @@ void MyMesh::loop() {
 #ifdef FIELDMESH_REPEATER
     if (_fm_advert_after_radio) {   // Off-Grid switch: normal TX->RX cycle on the new params
       _fm_advert_after_radio = false;
+      fmOnNetworkChange();   // nothing heard in one network is relayed into the other
       sendSelfAdvertisement(500, false);
     }
 #endif

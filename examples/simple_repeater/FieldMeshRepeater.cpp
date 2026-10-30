@@ -9,6 +9,8 @@
 // Constructor part of the FieldMesh members (called from MyMesh::MyMesh)
 void MyMesh::fmInitMembers() {
   _fm_advert_after_radio = false;
+  _fm_late = FmFloodLateSet();
+  _fm_relay_late = 0;
   _room_id_loaded = false;
   memset(_room_posts, 0, sizeof(_room_posts));
   _room_next_post_idx = _room_next_client_idx = 0;
@@ -111,6 +113,48 @@ void MyMesh::fmClockSaveLoop() {
   bool ok = f.write(hdr, 3) == 3 && f.write((uint8_t *)&now, 4) == 4;
   f.close();
   if (ok && fmFsCommit(_fs, FM_CLOCK_FILE)) _fm_clock_saved = now;
+}
+
+// ── Off-Grid managed flooding (v6.2, FloodPolicy.h) ──────────────────────────
+// Only while Off-Grid; normal operation keeps the upstream behaviour.
+// The box always relays (never cancels) but behaves like Meshtastic ROUTER_LATE: it starts with
+// the same SNR-weighted delay as the companions and, if another node relays first, moves its
+// relay once to the late window - it then fills gaps after the clients instead of talking over
+// them. A badly placed box (car in the valley) therefore does not harm the mesh.
+
+// Wait up to 30 s for a free channel instead of transmitting over others after 4 s.
+uint32_t MyMesh::getCADFailMaxDuration() const {
+  return _fm.offgrid ? FM_FLOOD_CAD_MAX_MS : mesh::Mesh::getCADFailMaxDuration();
+}
+
+// Relay delay like a Meshtastic client. Only for flood relays (path > 0): own packets that use
+// getRetransmitDelay() (e.g. discover responses) keep the upstream delay.
+uint32_t MyMesh::fmRelayDelay(const mesh::Packet* packet) {
+  if (!_fm.offgrid || !fmFloodIsQueuedRelay(packet)) return 0;
+  return fmFloodRelayDelay(packet->getSNR(), fmFloodSlotMs(_prefs.sf, _prefs.bw), getRNG()->nextInt(0, 0x10000));
+}
+
+bool MyMesh::filterRecvFloodPacket(mesh::Packet* packet) {
+  if (!_fm.offgrid) return false;
+  uint8_t hash[MAX_HASH_SIZE];
+  packet->calculatePacketHash(hash);
+  if (_fm_late.contains(hash)) return false;   // moved once already
+  int i = fmFloodFindQueuedRelay(*_mgr, hash);
+  if (i >= 0) {
+    mesh::Packet* q = _mgr->removeOutboundByIdx(i);
+    uint32_t d = fmFloodLateDelay(q->getSNR(), fmFloodSlotMs(_prefs.sf, _prefs.bw));
+    _mgr->queueOutbound(q, q->getPathHashCount(), futureMillis(d));   // same priority as Mesh::routeRecvPacket
+    _fm_late.add(hash);
+    _fm_relay_late++;
+  }
+  return false;   // never drop: the normal duplicate check follows
+}
+
+// Off-Grid switch applied (new radio params live): relays can wait up to ~22 s (+ busy channel);
+// nothing heard in one network may be sent into the other one. Own packets (path 0) stay.
+void MyMesh::fmOnNetworkChange() {
+  int n = fmFloodDropQueuedRelays(*_mgr);
+  if (n > 0) MESH_DEBUG_PRINTLN("FieldMesh: network change, %d queued relays dropped", n);
 }
 
 void MyMesh::fmSetOffGrid(bool on, char* reply) {

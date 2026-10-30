@@ -63,8 +63,8 @@ equivalent place.
 
 | File | FieldMesh change |
 |---|---|
-| `MyMesh.h` | include `FieldMeshRepeater.h`; base class `FieldMeshUIHost`; member block after `matching_peer_indexes`; overrides `onAckRecv`, `searchChannelsByHash`, `onGroupDataRecv`; `FieldMeshUIHost` implementation |
-| `MyMesh.cpp` | `fmStatsRx/Tx` in `logRx/logTx` · `fmRoomRecv` in `onRecvPacket` · `fmNodeSeen` in `onAnonDataRecv`, `onPeerDataRecv` · `fmNodeHeard` in `onAdvertRecv` · `fmInitMembers()` in the constructor · `fmBegin()` in `begin()` · `fmRoomSendAdvert` after the adverts · `fmHandleCommand` in `handleCommand` · advert after Off-Grid radio switch · `fmRoomLoop/fmStatsLoop/fmWebLoop` in `loop()` · `fmWebIsOn()` in `hasPendingWork()` |
+| `MyMesh.h` | include `FieldMeshRepeater.h`; base class `FieldMeshUIHost`; member block after `matching_peer_indexes`; overrides `onAckRecv`, `searchChannelsByHash`, `onGroupDataRecv`, `getCADFailMaxDuration`, `filterRecvFloodPacket` (if upstream adds its own `filterRecvFloodPacket` to the repeater, merge both); `FieldMeshUIHost` implementation |
+| `MyMesh.cpp` | `fmStatsRx/Tx` in `logRx/logTx` · `fmRoomRecv` in `onRecvPacket` · `fmNodeSeen` in `onAnonDataRecv`, `onPeerDataRecv` · `fmNodeHeard` in `onAdvertRecv` · `fmInitMembers()` in the constructor · `fmBegin()` in `begin()` · `fmRoomSendAdvert` after the adverts · `fmHandleCommand` in `handleCommand` · `fmRelayDelay()` in `getRetransmitDelay` · advert + `fmOnNetworkChange()` after Off-Grid radio switch · `fmRoomLoop/fmStatsLoop/fmWebLoop` in `loop()` · `fmWebIsOn()` in `hasPendingWork()` |
 | `UITask.h` / `UITask.cpp` | host pointer + menu declarations; node type on the boot screen; `fmRenderPage()`; button hooks (menu itself in `FieldMeshUI.cpp`) |
 | `main.cpp` | `ui_task.setFieldMeshHost()` |
 
