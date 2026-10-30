@@ -16,9 +16,10 @@
 #define LED_BOOT_MILLIS       2000   // LED on after start
 #define LED_SOS_BLINK_MILLIS   100   // received SOS: fast blink (on/off each 100 ms)
 
-// v6.2: tracking "breath" (single LED, nRF52) - one per LED_CYCLE_MILLIS, played by the PWM
-// hardware from a table (see ledBreathStart())
-#define LED_BREATH_MILLIS      2400   // one breath, in + out
+// v6.2: tracking "breath" (single LED, nRF52), played by the PWM hardware from a table (see
+// ledBreathStart()). Slow and with only a short pause between breaths (Tobias, 30.10.2026)
+#define LED_BREATH_MILLIS      4000   // one breath, in + out
+#define LED_BREATH_PAUSE_MILLIS 300   // LED off between two breaths
 #define LED_BREATH_STEP_MILLIS   20   // brightness changes every 20 ms
 #define LED_BREATH_PEAK         100   // peak brightness in %
 #define LED_BREATH_GAMMA       2.2f   // perceived brightness -> PWM duty (eye is not linear)
@@ -380,7 +381,6 @@ static void statusLedWheel(uint8_t pos) {   // smooth hue sweep, 0..255
 #define LED_BREATH_TOP     2000   // PWM counter top: 4 MHz / 2000 = 2 kHz, 2000 brightness levels
 #define LED_BREATH_STEPS   (LED_BREATH_MILLIS / LED_BREATH_STEP_MILLIS)
 #define LED_BREATH_REFRESH (LED_BREATH_STEP_MILLIS * 2 - 1)   // extra PWM periods per value (2 kHz)
-static_assert(LED_BREATH_MILLIS < LED_CYCLE_MILLIS, "breath must end before the next one starts");
 
 static const uint32_t LED_BREATH_TOKEN = 0x6c446d46;   // PWM owner token ('FmDl')
 static uint16_t led_breath_seq[LED_BREATH_STEPS];      // in RAM: EasyDMA cannot read flash
@@ -610,20 +610,19 @@ void UITask::userLedHandler() {
   }
 #ifdef LED_BREATH_HW
   // tracking = GPS-Share on and the GPS cycle running (same condition as MyMesh::loop()):
-  // one breath per LED_CYCLE_MILLIS, the PWM hardware plays it on its own
+  // breath after breath with a short pause, the PWM hardware plays each one on its own
   if (the_mesh.isAutoAdvertEnabled() && the_mesh.gpsCycle().state() != GpsCycle::OFF) {
-    static unsigned long breath_cycle = 0;
-    unsigned long cycle = now / LED_CYCLE_MILLIS;
+    static unsigned long next_breath = 0;
     if (flash_on) {   // switched to tracking during a heartbeat flash
       flash_on = false;
       digitalWrite(PIN_STATUS_LED, !LED_STATE_ON);
     }
     if (!ledBreathRunning()) {
       ledPwmRelease();   // previous breath over: module back, 16 MHz clock off
-      // late start (busy loop) only while the breath still ends inside this cycle
-      if (cycle != breath_cycle && now % LED_CYCLE_MILLIS < LED_CYCLE_MILLIS - LED_BREATH_MILLIS) {
-        breath_cycle = cycle;
+      if ((long)(now - next_breath) >= 0 || (long)(next_breath - now) > LED_BREATH_PAUSE_MILLIS) {
+        // due (or stale after a while without tracking: start right away)
         ledBreathStart();
+        next_breath = now + LED_BREATH_MILLIS + LED_BREATH_PAUSE_MILLIS;
       }
     }
     return;
