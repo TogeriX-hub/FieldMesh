@@ -6,6 +6,42 @@
 
 #ifdef FIELDMESH_REPEATER
 
+// Constructor part of the FieldMesh members (called from MyMesh::MyMesh)
+void MyMesh::fmInitMembers() {
+  _fm_advert_after_radio = false;
+  _room_id_loaded = false;
+  memset(_room_posts, 0, sizeof(_room_posts));
+  _room_next_post_idx = _room_next_client_idx = 0;
+  _room_next_push = 0;
+  _room_num_posted = _room_num_pushes = 0;
+  memset(_room_private, 0, sizeof(_room_private));
+  _room_next_private_idx = 0;
+  _room_posts_dirty_at = _room_clients_dirty_at = 0;
+  memset(_fm_channels, 0, sizeof(_fm_channels));
+  _fm_num_channels = 0;
+  _fm_clock_saved = 0;
+  _fm_clock_next_save = 0;
+  _fm_nodes = NULL;
+  _fm_max_nodes = 0;
+  _fm_num_team = 0;
+  memset(_fm_act, 0, sizeof(_fm_act));
+  _fm_team_dirty = false;
+  _fm_team_next_save = 0;
+  _fm_act_idx = 0;
+  _fm_act_next = 0;
+  _fm_act_air_mark = 0;
+  memset(_fm_type_counts, 0, sizeof(_fm_type_counts));
+  memset(_fm_feed, 0, sizeof(_fm_feed));
+  _fm_feed_next = 0;
+  _fm_env_temp = _fm_env_hum = 0;
+  _fm_env_flags = 0;
+  _fm_env_next = 0;
+  _fm_boot_reason = NULL;
+  memset(_fm_sos, 0, sizeof(_fm_sos));
+  memset(&_fm_wx, 0, sizeof(_fm_wx));
+  _fm_sos_next = 0;
+}
+
 void MyMesh::fmBegin() {
   fmClockRestore();   // before anything gets a timestamp
   _fm_boot_reason = board.getResetReasonString(board.getResetReason());   // for the dashboard

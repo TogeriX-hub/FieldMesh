@@ -119,6 +119,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   FieldMeshRepeaterPrefs _fm;
   bool _fm_advert_after_radio;   // send a zero-hop advert right after the pending radio params are applied
 
+  void fmInitMembers();   // constructor: initial values of the FieldMesh members
   void fmBegin();
   bool fmSavePrefs();
   uint32_t _fm_clock_saved;
@@ -192,7 +193,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   FmRoomPrivate _room_private[FM_ROOM_MAX_PRIVATE];   // bot replies, only for the asker
   int _room_next_private_idx;
   unsigned long _room_posts_dirty_at, _room_clients_dirty_at;   // lazy saving
-  RateLimiter _room_bot_limiter;
+  RateLimiter _room_bot_limiter{6, 60};   // room bot: max 6 replies per minute in total
 
   // channels the box listens to + last SOS (FieldMeshChannels.cpp)
   FmChannel _fm_channels[FM_MAX_CHANNELS];
