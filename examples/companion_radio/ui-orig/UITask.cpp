@@ -15,8 +15,13 @@
 // v6.2: single LED (T1000-E), RECHERCHE_LED_Buzzer_Headless.md section 7
 #define LED_BOOT_MILLIS       2000   // LED on after start
 #define LED_SOS_BLINK_MILLIS   100   // received SOS: fast blink (on/off each 100 ms)
-#define LED_PULSE_MILLIS      1200   // tracking: one soft pulse per LED_CYCLE_MILLIS ...
-#define LED_PULSE_MAX          255   // ... up to this PWM level
+
+// v6.2: tracking "breath" (single LED, nRF52) - one per LED_CYCLE_MILLIS, played by the PWM
+// hardware from a table (see ledBreathStart())
+#define LED_BREATH_MILLIS      2400   // one breath, in + out
+#define LED_BREATH_STEP_MILLIS   20   // brightness changes every 20 ms
+#define LED_BREATH_PEAK         100   // peak brightness in %
+#define LED_BREATH_GAMMA       2.2f   // perceived brightness -> PWM duty (eye is not linear)
 
 #if defined(PIN_STATUS_LED_R) && defined(PIN_STATUS_LED_G) && defined(PIN_STATUS_LED_B)
 #define STATUS_LED_RGB 1
@@ -361,33 +366,107 @@ static void statusLedWheel(uint8_t pos) {   // smooth hue sweep, 0..255
 }
 #endif
 
-#if defined(PIN_STATUS_LED) && !defined(STATUS_LED_RGB)
-// v6.2: PWM only while pulsing. analogWrite(pin, 0) would keep the PWM module (and the 16 MHz
-// clock) running, so the pin is handed back and the module stopped after each pulse.
-// Confirmed on the T1000-E with a test build (29.10.2026).
-static bool led_pwm_on = false;
-static const uint32_t LED_ANALOG_TOKEN = 0x676f6c41;   // owner token used by analogWrite() ('Alog')
+#if defined(PIN_STATUS_LED) && !defined(STATUS_LED_RGB) && defined(NRF52_PLATFORM)
+#define LED_BREATH_HW 1
+// v6.2: the tracking breath is played by a PWM module straight from a table in RAM (EasyDMA,
+// one value per LED_BREATH_STEP_MILLIS) - the CPU only starts it. The first version wrote
+// the PWM from the loop (analogWrite() on every pass, each one restarting the PWM sequence)
+// and depended on the loop waking up in time; on the T1000-E it looked uneven and was now and
+// then broken by a short bright flash (30.10.2026, cause not pinned down). Now nothing in the
+// firmware touches the LED during a breath.
+// The module is taken with its own owner token only for the breath and handed back
+// afterwards: a running PWM module keeps the 16 MHz clock on (checked on the T1000-E,
+// 29.10.2026). PWM2 is never used - tone() (buzzer) owns it.
+#define LED_BREATH_TOP     2000   // PWM counter top: 4 MHz / 2000 = 2 kHz, 2000 brightness levels
+#define LED_BREATH_STEPS   (LED_BREATH_MILLIS / LED_BREATH_STEP_MILLIS)
+#define LED_BREATH_REFRESH (LED_BREATH_STEP_MILLIS * 2 - 1)   // extra PWM periods per value (2 kHz)
+static_assert(LED_BREATH_MILLIS < LED_CYCLE_MILLIS, "breath must end before the next one starts");
 
-static void ledPwmWrite(uint8_t value) {
-  analogWrite(PIN_STATUS_LED, value);
-  led_pwm_on = true;
-}
+static const uint32_t LED_BREATH_TOKEN = 0x6c446d46;   // PWM owner token ('FmDl')
+static uint16_t led_breath_seq[LED_BREATH_STEPS];      // in RAM: EasyDMA cannot read flash
+static int led_breath_mod = -1;                        // PWM module in use, -1 = none
 
-static void ledPwmRelease() {   // back to a plain digital pin, LED off
-  if (!led_pwm_on) return;
-  for (int i = 0; i < HWPWM_MODULE_NUM; i++) {
-    if (HwPWMx[i]->isOwner(LED_ANALOG_TOKEN) && HwPWMx[i]->pin2channel(PIN_STATUS_LED) >= 0) {
-      HwPWMx[i]->removePin(PIN_STATUS_LED);
-      if (HwPWMx[i]->usedChannelCount() == 0) {
-        HwPWMx[i]->stop();
-        HwPWMx[i]->releaseOwnership(LED_ANALOG_TOKEN);
-      }
-    }
+static NRF_PWM_Type* ledPwmModule(int i) {   // same order as HwPWMx[]
+  switch (i) {
+    case 0: return NRF_PWM0;
+    case 1: return NRF_PWM1;
+#ifdef NRF_PWM3
+    case 3: return NRF_PWM3;
+#endif
+    default: return NULL;   // PWM2: tone()
   }
-  pinMode(PIN_STATUS_LED, OUTPUT);
-  digitalWrite(PIN_STATUS_LED, !LED_STATE_ON);
-  led_pwm_on = false;
 }
+
+static void ledBreathTable() {   // eased in and out, then gamma corrected - computed once
+  static bool done = false;
+  if (done) return;
+  done = true;
+  const uint16_t polarity = LED_STATE_ON ? 0x8000 : 0;   // bit 15 set: output ON for 'value' counts
+  for (int i = 0; i < LED_BREATH_STEPS; i++) {
+    float s = (1.0f - cosf(2.0f * (float)PI * i / (LED_BREATH_STEPS - 1))) * 0.5f;   // 0 -> 1 -> 0
+    float duty = powf(s, LED_BREATH_GAMMA) * LED_BREATH_PEAK / 100.0f;
+    led_breath_seq[i] = (uint16_t)(duty * LED_BREATH_TOP + 0.5f) | polarity;
+  }
+}
+
+static bool ledBreathStart() {
+  ledBreathTable();
+  for (int i = 0; i < HWPWM_MODULE_NUM; i++) {
+    NRF_PWM_Type* p = ledPwmModule(i);
+    if (p == NULL || !HwPWMx[i]->takeOwnership(LED_BREATH_TOKEN)) continue;
+    pinMode(PIN_STATUS_LED, OUTPUT);
+    digitalWrite(PIN_STATUS_LED, !LED_STATE_ON);   // pin level whenever the module is not running
+    p->PSEL.OUT[0] = g_ADigitalPinMap[PIN_STATUS_LED];
+    p->PSEL.OUT[1] = 0xFFFFFFFFUL;
+    p->PSEL.OUT[2] = 0xFFFFFFFFUL;
+    p->PSEL.OUT[3] = 0xFFFFFFFFUL;
+    p->MODE = PWM_MODE_UPDOWN_Up;
+    p->PRESCALER = PWM_PRESCALER_PRESCALER_DIV_4;   // 4 MHz
+    p->COUNTERTOP = LED_BREATH_TOP;
+    p->DECODER = (PWM_DECODER_LOAD_Common << PWM_DECODER_LOAD_Pos) |
+                 (PWM_DECODER_MODE_RefreshCount << PWM_DECODER_MODE_Pos);
+    p->LOOP = 0;
+    p->SEQ[0].PTR = (uint32_t)led_breath_seq;
+    p->SEQ[0].CNT = LED_BREATH_STEPS;
+    p->SEQ[0].REFRESH = LED_BREATH_REFRESH;
+    p->SEQ[0].ENDDELAY = 0;
+    p->SEQ[1].PTR = (uint32_t)led_breath_seq;
+    p->SEQ[1].CNT = 0;
+    p->SEQ[1].REFRESH = 0;
+    p->SEQ[1].ENDDELAY = 0;
+    p->INTENCLR = 0xFFFFFFFFUL;
+    p->SHORTS = PWM_SHORTS_SEQEND0_STOP_Msk;   // stops by itself at the end, last value is 0
+    p->EVENTS_STOPPED = 0;
+    p->EVENTS_SEQEND[0] = 0;
+    p->ENABLE = 1;
+    p->TASKS_SEQSTART[0] = 1;
+    led_breath_mod = i;
+    return true;
+  }
+  return false;   // no free PWM module: skip this breath
+}
+
+static bool ledBreathRunning() {
+  return led_breath_mod >= 0 && !ledPwmModule(led_breath_mod)->EVENTS_STOPPED;
+}
+
+static void ledPwmRelease() {   // stop a breath (finished or not), hand the module back, LED off
+  if (led_breath_mod < 0) return;
+  NRF_PWM_Type* p = ledPwmModule(led_breath_mod);
+  if (!p->EVENTS_STOPPED) {
+    p->TASKS_STOP = 1;   // takes effect at the end of the current PWM period (0.5 ms)
+    uint32_t t0 = micros();
+    while (!p->EVENTS_STOPPED && micros() - t0 < 2000) {}
+  }
+  p->SHORTS = 0;
+  p->ENABLE = 0;
+  p->PSEL.OUT[0] = 0xFFFFFFFFUL;
+  HwPWMx[led_breath_mod]->releaseOwnership(LED_BREATH_TOKEN);
+  led_breath_mod = -1;
+  digitalWrite(PIN_STATUS_LED, !LED_STATE_ON);
+}
+#elif defined(PIN_STATUS_LED) && !defined(STATUS_LED_RGB)
+static void ledPwmRelease() { }   // no hardware breath on this platform: tracking shows the flash
 #endif
 
 void UITask::userLedHandler() {
@@ -504,7 +583,7 @@ void UITask::userLedHandler() {
     }
   }
 #elif defined(PIN_STATUS_LED)
-  // v6.2 (T1000-E): boot 2 s on, received SOS fast blink, tracking soft pulse, otherwise
+  // v6.2 (T1000-E): boot 2 s on, received SOS fast blink, tracking breath, otherwise
   // a short flash every 4 s. Unread messages are no longer shown.
   static bool flash_on = false;
   static unsigned long next_change = 0;
@@ -529,18 +608,27 @@ void UITask::userLedHandler() {
     flash_on = false;
     next_change = now + 1000;
   }
-  // tracking = GPS-Share on and the GPS cycle running (same condition as MyMesh::loop())
+#ifdef LED_BREATH_HW
+  // tracking = GPS-Share on and the GPS cycle running (same condition as MyMesh::loop()):
+  // one breath per LED_CYCLE_MILLIS, the PWM hardware plays it on its own
   if (the_mesh.isAutoAdvertEnabled() && the_mesh.gpsCycle().state() != GpsCycle::OFF) {
-    unsigned long ph = now % LED_CYCLE_MILLIS;
-    if (ph < LED_PULSE_MILLIS) {
-      unsigned long half = LED_PULSE_MILLIS / 2;
-      unsigned long v = ph < half ? ph : LED_PULSE_MILLIS - ph;
-      ledPwmWrite((uint8_t)(v * LED_PULSE_MAX / half));
-    } else {
-      ledPwmRelease();
+    static unsigned long breath_cycle = 0;
+    unsigned long cycle = now / LED_CYCLE_MILLIS;
+    if (flash_on) {   // switched to tracking during a heartbeat flash
+      flash_on = false;
+      digitalWrite(PIN_STATUS_LED, !LED_STATE_ON);
+    }
+    if (!ledBreathRunning()) {
+      ledPwmRelease();   // previous breath over: module back, 16 MHz clock off
+      // late start (busy loop) only while the breath still ends inside this cycle
+      if (cycle != breath_cycle && now % LED_CYCLE_MILLIS < LED_CYCLE_MILLIS - LED_BREATH_MILLIS) {
+        breath_cycle = cycle;
+        ledBreathStart();
+      }
     }
     return;
   }
+#endif
 
   ledPwmRelease();
   if ((long)(now - next_change) >= 0) {   // late loop -> flash a bit longer, never skipped
