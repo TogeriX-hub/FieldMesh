@@ -47,6 +47,9 @@ void MyMesh::fmInitMembers() {
 void MyMesh::fmBegin() {
   fmClockRestore();   // before anything gets a timestamp
   _fm_boot_reason = board.getResetReasonString(board.getResetReason());   // for the dashboard
+#ifdef FM_FLOOD_LOG
+  _fm_flog.begin(_fs);   // diagnostic builds only (FloodLog.h)
+#endif
 
   if (fmFsExists(_fs, FM_REPEATER_PREFS_FILE)) {
     File file = fmFsOpenRead(_fs, FM_REPEATER_PREFS_FILE);
@@ -57,7 +60,7 @@ void MyMesh::fmBegin() {
   }
   // The radio params themselves are part of the upstream prefs (/prefs.json),
   // so an active Off-Grid mode survives a reboot without extra work here.
-  FM_FLOOD_LOG_MODE(_fm.offgrid != 0, _prefs.freq, _prefs.bw, _prefs.sf, _prefs.node_name);
+  FM_FLOOD_LOG_MODE(_fm.offgrid != 0, _prefs.freq, _prefs.bw, _prefs.sf);
 
   if (_fm.room_enabled && !fmRoomLoadIdentity(false)) {
     _fm.room_enabled = 0;   // identity file missing (e.g. erased): room stays off until 'set roomserver'
@@ -133,7 +136,7 @@ uint32_t MyMesh::getCADFailMaxDuration() const {
 uint32_t MyMesh::fmRelayDelay(const mesh::Packet* packet) {
   if (!_fm.offgrid || !fmFloodIsQueuedRelay(packet)) return 0;
   uint32_t d = fmFloodRelayDelay(packet->getSNR(), fmFloodSlotMs(_prefs.sf, _prefs.bw), getRNG()->nextInt(0, 0x10000));
-  FM_FLOOD_LOG_EV("Q", packet, d);
+  FM_FLOOD_LOG_EV(Q, packet, d);
   return d;
 }
 
@@ -149,7 +152,7 @@ bool MyMesh::filterRecvFloodPacket(mesh::Packet* packet) {
     _mgr->queueOutbound(q, q->getPathHashCount(), futureMillis(d));   // same priority as Mesh::routeRecvPacket
     _fm_late.add(hash);
     _fm_relay_late++;
-    FM_FLOOD_LOG_EV("LATE", q, d);
+    FM_FLOOD_LOG_EV(LATE, q, d);
   }
   return false;   // never drop: the normal duplicate check follows
 }
@@ -159,8 +162,8 @@ bool MyMesh::filterRecvFloodPacket(mesh::Packet* packet) {
 void MyMesh::fmOnNetworkChange() {
   int n = fmFloodDropQueuedRelays(*_mgr);
   if (n > 0) MESH_DEBUG_PRINTLN("FieldMesh: network change, %d queued relays dropped", n);
-  FM_FLOOD_LOG_EV("NET", NULL, n);
-  FM_FLOOD_LOG_MODE(_fm.offgrid != 0, _prefs.freq, _prefs.bw, _prefs.sf, _prefs.node_name);
+  FM_FLOOD_LOG_EV(NET, NULL, n);
+  FM_FLOOD_LOG_MODE(_fm.offgrid != 0, _prefs.freq, _prefs.bw, _prefs.sf);
 }
 
 void MyMesh::fmSetOffGrid(bool on, char* reply) {
@@ -210,6 +213,14 @@ void MyMesh::fmSetOffGrid(bool on, char* reply) {
 
 bool MyMesh::fmHandleCommand(uint32_t sender_timestamp, const char* command, char* reply) {
   (void)sender_timestamp;   // allowed locally (serial) and remotely (admin login)
+
+#ifdef FM_FLOOD_LOG
+  // diagnostic builds: "floodlog" / "floodlog clear", output straight to USB serial
+  if (sender_timestamp == 0 && _fm_flog.handleCommand(command, _prefs.node_name)) {
+    reply[0] = 0;
+    return true;
+  }
+#endif
 
   if (strcmp(command, "set offgrid on") == 0) {
     fmSetOffGrid(true, reply);

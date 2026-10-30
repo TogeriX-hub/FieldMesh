@@ -119,6 +119,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   FieldMeshRepeaterPrefs _fm;
   bool _fm_advert_after_radio;   // send a zero-hop advert right after the pending radio params are applied
   FmFloodLateSet _fm_late;       // relays already moved to the late window (Off-Grid flooding)
+#ifdef FM_FLOOD_LOG
+  FloodLog _fm_flog;             // FloodLog.h, diagnostic builds only
+#endif
   uint32_t _fm_relay_late;       // relays moved to the late window because another node relayed first
   uint32_t fmRelayDelay(const mesh::Packet* packet);   // getRetransmitDelay() in Off-Grid, 0 = not handled
   void fmOnNetworkChange();      // Off-Grid switch applied: drop queued relays

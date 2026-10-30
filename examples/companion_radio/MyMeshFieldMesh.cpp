@@ -159,7 +159,10 @@ bool MyMesh::sendSOS() {
 
 // begin(): restore auto-advert timer - active when GPS sharing was enabled
 void MyMesh::fmBegin() {
-  FM_FLOOD_LOG_MODE(_prefs.isRepeatEn(), _prefs.freq, _prefs.bw, _prefs.sf, _prefs.node_name);
+#ifdef FM_FLOOD_LOG
+  _fm_flog.begin(_store->getSecondaryFS());   // diagnostic builds only (FloodLog.h)
+#endif
+  FM_FLOOD_LOG_MODE(_prefs.isRepeatEn(), _prefs.freq, _prefs.bw, _prefs.sf);
   if (_prefs.advert_loc_policy == ADVERT_LOC_SHARE) {
     next_auto_advert = futureMillis(AUTO_ADVERT_INTERVAL_MS);
   }
@@ -234,7 +237,7 @@ uint32_t MyMesh::getCADFailMaxDuration() const {
 // B: relay delay like a Meshtastic client - weak signal relays early, strong signal waits longer.
 uint32_t MyMesh::fmRelayDelay(const mesh::Packet* packet) {
   uint32_t d = fmFloodRelayDelay(packet->getSNR(), fmFloodSlotMs(_prefs.sf, _prefs.bw), getRNG()->nextInt(0, 0x10000));
-  FM_FLOOD_LOG_EV("Q", packet, d);
+  FM_FLOOD_LOG_EV(Q, packet, d);
   return d;
 }
 
@@ -255,7 +258,7 @@ void MyMesh::fmFilterRelay(mesh::Packet* packet) {
   int i = fmFloodFindQueuedRelay(*_mgr, hash);
   if (i >= 0) {
     mesh::Packet* q = _mgr->removeOutboundByIdx(i);
-    FM_FLOOD_LOG_EV("SKIP", q, 0);
+    FM_FLOOD_LOG_EV(SKIP, q, 0);
     _mgr->free(q);
     _fm_relay_skipped++;
   }
@@ -268,15 +271,15 @@ void MyMesh::fmOnNetworkChange() {
   _gps_cycle.cancelSosResend();   // v6.2: no SOS resend into the other network
   int n = fmFloodDropQueuedRelays(*_mgr);
   if (n > 0) MESH_DEBUG_PRINTLN("FieldMesh: network change, %d queued relays dropped", n);
-  FM_FLOOD_LOG_EV("NET", NULL, n);
-  FM_FLOOD_LOG_MODE(_prefs.isRepeatEn(), _prefs.freq, _prefs.bw, _prefs.sf, _prefs.node_name);
+  FM_FLOOD_LOG_EV(NET, NULL, n);
+  FM_FLOOD_LOG_MODE(_prefs.isRepeatEn(), _prefs.freq, _prefs.bw, _prefs.sf);
 }
 
 #ifdef FM_FLOOD_LOG
 // Diagnostic builds only: every received / sent packet (FloodLog.h)
-void MyMesh::logRx(mesh::Packet* packet, int len, float score) { FM_FLOOD_LOG_EV("RX", packet, len); }
-void MyMesh::logTx(mesh::Packet* packet, int len) { FM_FLOOD_LOG_EV("TX", packet, len); }
-void MyMesh::logTxFail(mesh::Packet* packet, int len) { FM_FLOOD_LOG_EV("TXF", packet, len); }
+void MyMesh::logRx(mesh::Packet* packet, int len, float score) { FM_FLOOD_LOG_EV(RX, packet, len); }
+void MyMesh::logTx(mesh::Packet* packet, int len) { FM_FLOOD_LOG_EV(TX, packet, len); }
+void MyMesh::logTxFail(mesh::Packet* packet, int len) { FM_FLOOD_LOG_EV(TXF, packet, len); }
 #endif
 
 // ── Loop: GPS cycle, tracking, auto-advert, clock jump ───────────────────────
@@ -311,11 +314,13 @@ void MyMesh::fmLoop() {
   checkClockJump();  // FieldMesh (#23)
 
 #ifdef FM_FLOOD_LOG
-  static unsigned long fm_log_mode_at = 0;   // MODE line every minute: device name in every log
-  if (millis() - fm_log_mode_at >= 60000UL) {
+  static unsigned long fm_log_mode_at = 0;   // MODE record every 10 min
+  if (millis() - fm_log_mode_at >= 600000UL) {
     fm_log_mode_at = millis();
-    FM_FLOOD_LOG_MODE(_prefs.isRepeatEn(), _prefs.freq, _prefs.bw, _prefs.sf, _prefs.node_name);
+    FM_FLOOD_LOG_MODE(_prefs.isRepeatEn(), _prefs.freq, _prefs.bw, _prefs.sf);
   }
+  _fm_flog.loop();
+  _fm_flog.pollSerial(_prefs.node_name);   // "floodlog" / "floodlog clear" over USB
 #endif
 }
 
