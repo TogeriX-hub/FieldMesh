@@ -434,7 +434,11 @@ void MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, ui
 bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   if (_prefs.disable_fwd) return false;
   if (packet->isRouteFlood()
-      && mesh::isFloodHopLimitExceeded(packet, _prefs.flood_max, _prefs.flood_max_unscoped, _prefs.flood_max_advert)) {
+      && mesh::isFloodHopLimitExceeded(packet, _prefs.flood_max, _prefs.flood_max_unscoped, _prefs.flood_max_advert)
+#ifdef FIELDMESH_REPEATER
+      && !fmOffGridIgnoresHopPolicy(packet)   // Off-Grid: only the general flood.max limit (FieldMeshRepeater.cpp)
+#endif
+      ) {
     return false;
   }
   if (packet->isRouteFlood() && recv_pkt_region == NULL) {
@@ -576,6 +580,7 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
     recv_pkt_region = NULL;
   }
 #ifdef FIELDMESH_REPEATER
+  fmOffGridRegion(pkt);   // Off-Grid: every flood is relayed, whatever its scope (FieldMeshRepeater.cpp)
   if (fmRoomRecv(pkt)) return ACTION_RELEASE;   // packet for the room identity (FieldMeshRoom.cpp)
 #endif
   return Mesh::onRecvPacket(pkt);
@@ -1025,6 +1030,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
 }
 
 void MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size) {
+#ifdef FIELDMESH_REPEATER
+  if (_fm.offgrid) { sendFlood(pkt, delay_millis, path_hash_size); return; }   // Off-Grid: own floods un-scoped (as companions, #25)
+#endif
   if (scope.isNull()) {
     sendFlood(pkt, delay_millis, path_hash_size);
   } else {

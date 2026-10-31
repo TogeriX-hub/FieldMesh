@@ -167,6 +167,20 @@ void MyMesh::fmOnNetworkChange() {
   FM_FLOOD_LOG_MODE(_fm.offgrid != 0, _prefs.freq, _prefs.bw, _prefs.sf);
 }
 
+// Off-Grid: the box relays every flood. The region / scope rules of normal operation (unknown
+// scope, flooding without scope denied for the wildcard) and the hop limits for un-scoped packets
+// and adverts (flood.max.unscoped, flood.max.advert) are local network policy - in Off-Grid all
+// FieldMesh companions send without scope (#25), so these rules would make the box silent.
+// Still applied: 'set repeat off' (disable_fwd), the general flood.max limit and loop detection.
+void MyMesh::fmOffGridRegion(const mesh::Packet* pkt) {
+  if (_fm.offgrid && pkt->isRouteFlood()) recv_pkt_region = &region_map.getWildcard();
+}
+
+// true: the hop limit that was hit is only a policy limit (un-scoped / advert) - ignore it Off-Grid
+bool MyMesh::fmOffGridIgnoresHopPolicy(const mesh::Packet* pkt) const {
+  return _fm.offgrid && pkt->getPathHashCount() < _prefs.flood_max;
+}
+
 void MyMesh::fmSetOffGrid(bool on, char* reply) {
   char tmp[64];
 

@@ -125,6 +125,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   uint32_t _fm_relay_late;       // relays moved to the late window because another node relayed first
   uint32_t fmRelayDelay(const mesh::Packet* packet);   // getRetransmitDelay() in Off-Grid, 0 = not handled
   void fmOnNetworkChange();      // Off-Grid switch applied: drop queued relays
+  void fmOffGridRegion(const mesh::Packet* pkt);                 // onRecvPacket(): Off-Grid floods count as allowed
+  bool fmOffGridIgnoresHopPolicy(const mesh::Packet* pkt) const;  // allowPacketForward(): Off-Grid hop limits
 
   void fmInitMembers();   // constructor: initial values of the FieldMesh members
   void fmBegin();
