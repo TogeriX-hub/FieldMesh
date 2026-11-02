@@ -6,7 +6,7 @@
 
 Built on [MeshCore](https://github.com/meshcore-dev/MeshCore) ·  Based on MeshCore v1.18.0 ·  Download latest [release](../../releases/latest)
 
-> **Updating from V5.x?** Updating from V5.x to V6.x could reset the node identity (new public key) and settings on some devices. **Export your private key in the MeshCore app before updating.** From v6.1 on, FieldMesh keeps its own backup of the identity and settings (see [Identity backup](#identity-backup)).
+> **Updating from v1.x (formerly V5.x)?** Updating from v1.x to v2.x could reset the node identity (new public key) and settings on some devices. **Export your private key in the MeshCore app before updating.** From v2.1 on, FieldMesh keeps its own backup of the identity and settings (see [Identity backup](#identity-backup)).
 
 -----
 
@@ -36,7 +36,7 @@ More about my motivation is readable in my [blog post](https://www.tobiasguertle
 
 FieldMesh separates two things that stock MeshCore conflates: *when did I last hear from this node* and *when did this node last have a GPS fix*. The RECENT page shows all recently heard nodes. The TRACKING page shows only nodes that have sent a GPS position — with distance calculated via Haversine formula — color-coded green (< 5 min) or yellow (older). Only contacts marked as favourites in the companion app appear on the Tracking page (max. 3).
 
-**GPS duty cycle (v6.1).** While GPS is on, the receiver takes a fix every 2 minutes and sleeps in between — the same approach Meshtastic uses. The search time adapts to the sky the receiver can see (short indoors, longer under open sky), and the satellite systems the chip supports (GPS, GLONASS, Galileo, BeiDou) are all switched on. On the T1000-E this gave about 2–2½ days with GPS on in our tests (no exact current measurement). Devices whose GPS cannot be switched off keep it running as before.
+**GPS duty cycle (v2.1).** While GPS is on, the receiver takes a fix every 2 minutes and sleeps in between — the same approach Meshtastic uses. The search time adapts to the sky the receiver can see (short indoors, longer under open sky), and the satellite systems the chip supports (GPS, GLONASS, Galileo, BeiDou) are all switched on. On the T1000-E this gave about 2–2½ days with GPS on in our tests (no exact current measurement). Devices whose GPS cannot be switched off keep it running as before.
 
 **Tracking (GPS-Share on).** Your node sends its position when it matters instead of on a fixed timer:
 
@@ -57,7 +57,7 @@ MeshCore has a feature called **Client Repeat** where a node actively relays pac
 
 FieldMesh corrects the frequency ranges to legal values and adds a **one-press Off-Grid toggle**. It switches to a dedicated off-grid frequency and enables Client Repeat in one step, saving your normal parameters automatically so you can switch back without re-entering anything.
 
-**The region is picked automatically (v6.1)** from your normal frequency — one firmware file for all regions:
+**The region is picked automatically (v2.1)** from your normal frequency — one firmware file for all regions:
 
 | Your normal frequency | Off-Grid uses |
 |---|---|
@@ -89,7 +89,7 @@ Long-press the button on the SOS page to open a two-step confirmation screen (ac
 
 The position is used if the last fix is at most 2 minutes old. After sending, the GPS stays on for 10 minutes; if the first SOS went out without a position, it is sent once more as soon as a fix is available. A GPS that you switched off is not switched on for an SOS.
 
-On the receiving end: an `!SOS` message **in an SOS channel** (name contains "sos") triggers a buzzer alarm that overrides quiet mode and loops until manually acknowledged. The alert screen shows the sending node's name. Normal messages are suppressed while an SOS alert is active. `!SOS` in any other channel (e.g. Public) is shown as a normal message — no alarm (v6.1).
+On the receiving end: an `!SOS` message **in an SOS channel** (name contains "sos") triggers a buzzer alarm that overrides quiet mode and loops until manually acknowledged. The alert screen shows the sending node's name. Normal messages are suppressed while an SOS alert is active. `!SOS` in any other channel (e.g. Public) is shown as a normal message — no alarm (v2.1).
 
 ### Message History & Text Input
 
@@ -115,7 +115,7 @@ Message length is limited to 20 characters. This feature is not available on the
 
 ### Identity Backup
 
-Since v6.1 FieldMesh keeps a copy of the node identity (`/_main.id`) and settings (`/prefs.json`) in a second file system: the external QSPI flash on ThinkNode M1, Wio Tracker L1 and MeshTracker X1, a separate area of the internal flash on the T1000-E. If the main copy is lost (for example after an update), it is restored automatically on the next start.
+Since v2.1 FieldMesh keeps a copy of the node identity (`/_main.id`) and settings (`/prefs.json`) in a second file system: the external QSPI flash on ThinkNode M1, Wio Tracker L1 and MeshTracker X1, a separate area of the internal flash on the T1000-E. If the main copy is lost (for example after an update), it is restored automatically on the next start.
 
 A factory reset from the app or CLI also clears the backup — that is how you really start over. BLE pairings are not part of the backup.
 
@@ -344,7 +344,7 @@ A channel whose name contains "sos" is an SOS channel: `!SOS` messages there go 
 |**Other hardware**|RAK WiseMesh TAG and similar single-button headless devices — contributions welcome|
 |**Base firmware** |MeshCore v1.18.0                |
 
-FieldMesh has been developed and tested on the ThinkNode M1 (E-Ink, single button) and the Wio Tracker L1 (OLED, joystick). Headless devices (no display, single button) are supported since V5.1 — the Seeed T1000-E is the reference device for this class. The code is written to be portable — all hardware-specific pins are in `variant.h`, layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test it on another platform, please open an issue with your findings.
+FieldMesh has been developed and tested on the ThinkNode M1 (E-Ink, single button) and the Wio Tracker L1 (OLED, joystick). Headless devices (no display, single button) are supported since v1.8 — the Seeed T1000-E is the reference device for this class. The code is written to be portable — all hardware-specific pins are in `variant.h`, layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test it on another platform, please open an issue with your findings.
 
 -----
 
@@ -426,7 +426,7 @@ In normal mode, this is done with hop limit = 0 (local only). See [GPS Tracking 
 <details>
 <summary><strong>Why does my GPS show no fix for a moment?</strong></summary>
 
-Since v6.1 the GPS sleeps between fixes to save battery and wakes up shortly before the next one (every 2 minutes). Indoors it only searches briefly; under open sky it searches longer. Open the GPS or Tracking page to keep it awake while the display is on.
+Since v2.1 the GPS sleeps between fixes to save battery and wakes up shortly before the next one (every 2 minutes). Indoors it only searches briefly; under open sky it searches longer. Open the GPS or Tracking page to keep it awake while the display is on.
 
 </details>
 
