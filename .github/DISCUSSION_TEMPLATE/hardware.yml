@@ -27,7 +27,7 @@ body:
     id: version
     attributes:
       label: FieldMesh version or commit
-      placeholder: v6.1
+      placeholder: v2.1.0
     validations:
       required: false
 

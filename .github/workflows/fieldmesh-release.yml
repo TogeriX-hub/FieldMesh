@@ -1,6 +1,6 @@
 # FieldMesh: build the release files and put them on a draft release.
 #
-# Actions -> "FieldMesh Release" -> Run workflow, enter the version (e.g. v6.2).
+# Actions -> "FieldMesh Release" -> Run workflow, enter the version (e.g. v2.2.0).
 # The workflow builds the prebuilt devices from the selected branch (normally main),
 # names the files <env>_FieldMesh<version>.zip / _full.bin / _update.bin and creates a
 # DRAFT release with tag <version> on that commit. Paste the release notes into the
@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version, e.g. v6.2'
+        description: 'Version, e.g. v2.2.0'
         required: true
         type: string
       create_release:
@@ -44,7 +44,7 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-            echo "Version must look like v6.2 or v6.2.1, got '$VERSION'"
+            echo "Version must look like v2.2.0 or v2.2.1, got '$VERSION'"
             exit 1
           fi
 

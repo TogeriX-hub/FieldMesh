@@ -1460,7 +1460,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       savePrefs();
 
       radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
-      fmOnNetworkChange();   // FieldMesh v6.2: no SOS resend / queued relay into the other network
+      fmOnNetworkChange();   // FieldMesh v2.2: no SOS resend / queued relay into the other network
       MESH_DEBUG_PRINTLN("OK: CMD_SET_RADIO_PARAMS: f=%d, bw=%d, sf=%d, cr=%d", freq, bw, (uint32_t)sf,
                          (uint32_t)cr);
 
@@ -1874,7 +1874,7 @@ void MyMesh::handleCmdFrame(size_t len) {
       strcpy(dp, sensors.getSettingName(i));
       dp = strchr(dp, 0);
       *dp++ = ':';
-      strcpy(dp, _gps_cycle.reportSetting(sensors.getSettingName(i), sensors.getSettingValue(i)));  // FieldMesh v6.1
+      strcpy(dp, _gps_cycle.reportSetting(sensors.getSettingName(i), sensors.getSettingValue(i)));  // FieldMesh v2.1
       dp = strchr(dp, 0);
     }
     _serial->writeFrame(out_frame, dp - (char *)out_frame);

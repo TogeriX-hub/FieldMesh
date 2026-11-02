@@ -1,7 +1,7 @@
 #include "UITask.h"
 #include <helpers/TxtDataHelpers.h>
 #include "../MyMesh.h"
-#include "../OffGrid.h"   // FieldMesh v6.1: Off-Grid region label
+#include "../OffGrid.h"   // FieldMesh v2.1: Off-Grid region label
 #include "target.h"
 #include <time.h>
 #ifdef ENABLE_WIFI_INTERFACE
@@ -110,7 +110,7 @@ public:
 
       display.setTextSize(2);
       display.setColor(UIColor::primary_txt);
-      display.drawTextCentered(display.width() / 2, display.height() - 20, "v6.1");
+      display.drawTextCentered(display.width() / 2, display.height() - 20, "v2.1");
     } else {
       // ── Kleines Display (L1/Heltec V3/Techo, 64/80px) — Upstream v1.18 Layout ─
       int logoWidth = 128;
@@ -510,7 +510,7 @@ public:
       the_mesh.getRecentlyHeard(recent, UI_RECENT_LIST_SIZE);
       display.setColor(UIColor::primary_txt);
       display.setTextSize(1);
-      // v6.1: own position = fresh fix (<= 2 min) from the GPS duty cycle
+      // v2.1: own position = fresh fix (<= 2 min) from the GPS duty cycle
       GpsCycle& gps = the_mesh.gpsCycle();
       bool own_gps = gps.hasFreshFix();
       double own_lat = gps.latitude() / 1000000.0;
@@ -582,7 +582,7 @@ public:
       display.print(tmp);
 
       // tx power,  noise floor
-      // v6.2 Off-Grid flooding: relays skipped because another node relayed the advert first
+      // v2.2 Off-Grid flooding: relays skipped because another node relayed the advert first
       bool fm_offgrid = the_mesh.isOffGridActive();
       bool fm_large = display.height() >= 128;
       display.setCursor(0, 42);
@@ -849,7 +849,7 @@ public:
   bool isOnRecentPage()   const { return _page == HomePage::RECENT; }
   bool isOnTrackingPage() const { return _page == HomePage::TRACKING; }
 #if ENV_INCLUDE_GPS == 1
-  bool isOnGpsPage()      const { return _page == HomePage::GPS; }       // v6.1
+  bool isOnGpsPage()      const { return _page == HomePage::GPS; }       // v2.1
 #else
   bool isOnGpsPage()      const { return false; }
 #endif
@@ -951,7 +951,7 @@ public:
 
     strncpy(p->from_name, from_name ? from_name : "", sizeof(p->from_name) - 1);
 
-    // v6.1: channel name (or "[DM]" from onMessageRecv) first, path_len only as fallback
+    // v2.1: channel name (or "[DM]" from onMessageRecv) first, path_len only as fallback
     if (channel_name && channel_name[0]) {
       strncpy(p->channel_tag, channel_name, sizeof(p->channel_tag) - 1);
       p->channel_tag[sizeof(p->channel_tag) - 1] = 0;
@@ -1316,7 +1316,7 @@ public:
     _entry.timestamp = _rtc->getCurrentTime();
     strncpy(_entry.from_name, from_name, sizeof(_entry.from_name) - 1);
     _entry.from_name[sizeof(_entry.from_name) - 1] = 0;
-    // v6.1: channel name (or "[DM]" from onMessageRecv) first, path_len only as fallback
+    // v2.1: channel name (or "[DM]" from onMessageRecv) first, path_len only as fallback
     if (channel_name && channel_name[0]) {
       strncpy(_entry.channel_tag, channel_name, sizeof(_entry.channel_tag) - 1);
       _entry.channel_tag[sizeof(_entry.channel_tag) - 1] = 0;
@@ -1814,7 +1814,7 @@ public:
           the_mesh.toggleOffGrid();
           _task->notify(UIEventType::ack);
           if (the_mesh.isOffGridActive()) {
-            // v6.1: show the region the off-grid frequency was chosen for
+            // v2.1: show the region the off-grid frequency was chosen for
             char alert[24];
             snprintf(alert, sizeof(alert), "Off-Grid: ON (%s)", offGridRegionLabel(the_mesh.getNodePrefs()->freq));
             _task->showAlert(alert, 1000);
@@ -2019,7 +2019,7 @@ public:
           _task->notify(UIEventType::ack);
           _task->showAlert("SOS sent!", 2000);
 #ifdef PIN_GPS_SWITCH
-          // v6.2: SOS switched the GPS setting on, but the hardware switch has priority
+          // v2.2: SOS switched the GPS setting on, but the hardware switch has priority
           if (!GpsCycle::hardwareSwitchOn()) _task->showAlertNext("GPS switch is off!", 4000);
 #endif
         } else {
@@ -2108,7 +2108,7 @@ void UITask::showAlert(const char* text, int duration_millis) {
   _alert_expiry = millis() + duration_millis;
 }
 
-// v6.2: second alert, shown when the current one expires (e.g. "SOS sent!" -> hint)
+// v2.2: second alert, shown when the current one expires (e.g. "SOS sent!" -> hint)
 void UITask::showAlertNext(const char* text, int duration_millis) {
   strncpy(_alert_next, text, sizeof(_alert_next) - 1);
   _alert_next[sizeof(_alert_next) - 1] = 0;
@@ -2160,7 +2160,7 @@ void UITask::onMessageRecv(mesh::Packet *pkt, const ContactInfo &from, uint8_t t
   // But always update the active node counter so incoming messages are counted while connected.
   if (!hasConnection()) {
     bool is_fav = (from.flags & 0x01) != 0;
-    // v6.1: always tag direct messages as [DM] - addMessage()/setMessage() only recognise
+    // v2.1: always tag direct messages as [DM] - addMessage()/setMessage() only recognise
     // direct-routed DMs (path_len 0xFF), flood-routed DMs were shown as [CH]
     newMsg(path_len, from.name, text, _msgcount, is_fav, "[DM]");
     notify(UIEventType::contactMessage);
@@ -2179,7 +2179,7 @@ void UITask::onChannelMessageRecv(mesh::Packet *pkt, ChannelDetails& channel_det
   }
 
   // V3: SOS-Erkennung — "!SOS" irgendwo im Text (MeshCore stellt Node-Name voran)
-  // v6.1: only in the SOS channel (where sendSOS() sends) - "!SOS" in Public etc. is a normal message
+  // v2.1: only in the SOS channel (where sendSOS() sends) - "!SOS" in Public etc. is a normal message
   if (strstr(text, "!SOS") != NULL && MyMesh::isSosChannel(channel_name)) {
     triggerSOS(channel_name, text);
     return;  // do not call newMsg() — SOSAlertScreen takes priority
@@ -2580,13 +2580,13 @@ void UITask::loop() {
 
   if (curr) curr->poll();
 
-  // v6.1: GPS/Tracking page on screen -> keep the GPS running (+60 s after leaving/display off)
+  // v2.1: GPS/Tracking page on screen -> keep the GPS running (+60 s after leaving/display off)
   if (_display != NULL && _display->isOn() && curr == home
       && (((HomeScreen*)home)->isOnTrackingPage() || ((HomeScreen*)home)->isOnGpsPage())) {
     the_mesh.gpsCycle().keepAwake(GpsCycle::KEEP_AWAKE_PAGE_MS);
   }
 
-  if (_alert_next[0] && millis() >= _alert_expiry) {   // v6.2: queued second alert
+  if (_alert_next[0] && millis() >= _alert_expiry) {   // v2.2: queued second alert
     showAlert(_alert_next, _alert_next_ms);
     _alert_next[0] = 0;
     _next_refresh = 0;
@@ -2787,7 +2787,7 @@ void UITask::toggleGPS() {
     int num = _sensors->getNumSettings();
     for (int i = 0; i < num; i++) {
       if (strcmp(_sensors->getSettingName(i), "gps") == 0) {
-        // v6.1: decide by the setting - while the GPS duty cycle sleeps the board reports "0"
+        // v2.1: decide by the setting - while the GPS duty cycle sleeps the board reports "0"
         if (_node_prefs->gps_enabled) {
           _sensors->setSettingValue("gps", "0");
           _node_prefs->gps_enabled = 0;

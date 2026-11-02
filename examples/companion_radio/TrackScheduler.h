@@ -1,6 +1,6 @@
 #pragma once
 
-// FieldMesh v6.1: send cadence for active tracking (replaces the fixed 5-min GPS advert,
+// FieldMesh v2.1: send cadence for active tracking (replaces the fixed 5-min GPS advert,
 // issue #28). Smart-position idea from Meshtastic, values decided in PLAN_v6.1.md:
 //   - first send at the first usable fix after tracking/GPS was switched on
 //   - moved >= min_dist since the last sent position and >= min_interval since the last send

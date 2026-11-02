@@ -1,6 +1,6 @@
 #pragma once
 
-// FieldMesh v6.2 diagnostics: flooding events stored in flash, read out afterwards over USB.
+// FieldMesh v2.2 diagnostics: flooding events stored in flash, read out afterwards over USB.
 // Only compiled with -D FM_FLOOD_LOG=1 (local test builds, never in releases); shared with the
 // FieldMesh repeater. Used to check the Off-Grid managed flooding on real hardware: every device
 // logs on its own during the test, the logs are read out one after the other and matched by

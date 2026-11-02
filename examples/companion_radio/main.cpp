@@ -2,7 +2,7 @@
 #include <Mesh.h>
 #include "MyMesh.h"
 #ifdef FM_GPS_LOG
-  #include "GpsLog.h"   // FieldMesh v6.1: diagnostic builds only
+  #include "GpsLog.h"   // FieldMesh v2.1: diagnostic builds only
   GpsLog gps_log;
 #endif
 

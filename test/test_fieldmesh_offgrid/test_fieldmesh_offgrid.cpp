@@ -1,5 +1,5 @@
 // FieldMesh: tests for the Off-Grid radio parameters (examples/companion_radio/OffGrid.h).
-// Since v6.1 the Off-Grid frequency follows the region of the normal frequency, so one
+// Since v2.1 the Off-Grid frequency follows the region of the normal frequency, so one
 // firmware serves EU and US. A wrong split or a channel outside the legal band would send
 // on an illegal frequency, so the limits are checked here against the band edges.
 

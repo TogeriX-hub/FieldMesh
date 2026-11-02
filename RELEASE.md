@@ -3,25 +3,30 @@
 All notable changes to FieldMesh are documented here.
 For how to use the features, see the [README](README.md).
 
-## Versioning
+## Version numbers
 
-From V6.2 on, FieldMesh versions follow **MAJOR.MINOR.PATCH**:
+In November 2026 all FieldMesh releases were renumbered to semantic versioning (MAJOR.MINOR.PATCH). Only the numbers changed. Each entry below gives its old number; 2.2.0 follows 2.1.0 (formerly V6.1).
 
-- **Major** (e.g. V7.0) — a new MeshCore base that changes how the firmware behaves, or anything you notice when updating (settings migrated, re-pairing, new install steps). V6.0 is an example.
-- **Minor** (e.g. V6.2) — new features. V6.2 is the same as V6.2.0.
-- **Patch** (e.g. V6.2.1) — bug fixes only, no new features.
-
-Note: the old tag `v5.09` is an early V5 build and comes before `v5.1`.
+| Old | New |
+|---|---|
+| V1.00 – V2.01 | 1.0.0 – 1.0.5 |
+| V2.02 – V2.07 | 1.1.0 – 1.2.2 |
+| V3.01 – V3.08 | 1.3.0 – 1.4.1 |
+| V4.00 – V4.04 | 1.5.0 – 1.6.0 |
+| V5.00 (tag v5.09) – V5.3 | 1.7.0 – 1.10.0 |
+| V6.0 / V6.1 | 2.0.0 / 2.1.0 |
 
 ---
 
-## [V6.1] - GPS Duty Cycle, Smarter Tracking & FieldMesh Repeater
+## [2.1.0] — GPS Duty Cycle, Smarter Tracking & FieldMesh Repeater
+
+*27 October 2026 · formerly V6.1*
 
 Still based on MeshCore v1.18.0. One firmware file per device for all regions.
 
 ### New Features
 
-- **GPS duty cycle** — while GPS is on, the receiver takes a fix every 2 minutes and sleeps in between (timing modelled on Meshtastic). Hard sleep on T1000-E, MeshTracker X1 and Heltec Mesh Node T1, soft sleep via the standby pin on ThinkNode M1 and the Wio Tracker L1 family. Boards whose GPS cannot be switched off keep it running as in V6.0. T1000-E with GPS on: about 2–2½ days in our tests (no exact current measurement)
+- **GPS duty cycle** — while GPS is on, the receiver takes a fix every 2 minutes and sleeps in between (timing modelled on Meshtastic). Hard sleep on T1000-E, MeshTracker X1 and Heltec Mesh Node T1, soft sleep via the standby pin on ThinkNode M1 and the Wio Tracker L1 family. Boards whose GPS cannot be switched off keep it running as in 2.0.0. T1000-E with GPS on: about 2–2½ days in our tests (no exact current measurement)
 - **Adaptive search time** — the search is graded by the satellites in view: 15 s indoors, up to 30 s at a window, up to 120 s when satellites are strong enough to decode, up to 240 s under clear sky; a longer search stops early when the sky is gone. Failed long searches back off 4/8/16 min, never more
 - **All satellite systems** — GPS, GLONASS, Galileo, BeiDou (and QZSS) are switched on where the receiver supports them; NMEA output reduced to the sentences FieldMesh needs
 - **Tracking cadence** (GPS-Share on) — adverts are sent when you moved ≥ 100 m (at most every 2 min) plus a heartbeat every 10 min, instead of a fixed timer. Replaces issue #28
@@ -30,7 +35,7 @@ Still based on MeshCore v1.18.0. One firmware file per device for all regions.
 - **GPS and Tracking pages** keep the GPS awake while they are on screen (plus 60 s)
 - **ThinkNode M1 GPS switch** — the GPS runs only when the hardware switch and the setting are on; switching it on also turns the setting on
 - **Off-Grid region chosen automatically** — below 900 MHz → 869.4625 MHz (EU/UK), 900 MHz and above → 916.4625 MHz (US/AU). The alert shows the region ("Off-Grid: ON (EU)"). No separate US firmware any more
-- **Identity backup** — node identity and settings are copied to a second file system (QSPI flash on M1, L1, X1; a separate internal flash area on the T1000-E) and restored automatically if the main copy is lost. Protects against the identity reset some users saw when updating to V6.0. A factory reset also clears the backup
+- **Identity backup** — node identity and settings are copied to a second file system (QSPI flash on M1, L1, X1; a separate internal flash area on the T1000-E) and restored automatically if the main copy is lost. Protects against the identity reset some users saw when updating to 2.0.0. A factory reset also clears the backup
 - **SOS with battery level** — `!SOS 48.7636,9.1621 bat78%` / `!SOS no GPS bat78%`
 - **FieldMesh Repeater for the Station G2** — a normal MeshCore repeater with:
   - **Off-Grid switch** (`set offgrid on|off`, G2 menu, dashboard), applied live without a reboot
@@ -45,26 +50,28 @@ Still based on MeshCore v1.18.0. One firmware file per device for all regions.
 
 - **SOS alarm only in SOS channels** — `!SOS` raises the alarm only in a channel whose name contains "sos" (the same rule as for sending); in other channels, e.g. Public, it is shown as a normal message
 - Release files: 3 firmware files (M1, L1, T1000-E) instead of 6, plus the Station G2 repeater
-- Splash screen shows "v6.1"
-- Outdated PDF documentation (V1.00–V4.04) and the duplicate FAQ removed — the README is the documentation
+- Splash screen shows "v6.1" (the number at the time)
+- Outdated PDF documentation (1.0.0–1.6.0) and the duplicate FAQ removed — the README is the documentation
 
 ### Bug Fixes
 
 - **Flood-routed DMs** are tagged `[DM]` in the message history instead of `[CH]`
 - **"!SOS kein GPS"** is now sent as `!SOS no GPS`
-- **E-ink display after auto-off (ThinkNode M1)** — since V6.0 the screen was only partly refreshed after the display turned off and on again. Fixed with the upstream MeshCore dev change (display off no longer clears the controller buffer or hibernates the panel)
+- **E-ink display after auto-off (ThinkNode M1)** — since 2.0.0 the screen was only partly refreshed after the display turned off and on again. Fixed with the upstream MeshCore dev change (display off no longer clears the controller buffer or hibernates the panel)
 
-### Updating from V6.0
+### Updating from 2.0.0
 
 - Settings, contacts and channels are kept; the identity backup is created on the first start
-- Updating from V5.x: export your private key in the MeshCore app first (see the V6.0 known issue)
+- Updating from 1.x: export your private key in the MeshCore app first (see the 2.0.0 known issue)
 - Station G2: the first installation of the FieldMesh Repeater needs the full image at 0x0 — see the README
 
 ---
 
-## [V6.0] - MeshCore v1.18.0 Base
+## [2.0.0] — MeshCore v1.18.0 Base
 
-FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh features are kept and sit on top of the current upstream firmware. New features will follow in V6.x.
+*18 October 2026 · formerly V6.0*
+
+FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh features are kept and sit on top of the current upstream firmware. New features will follow in 2.x.
 
 ### New from upstream (MeshCore v1.16 – v1.18)
 
@@ -80,7 +87,7 @@ FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh featu
 ### Changes
 
 - **UI decoupled from MyMesh** — MeshCore v1.18 introduced a listener interface; FieldMesh's message handling (history only when the app is not connected, online node counter, SOS detection, favourites, advert refresh on RECENT/TRACKING) moved from `MyMesh.cpp` into the UI (`ui-new` and `ui-orig`). `MyMesh.cpp` is now much closer to upstream
-- **Off-Grid return parameters** are stored in their own JSON object `"fm"` in the settings file and migrated from V5.x
+- **Off-Grid return parameters** are stored in their own JSON object `"fm"` in the settings file and migrated from 1.x
 - **GPS flag of adverts** is now passed via `BaseChatMesh::lastAdvertHasLatLon()` instead of bit 4 (`0x10`) in `contact.type` — `contact.type` is no longer modified, the three masking points are gone
 - **Static BLE PIN** moved to `main.cpp` (upstream moved the PIN logic there)
 - Off-Grid uses the upstream radio wrapper call `radio_driver.setParams()` (upstream removed `radio_set_params()`)
@@ -93,9 +100,9 @@ FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh featu
 - **CLI text messages** (`TXT_TYPE_CLI_COMMAND`, new in upstream) are not shown in the message history
 - `_msgcount` is now initialised in `UITask` (`ui-new`)
 
-### Updating from V5.x
+### Updating from 1.x (formerly V5.x)
 
-> ⚠️ **Known issue:** On some devices, updating from V5.x to V6.0 reset the node identity (new public key) and settings (name, radio parameters). Contacts and channels were kept. **Before updating, export your private key in the MeshCore app** so you can re-import it if needed. Investigation in progress.
+> ⚠️ **Known issue:** On some devices, updating from 1.x to 2.0.0 reset the node identity (new public key) and settings (name, radio parameters). Contacts and channels were kept. **Before updating, export your private key in the MeshCore app** so you can re-import it if needed. Investigation in progress.
 
 - Contacts and channels are kept (file format unchanged)
 - Settings are migrated to `/prefs.json` — but see the known issue above
@@ -103,7 +110,9 @@ FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh featu
 
 ---
 
-## [V5.3] - MeshCore v1.15.0 Base
+## [1.10.0] — MeshCore v1.15.0 Base
+
+*28 April 2026 · formerly V5.3*
 
 ### Changes
 
@@ -111,7 +120,9 @@ FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh featu
 
 ---
 
-## [V5.2] - HomeScreen Overhaul & Reliability Fixes
+## [1.9.0] — HomeScreen Overhaul & Reliability Fixes
+
+*9 April 2026 · formerly V5.2*
  
 ### New Features
  
@@ -136,7 +147,9 @@ FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh featu
 - **Adaptive row limits on RECENT and TRACKING pages** — Both pages now use a `max_y` variable based on `display.height()` instead of hardcoded pixel values
 ---
 
-## [5.1] — Headless Device Support (T1000-E, RAK WiseMesh TAG)
+## [1.8.0] — Headless Device Support (T1000-E, RAK WiseMesh TAG)
+
+*4 April 2026 · formerly V5.1*
 
 ### New features
 - **Headless device support** — `ui-orig` now fully integrated into FieldMesh; devices with no display and a single button (Seeed T1000-E, RAK WiseMesh TAG) are supported as first-class citizens
@@ -146,7 +159,7 @@ FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh featu
 ### Changes
 - All button actions (advert, GPS toggle, buzzer toggle, Off-Grid toggle) now produce forced buzzer feedback regardless of quiet mode — essential for display-less operation
 - Ascending tone (`c,e`) = feature enabled; descending tone (`e,c`) = feature disabled — consistent across all actions
-- `newMsg()` signature updated to include `is_favorite` parameter — compatible with V5 `AbstractUITask` interface
+- `newMsg()` signature updated to include `is_favorite` parameter — compatible with the 1.7 `AbstractUITask` interface
 - `refreshDisplay()` and `isOnRecentOrTrackingPage()` added as explicit no-op overrides — required for `MyMesh` compatibility
 
 ### Button mapping (headless devices — single button)
@@ -167,7 +180,9 @@ FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh featu
 
 ---
 
-## [5.00] — Message History & Text Input
+## [1.7.0] — Message History & Text Input
+
+*3 April 2026 · formerly V5.00 (tag v5.09)*
 
 ### New features
 - **Message history** — received messages are stored in a RAM ring buffer (up to 32 entries) and browsable directly on the device, no phone required
@@ -191,9 +206,9 @@ FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh featu
 
 ---
 
-## [4.04] — Wio Tracker L1 Support
+## [1.6.0] — Wio Tracker L1 Support
 
-*30 March 2026*
+*30 March 2026 · formerly V4.04*
 
 ### New features
 - Wio Tracker L1 (Seeed) added as second supported device (OLED display, joystick input)
@@ -202,13 +217,13 @@ FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh featu
 
 ---
 
-## [4.03] — Backlight & Display Logic Overhaul
+## [1.5.3] — Backlight & Display Logic Overhaul
 
-*30 March 2026*
+*30 March 2026 · formerly V4.03*
 
 ### Fixes
-- `-D AUTO_OFF_MILLIS=0` removed from the ThinkNode M1 `platformio.ini` (added in V1.00) — the display sleeps again after 15 seconds of inactivity
-- 5-minute backlight auto-off timer (V4.00) removed — no longer needed now that the display sleeps
+- `-D AUTO_OFF_MILLIS=0` removed from the ThinkNode M1 `platformio.ini` (added in 1.0.0) — the display sleeps again after 15 seconds of inactivity
+- 5-minute backlight auto-off timer (1.5.0) removed — no longer needed now that the display sleeps
 - Backlight follows the `_backlight_on` state on every wake-up (`checkDisplayOn()`), overriding the GxEPD driver
 
 ### Changes
@@ -222,21 +237,21 @@ FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh featu
 
 ---
 
-## Versions before GitHub (V1.00 – V4.02)
+## Versions before GitHub (1.0.0 – 1.5.2)
 
-V1.00 to V4.02 were developed between 26 and 28 March 2026, before this repository existed, on **MeshCore v1.14.1**, for the **Elecrow ThinkNode M1** only. The first upload to GitHub (28 March 2026, commit `1093236`) already contains V4.02. The GitHub releases of these versions are documentation only (no firmware, no source); dates are approximate, reconstructed from the development notes.
+1.0.0 to 1.5.2 (formerly V1.00 to V4.02) were developed between 26 and 28 March 2026, before this repository existed, on **MeshCore v1.14.1**, for the **Elecrow ThinkNode M1** only. The first upload to GitHub (28 March 2026, commit `1093236`) already contains 1.5.2. The GitHub releases of these versions are documentation only (no firmware, no source); dates are approximate, reconstructed from the development notes.
 
-Version numbers not listed here were intermediate or failed attempts: V1.01/V1.02 (see V1.03), V1.04 and V1.06 (failed, replaced by V1.05 and V1.07), V3.02–V3.04 (bug-fix rounds between V3.01 and V3.05). During development the RX fix of V3.08 was briefly called "V4.07" — the code comment still says so.
+Some internal builds of that time were never released and keep their old numbers in the notes: V1.01/V1.02 (see 1.0.1), V1.04 and V1.06 (failed, replaced by 1.0.2 and 1.0.3), V3.02–V3.04 (bug-fix rounds between 1.3.0 and 1.3.1). During development the RX fix of 1.4.1 was briefly called "V4.07" — the code comment still says so. Older code comments also still use the old numbers (e.g. "V3.05", "V5.03").
 
 Several mechanisms of this period were replaced later. They are marked *Superseded* below so the old notes are not mistaken for the current design.
 
 ---
 
-## [4.02] — SOS Screen Improvements
+## [1.5.2] — SOS Screen Improvements
 
-*28 March 2026 — first upload to GitHub*
+*28 March 2026 — first upload to GitHub · formerly V4.02*
 
-All V4.xx changes before V4.03 are display-only (`ui-new/UITask.cpp`, `ui-new/icons.h`): no logic or class structure changes. Layouts use `display.height()` / `display.width()`, never absolute pixels; large displays are detected at runtime with `display.height() >= 128` (M1), everything else uses the compact layout.
+All 1.5.x changes before 1.5.3 are display-only (`ui-new/UITask.cpp`, `ui-new/icons.h`): no logic or class structure changes. Layouts use `display.height()` / `display.width()`, never absolute pixels; large displays are detected at runtime with `display.height() >= 128` (M1), everything else uses the compact layout.
 
 ### Changes
 - New 48×48 px icon `advert_icon_large` in `icons.h` (288 bytes, 6 bytes × 48 rows), used only on large displays; the original 32×32 `advert_icon` is unchanged
@@ -246,9 +261,9 @@ All V4.xx changes before V4.03 are display-only (`ui-new/UITask.cpp`, `ui-new/ic
 
 ### Notes
 - XBM bitmaps for GxEPD must be bit-reversed per byte: GIMP exports MSB-first, GxEPD reads LSB-first. Conversion per byte: `int(format(byte, '08b')[::-1], 2)`
-- The splash screen in the uploaded code still shows "v3" — the V4.01 splash change was not part of the upload
+- The splash screen in the uploaded code still shows "v3" — the 1.5.1 splash change was not part of the upload
 
-### ThinkNode M1 operation at V4.02
+### ThinkNode M1 operation at 1.5.2
 Page order: FIRST → RECENT → TRACKING → RADIO → GPS → SOS (USB build without GPS: FIRST → RECENT → TRACKING → RADIO → SOS)
 
 | Lower button | Result |
@@ -261,12 +276,12 @@ Page order: FIRST → RECENT → TRACKING → RADIO → GPS → SOS (USB build w
 | Long press on GPS | GPS on/off |
 | Long press in the first 8 s after boot | CLI rescue mode |
 
-| Upper button (backlight, since V4.00) | Result |
+| Upper button (backlight, since 1.5.0) | Result |
 |---|---|
 | Short press, backlight off | backlight on, 5-minute auto-off starts |
 | Short press, backlight on | backlight off |
 | Lower button while backlight on | auto-off timer back to 5 minutes |
-| 5 minutes without a button press | backlight off (*superseded in V4.03*) |
+| 5 minutes without a button press | backlight off (*superseded in 1.5.3*) |
 
 Outdoor settings menu: click = next entry (cyclic), long press = execute. SOS send screen: long press = show confirmation, long press again = send and return home, short press = cancel. SOS alarm: long press = acknowledge, buzzer stops.
 
@@ -276,19 +291,19 @@ TRACKING page symbols: `---` own GPS has no fix (`isEnabled() && isValid()`), `?
 
 ---
 
-## [4.01] — Version String and Hint Text Cleanup
+## [1.5.1] — Version String and Hint Text Cleanup
 
-*28 March 2026 (approx.)*
+*28 March 2026 (approx.) · formerly V4.01*
 
 ### Changes
 - Splash screen version string changed from "v3" to "v4" (this change did not make it into the first GitHub upload)
-- All remaining hint texts moved to `display.height() - 13` (a few were still at `- 11` after V4.00)
+- All remaining hint texts moved to `display.height() - 13` (a few were still at `- 11` after 1.5.0)
 
 ---
 
-## [4.00] — UI Foundation Rework
+## [1.5.0] — UI Foundation Rework
 
-*28 March 2026 (approx.)*
+*28 March 2026 (approx.) · formerly V4.00*
 
 ### Changes
 - **Splash screen** (large displays only): two groups — top: MeshCore logo (Y=4), version string (size 2, Y=22), build date (size 1, Y=42); intentional gap in the middle; bottom: "FieldMesh" in size 3 at `display.height() - 42` and the version string (size 2) at `display.height() - 20`. Small displays keep the compact upstream layout
@@ -302,13 +317,13 @@ TRACKING page symbols: `---` own GPS has no fix (`isEnabled() && isValid()`), `?
 | SOS send screen hints | 54 / 57 | `display.height() - 13` / `- 24` |
 
 - Display size guards unified to `if (display.height() >= 128)`
-- **Backlight toggle on the upper button** (M1): short press switches the backlight, auto-off after 5 minutes, reset by the lower button (`_backlight_on`, `_backlight_off_at`, `_btn2_was_pressed` in `UITask.h`). *Auto-off superseded in V4.03*
+- **Backlight toggle on the upper button** (M1): short press switches the backlight, auto-off after 5 minutes, reset by the lower button (`_backlight_on`, `_backlight_off_at`, `_btn2_was_pressed` in `UITask.h`). *Auto-off superseded in 1.5.3*
 
 ---
 
-## [3.08] — RX Restart Fix after Off-Grid Toggle
+## [1.4.1] — RX Restart Fix after Off-Grid Toggle
 
-*28 March 2026 (approx.; called "V4.07" in the code comment)*
+*28 March 2026 (approx.; called "V4.07" in the code comment) · formerly V3.08*
 
 ### Bug fixes
 - After `toggleOffGrid()` the receiver stayed deaf until the next transmitted packet (empty RX log; manual workaround: send an advert)
@@ -319,9 +334,9 @@ This is the origin of the rule "never bypass RadioLibWrapper, never call `radio.
 
 ---
 
-## [3.07] — Portability and Cleanup
+## [1.4.0] — Portability and Cleanup
 
-*28 March 2026 (approx.)*
+*28 March 2026 (approx.) · formerly V3.07*
 
 Goal: make the code portable to other devices. No functional change on the ThinkNode M1.
 
@@ -347,9 +362,9 @@ Goal: make the code portable to other devices. No functional change on the Think
 
 ---
 
-## [3.05] — Timer Reset Fix + SOS Node Name Display
+## [1.3.1] — Timer Reset Fix + SOS Node Name Display
 
-*27 March 2026 (approx.)*
+*27 March 2026 (approx.) · formerly V3.05*
 
 ### Bug fixes
 - **Auto-advert timer:** it was reset to +5 minutes on every phone connect or GPS toggle, even when already running. Now (in `setGPSAdvertEnabled()` in `MyMesh.h` and `CMD_SET_OTHER_PARAMS` in `MyMesh.cpp`): off → on = immediate advert + timer starts; on → off = timer stops; already running = no reset, no duplicate advert (`if (next_auto_advert == 0)` check)
@@ -359,14 +374,14 @@ Files changed: `MyMesh.h`, `MyMesh.cpp`, `ui-new/UITask.cpp`
 
 ---
 
-## [3.01] — SOS System
+## [1.3.0] — SOS System
 
-*27 March 2026*
+*27 March 2026 · formerly V3.01*
 
 ### New features
 - **SOS send**: long press on the SOS page opens a two-step confirmation screen; `sendSOS()` sends `!SOS lat,lon` (4 decimals) or `!SOS no GPS` to the first channel whose name contains "sos" (case-insensitive)
 - **SOS receive**: `onChannelMessageRecv()` checks for `!SOS` before the normal `newMsg()` and calls `triggerSOS()` instead; a dedicated alert screen shows the sender and a siren (`siren:d=8,o=5,b=100:d,e,d,e,d,e,d,e`) loops until acknowledged
-- Page order after V3: FIRST → RECENT → TRACKING → RADIO → GPS → SOS (ADVERT page removed)
+- Page order after 1.3.0: FIRST → RECENT → TRACKING → RADIO → GPS → SOS (ADVERT page removed)
 
 | Situation | Behaviour |
 |---|---|
@@ -384,51 +399,51 @@ Files changed: `MyMesh.h`, `MyMesh.cpp`, `ui-new/UITask.cpp`
 
 ---
 
-## [2.07] — contact.type Serial Fix
+## [1.2.2] — contact.type Serial Fix
 
-*27 March 2026*
+*27 March 2026 · formerly V2.07*
 
 ### Bug fixes
 - Main cause of the contact problems: `writeContactRespFrame()` sent `contact.type` with bit 4 set to the companion app — the app received `type=0x11` instead of `0x01` and did not recognise the contact (no messaging, no telemetry)
 - Fix in `MyMesh.cpp`: mask bit 4 in `writeContactRespFrame()` (outgoing, `contact.type & 0x0F`) and in `updateContactFromFrame()` (incoming, bit 4 from the app is not taken over)
 
-*Superseded in V6.0: the bit-4 approach was removed completely (see V1.05).*
+*Superseded in 2.0.0: the bit-4 approach was removed completely (see 1.0.2).*
 
 ---
 
-## [2.06] — contact.type Persistence Fix
+## [1.2.1] — contact.type Persistence Fix
 
-*27 March 2026*
+*27 March 2026 · formerly V2.06*
 
 ### Bug fixes
 - `saveContacts()` in `DataStore.cpp` wrote `contact.type` with bit 4 set to flash — now masked before writing (`clean_type = c.type & 0x0F`)
 
-*Superseded in V6.0 (see V1.05).*
+*Superseded in 2.0.0 (see 1.0.2).*
 
 ---
 
-## [2.04 / 2.05] — Flood Advert in Off-Grid Mode
+## [1.2.0] — Flood Advert in Off-Grid Mode
 
-*27 March 2026*
+*27 March 2026 · formerly V2.04 / V2.05*
 
 ### Changes
 - In Off-Grid mode (`client_repeat=1`), `advert()` sends a flood packet (`sendFlood(pkt, (uint32_t)0, _prefs.path_hash_mode + 1)`) instead of zero-hop, so adverts travel through the group
 - `allowPacketForward()` returns `true` when `client_repeat != 0`
-- V2.05: fixes the V2.04 compiler error "sendFlood ambiguous" with the explicit `(uint32_t)0` cast
+- Second build (old 1.2.0): fixes the compiler error of the first build (old 1.2.0) "sendFlood ambiguous" with the explicit `(uint32_t)0` cast
 
 ---
 
-## [2.03] — Off-Grid Recommended Settings (documentation only)
+## [1.1.1] — Off-Grid Recommended Settings (documentation only)
 
-*27 March 2026*
+*27 March 2026 · formerly V2.03*
 
 Recommended EU Off-Grid parameters: 869.4625 MHz (channel 1/2 of sub-band g1 at BW 125) / BW 125 kHz / SF 11 / CR 5 (4/5), max. 25 mW ERP, max. 10 % duty cycle, no LBT required. The 865–868 MHz band requires LBT and AFA, which MeshCore does not implement — it is not usable.
 
 ---
 
-## [2.02] — Off-Grid Menu on Tracking Page
+## [1.1.0] — Off-Grid Menu on Tracking Page
 
-*27 March 2026*
+*27 March 2026 · formerly V2.02*
 
 ### New features
 - **Outdoor settings menu** — long press on the TRACKING page opens a menu replacing the simple GPS-share toggle:
@@ -447,13 +462,13 @@ Recommended EU Off-Grid parameters: 869.4625 MHz (channel 1/2 of sub-band g1 at 
 - `MyMesh.h/.cpp`: `isOffGridActive()`, `toggleOffGrid()` (constants `OFFGRID_FREQ/BW/SF/CR`), applied with `radio_set_params()`
 - `ui-new/UITask.h/.cpp`: `OutdoorMenuScreen`, `outdoor_menu` member, `handleLongPress()` dispatch
 
-*Later changes: prefs moved to JSON in V6.0 (the binary migration still reads bytes 90–99); FieldMesh settings live in the `"fm"` object; `radio_set_params()` replaced by `radio_driver.setParams()`; the Off-Grid frequency is chosen automatically per region (`OffGrid.h`).*
+*Later changes: prefs moved to JSON in 2.0.0 (the binary migration still reads bytes 90–99); FieldMesh settings live in the `"fm"` object; `radio_set_params()` replaced by `radio_driver.setParams()`; the Off-Grid frequency is chosen automatically per region (`OffGrid.h`).*
 
 ---
 
-## [2.01] — Off-Grid Frequency Correction
+## [1.0.5] — Off-Grid Frequency Correction
 
-*27 March 2026*
+*27 March 2026 · formerly V2.01*
 
 ### Bug fixes
 `repeat_freq_ranges[]` in `MyMesh.cpp` — the upstream values were single points or outside the legal bands:
@@ -468,9 +483,9 @@ These ranges are still FieldMesh values today and are never replaced by upstream
 
 ---
 
-## [1.08] — Two Separate Timestamps
+## [1.0.4] — Two Separate Timestamps
 
-*27 March 2026 (approx.) — basis for V2*
+*27 March 2026 (approx.) — basis for the Off-Grid releases · formerly V1.08*
 
 ### Changes
 - `AdvertPath` struct gains `gps_timestamp` (updated only on GPS adverts) next to `recv_timestamp` (updated on every advert)
@@ -480,22 +495,22 @@ These ranges are still FieldMesh values today and are never replaced by upstream
 
 ---
 
-## [1.07] — RECENT Always, TRACKING GPS Only
+## [1.0.3] — RECENT Always, TRACKING GPS Only
 
-*26 March 2026 (approx.)*
+*26 March 2026 (approx.) · formerly V1.07*
 
 ### Changes
 - `recv_timestamp` is always updated on advert receive (node always appears on RECENT)
 - `has_gps` only set when the advert contains GPS coordinates (filter for the TRACKING page)
-- Remaining issue: both pages still shared `recv_timestamp` — solved in V1.08
+- Remaining issue: both pages still shared `recv_timestamp` — solved in 1.0.4
 
-V1.06 (failed): skipping the `advert_paths` update for adverts without GPS made nodes disappear from RECENT.
+Internal build V1.06 (failed): skipping the `advert_paths` update for adverts without GPS made nodes disappear from RECENT.
 
 ---
 
-## [1.05] — has_gps Flag
+## [1.0.2] — has_gps Flag
 
-*26 March 2026 (approx.)*
+*26 March 2026 (approx.) · formerly V1.05*
 
 ### Changes
 - Bit 4 (`ADV_LATLON_MASK = 0x10`) of the advert payload is stored in `contact.type` in `BaseChatMesh.cpp` (`populateContactFromAdvert()` and the update block: `type | (hasLatLon() ? 0x10 : 0)`)
@@ -503,35 +518,35 @@ V1.06 (failed): skipping the `advert_paths` update for adverts without GPS made 
 - TRACKING page only shows nodes with `has_gps = true`
 - Files changed: `BaseChatMesh.cpp`, `MyMesh.h`, `MyMesh.cpp`, `ui-new/UITask.cpp`
 
-V1.04 (failed): updating `recv_timestamp` only on GPS adverts did not work because `contact.gps_lat/lon` keeps the old value for known contacts.
+Internal build V1.04 (failed): updating `recv_timestamp` only on GPS adverts did not work because `contact.gps_lat/lon` keeps the old value for known contacts.
 
-*Superseded in V6.0: `contact.type` is no longer modified; the GPS flag of the current advert comes from `lastAdvertHasLatLon()` (`BaseChatMesh`). The masking fixes of V2.06 and V2.07 were removed with it.*
+*Superseded in 2.0.0: `contact.type` is no longer modified; the GPS flag of the current advert comes from `lastAdvertHasLatLon()` (`BaseChatMesh`). The masking fixes of 1.2.1 and 1.2.2 were removed with it.*
 
 ---
 
-## [1.03] — advert() GPS Validity Fix
+## [1.0.1] — advert() GPS Validity Fix
 
-*26 March 2026 (approx.)*
+*26 March 2026 (approx.) · formerly V1.03*
 
 ### Bug fixes
 - `advert()` sent GPS coordinates even when GPS was switched off, because `isValid()` without `isEnabled()` still returned the last fix state. A position is now only included when `loc->isEnabled() && loc->isValid()`
 
 ### Earlier steps
-- V1.01: the GPS page showed "fix" while GPS was off — fixed with `nmea->isEnabled() && nmea->isValid()` (sat / pos / alt show `---` otherwise). V1.01 also tried to advert stored coordinates; that part was reverted in V1.02
+- Internal build V1.01: the GPS page showed "fix" while GPS was off — fixed with `nmea->isEnabled() && nmea->isValid()` (sat / pos / alt show `---` otherwise). V1.01 also tried to advert stored coordinates; that part was reverted in V1.02
 
 *Today stricter: a position is only sent with a fix younger than 2 minutes (`GpsCycle::hasFreshFix()`).*
 
 ---
 
-## [1.00] — Initial Release
+## [1.0.0] — Initial Release
 
-*26 March 2026 (approx.) — MeshCore v1.14.1, ThinkNode M1*
+*26 March 2026 (approx.) — MeshCore v1.14.1, ThinkNode M1 · formerly V1.00*
 
 ### New features
 - **Auto-advert timer** — node advertises its position every 5 minutes when GPS sharing is enabled (`advert_loc_policy == ADVERT_LOC_SHARE`); zero-hop only in normal mode
-- **TRACKING page** — shows contacts that have sent a GPS position, with distance (Haversine) and colour coding (green < 5 min, yellow older); favourites only, max. 3 entries (GPS filter and timestamps refined in V1.05–V1.08)
+- **TRACKING page** — shows contacts that have sent a GPS position, with distance (Haversine) and colour coding (green < 5 min, yellow older); favourites only, max. 3 entries (GPS filter and timestamps refined in 1.0.2–1.0.4)
 - BLUETOOTH and SHUTDOWN pages removed from the home screen rotation
-- E-Ink fix: `-D AUTO_OFF_MILLIS=0` in both M1 companion environments — without it the display switched off after 15 seconds; GxEPD only redraws the panel when the content changes (*reverted in V4.03*)
+- E-Ink fix: `-D AUTO_OFF_MILLIS=0` in both M1 companion environments — without it the display switched off after 15 seconds; GxEPD only redraws the panel when the content changes (*reverted in 1.5.3*)
 
 ### Technical notes
 - `MyMesh.h`: `AUTO_ADVERT_INTERVAL_MS` (5 minutes), `AdvertPath` struct (pubkey prefix, path, name, `recv_timestamp`), `next_auto_advert` (0 = inactive)

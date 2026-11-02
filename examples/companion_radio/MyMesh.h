@@ -24,9 +24,9 @@
 
 #include "DataStore.h"
 #include "NodePrefs.h"
-#include "GpsCycle.h"   // FieldMesh v6.1
-#include "TrackScheduler.h"   // FieldMesh v6.1
-#include "FloodLog.h"   // FieldMesh v6.2 diagnostics (only with -D FM_FLOOD_LOG=1)
+#include "GpsCycle.h"   // FieldMesh v2.1
+#include "TrackScheduler.h"   // FieldMesh v2.1
+#include "FloodLog.h"   // FieldMesh v2.2 diagnostics (only with -D FM_FLOOD_LOG=1)
 
 #include <RTClib.h>
 #include <helpers/ArduinoHelpers.h>
@@ -302,8 +302,8 @@ private:
   // (list: UPSTREAM_SYNC.md). Keeps upstream syncs simple.
   bool _app_initialized = false;        // true after CMD_APP_START handshake completed
   unsigned long next_auto_advert = 0;   // millis() timestamp for next auto-advert (0=inactive)
-  GpsCycle _gps_cycle;             // FieldMesh v6.1: GPS duty cycle + fresh own position
-  TrackScheduler _track;           // FieldMesh v6.1: advert cadence while tracking
+  GpsCycle _gps_cycle;             // FieldMesh v2.1: GPS duty cycle + fresh own position
+  TrackScheduler _track;           // FieldMesh v2.1: advert cadence while tracking
   bool _tracking_active = false;
 
   // FieldMesh (#23): RTC jump detection — reference point (RTC seconds + millis) of the last check
@@ -330,12 +330,12 @@ private:
   void logTxFail(mesh::Packet* packet, int len) override;
 #endif
 
-  // v6.2 Off-Grid managed flooding: wait for a free channel instead of forcing after 4 s
+  // v2.2 Off-Grid managed flooding: wait for a free channel instead of forcing after 4 s
   uint32_t getCADFailMaxDuration() const override;
 
 public:
-  GpsCycle& gpsCycle() { return _gps_cycle; }   // FieldMesh v6.1 (UI: keep-awake, own position)
-  uint32_t getRelaySkipped() const { return _fm_relay_skipped; }   // FieldMesh v6.2: Off-Grid flooding counter
+  GpsCycle& gpsCycle() { return _gps_cycle; }   // FieldMesh v2.1 (UI: keep-awake, own position)
+  uint32_t getRelaySkipped() const { return _fm_relay_skipped; }   // FieldMesh v2.2: Off-Grid flooding counter
 
   // Auto-advert is active when GPS sharing is enabled
   bool isAutoAdvertEnabled() const {
@@ -351,7 +351,7 @@ public:
 
   // V3: SOS-Nachricht in den SOS-Channel senden
   bool sendSOS();
-  // v6.1: SOS channel = name contains "sos" (case-insensitive, e.g. "SOS", "#sos").
+  // v2.1: SOS channel = name contains "sos" (case-insensitive, e.g. "SOS", "#sos").
   // Used for sending and for the alarm: "!SOS" only raises the alarm in such a channel.
   static bool isSosChannel(const char* name);
 

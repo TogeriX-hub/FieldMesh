@@ -1,5 +1,5 @@
 #pragma once
-// FieldMesh Off-Grid managed flooding (v6.2), only used while Off-Grid / repeat is on.
+// FieldMesh Off-Grid managed flooding (v2.2), only used while Off-Grid / repeat is on.
 //
 // Timing and late window follow Meshtastic (firmware commit 332b5b0, src/mesh/RadioInterface.cpp:
 // computeSlotTimeMsec, getCWsize, getTxDelayMsecWeighted, getTxDelayMsecWeightedWorst):

@@ -1,6 +1,6 @@
 #pragma once
 
-// FieldMesh v6.1: GPS duty cycle (power saving), modelled on Meshtastic (src/gps/GPS.cpp,
+// FieldMesh v2.1: GPS duty cycle (power saving), modelled on Meshtastic (src/gps/GPS.cpp,
 // GPSUpdateScheduling.cpp) - see RECHERCHE_GPS_Power_M1.md and PLAN_v6.1.md.
 //
 // While GPS is enabled the receiver is not kept on all the time any more:
@@ -45,7 +45,7 @@
 //                              "gps" setting (Airoha RTC backup on T1000-E/X1, power off on
 //                              Heltec T1)
 // Boards that cannot switch their GPS off (no standby/enable pin, e.g. T-Beam with PMU,
-// T-Deck, Station G2/G3, XIAO C3) keep it running as in v6.0; the cycle then only tracks
+// T-Deck, Station G2/G3, XIAO C3) keep it running as in v2.0; the cycle then only tracks
 // fix freshness and reports a position about every 2 min.
 // Board files are not modified. Without provider or "gps" setting the cycle stays off.
 //
@@ -148,7 +148,7 @@ private:
     if (!enabled) {
       // GPS was switched off by the user/app/switch: their code already stopped the
       // hardware; the cycle only forgets its state.
-      // v6.2: a pending SOS resend survives until its window ends (M1: switch turned on
+      // v2.2: a pending SOS resend survives until its window ends (M1: switch turned on
       // after the SOS -> the first fix is still reported)
       _state = OFF;
       if (_sos_pending && (int32_t)(now - _sos_until) > 0) _sos_pending = false;
@@ -280,7 +280,7 @@ public:
     _sos_until = millis() + KEEP_AWAKE_SOS_MS;
   }
 
-  // v6.2: the radio moved to another network (Off-Grid toggle, new radio parameters) - a
+  // v2.2: the radio moved to another network (Off-Grid toggle, new radio parameters) - a
   // pending resend would reach people who never got the first SOS, so it is dropped
   void cancelSosResend() { _sos_pending = false; }
 

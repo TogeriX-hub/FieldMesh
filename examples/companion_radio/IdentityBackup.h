@@ -1,8 +1,8 @@
 #pragma once
 
-// FieldMesh v6.1: backup of identity and prefs on the secondary file system.
+// FieldMesh v2.1: backup of identity and prefs on the secondary file system.
 //
-// Background: on some V5.x -> V6.0 updates the internal file system (InternalFS) was wiped
+// Background: on some v1.x -> v2.0 updates (formerly V5.x -> V6.0) the internal file system (InternalFS) was wiped
 // completely - new identity, default settings - while contacts and channels on the secondary
 // file system survived (see RECHERCHE_V6_Upgrade_Identity_Reset.md). The cause is not known.
 // This keeps a copy of /_main.id and /prefs.json on the secondary file system
@@ -93,7 +93,7 @@ class IdentityBackup {
 
 public:
   // At boot, before identity and prefs are loaded: restore missing files, then refresh backups
-  // (also creates the first backup on devices updated from v6.0).
+  // (also creates the first backup on devices updated from v2.0).
   static void begin(FILESYSTEM* primary, FILESYSTEM* secondary) {
     if (primary == nullptr || secondary == nullptr) return;
 

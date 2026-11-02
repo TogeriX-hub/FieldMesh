@@ -27,7 +27,7 @@ body:
     attributes:
       label: FieldMesh version
       description: Shown on the splash screen or in the release file name.
-      placeholder: v6.1
+      placeholder: v2.1.0
     validations:
       required: true
 

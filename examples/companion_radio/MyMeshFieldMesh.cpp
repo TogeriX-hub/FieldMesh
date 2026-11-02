@@ -10,9 +10,9 @@
 #include <Arduino.h>
 #include <Mesh.h>
 #include "ChannelText.h"   // FieldMesh: sender name / SOS channel rules
-#include "OffGrid.h"       // FieldMesh v6.1: off-grid frequency follows the region of the normal frequency
-#include "FloodPolicy.h"   // FieldMesh v6.2: Off-Grid managed flooding
-#include "FloodLog.h"      // FieldMesh v6.2: flooding diagnostics (only with -D FM_FLOOD_LOG=1)
+#include "OffGrid.h"       // FieldMesh v2.1: off-grid frequency follows the region of the normal frequency
+#include "FloodPolicy.h"   // FieldMesh v2.2: Off-Grid managed flooding
+#include "FloodLog.h"      // FieldMesh v2.2: flooding diagnostics (only with -D FM_FLOOD_LOG=1)
 
 // Auto-advert interval: 5 minutes in milliseconds
 // To change, adjust the 5 and recompile
@@ -66,7 +66,7 @@ bool MyMesh::sendChannelMessage(uint8_t channel_idx, const char* text) {
 // ── Off-Grid / SOS ───────────────────────────────────────────────────────────
 
 // Off-grid mode: save normal parameters and switch to off-grid settings (or back)
-// FieldMesh v6.1: off-grid frequency follows the region of the normal frequency (OffGrid.h)
+// FieldMesh v2.1: off-grid frequency follows the region of the normal frequency (OffGrid.h)
 void MyMesh::toggleOffGrid() {
   if (!_prefs.isRepeatEn()) {
     // Off-Grid aktivieren: Normal-Parameter sichern
@@ -91,7 +91,7 @@ void MyMesh::toggleOffGrid() {
     }
     _prefs.setRepeatEn(false);
   }
-  fmOnNetworkChange();   // v6.2: no SOS resend / queued relay into the other network
+  fmOnNetworkChange();   // v2.2: no SOS resend / queued relay into the other network
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);  // V6: wrapper method (radio_set_params() removed upstream)
   savePrefs();
   advert();  // V4.07: RX restart via normal TX->RX cycle of the wrapper
@@ -112,7 +112,7 @@ bool MyMesh::sendSOS() {
 
     // Nachrichtentext zusammenbauen
     char text[80];
-    // FieldMesh v6.1: fresh fix (<= 2 min) from the GPS duty cycle
+    // FieldMesh v2.1: fresh fix (<= 2 min) from the GPS duty cycle
     bool has_pos = _gps_cycle.hasFreshFix();
     if (has_pos) {
       snprintf(text, sizeof(text), "!SOS %.4f,%.4f",
@@ -121,7 +121,7 @@ bool MyMesh::sendSOS() {
     } else {
       strncpy(text, "!SOS no GPS", sizeof(text));
     }
-    // FieldMesh v6.1: battery level, same scale as the battery icon of the UI
+    // FieldMesh v2.1: battery level, same scale as the battery icon of the UI
 #ifndef BATT_MIN_MILLIVOLTS
   #define BATT_MIN_MILLIVOLTS 3000
 #endif
@@ -140,7 +140,7 @@ bool MyMesh::sendSOS() {
     uint32_t ts = getRTCClock()->getCurrentTimeUnique();
     bool sent = sendGroupMessage(ts, ch.channel, _prefs.node_name, text, strlen(text));
     if (sent) {
-      // FieldMesh v6.2: SOS switches the GPS on and leaves it on (position also helps later
+      // FieldMesh v2.2: SOS switches the GPS on and leaves it on (position also helps later
       // telemetry requests). Tracking/GPS-Share stays as it is. ThinkNode M1: the hardware
       // switch keeps priority - the setting is stored, the GPS runs once the switch is on.
       if (!_prefs.gps_enabled && sensors.getSettingByKey("gps") != NULL) {
@@ -207,7 +207,7 @@ void MyMesh::fmNoteAdvertGps(AdvertPath* p) {
 mesh::Packet* MyMesh::fmCreateSelfAdvert() {
   bool send_gps = false;
   if (_prefs.advert_loc_policy != ADVERT_LOC_NONE) {
-    // FieldMesh v6.1: fresh fix (<= 2 min) from the GPS duty cycle
+    // FieldMesh v2.1: fresh fix (<= 2 min) from the GPS duty cycle
     send_gps = _gps_cycle.hasFreshFix();
   }
   if (send_gps) {
@@ -225,7 +225,7 @@ void MyMesh::fmSendSelfAdvert(mesh::Packet* pkt) {
   }
 }
 
-// ── Off-Grid managed flooding (v6.2, FloodPolicy.h) ──────────────────────────
+// ── Off-Grid managed flooding (v2.2, FloodPolicy.h) ──────────────────────────
 // Only while Off-Grid (repeat on); normal operation keeps the upstream behaviour.
 
 // A: wait up to 30 s for a free channel instead of transmitting over others after 4 s.
@@ -269,7 +269,7 @@ void MyMesh::fmFilterRelay(mesh::Packet* packet) {
 // network may be sent into the other one. Relays can wait up to ~22 s (+ busy channel) in
 // Off-Grid. Own queued packets (path 0) stay.
 void MyMesh::fmOnNetworkChange() {
-  _gps_cycle.cancelSosResend();   // v6.2: no SOS resend into the other network
+  _gps_cycle.cancelSosResend();   // v2.2: no SOS resend into the other network
   int n = fmFloodDropQueuedRelays(*_mgr);
   if (n > 0) MESH_DEBUG_PRINTLN("FieldMesh: network change, %d queued relays dropped", n);
   FM_FLOOD_LOG_EV(NET, NULL, n);
@@ -286,12 +286,12 @@ void MyMesh::logTxFail(mesh::Packet* packet, int len) { FM_FLOOD_LOG_EV(TXF, pac
 // ── Loop: GPS cycle, tracking, auto-advert, clock jump ───────────────────────
 
 void MyMesh::fmLoop() {
-  // FieldMesh v6.1: GPS duty cycle
+  // FieldMesh v2.1: GPS duty cycle
   uint8_t gps_ev = _gps_cycle.loop(sensors, _prefs);
   if (gps_ev & GpsCycle::EV_PREFS_CHANGED) savePrefs();
   if (gps_ev & GpsCycle::EV_SOS_RESEND) sendSOS();   // first SOS went out without position
 
-  // FieldMesh v6.1: tracking (GPS sharing + GPS running) -> movement / heartbeat cadence,
+  // FieldMesh v2.1: tracking (GPS sharing + GPS running) -> movement / heartbeat cadence,
   // otherwise the fixed auto-advert timer as before
   if (isAutoAdvertEnabled() && _gps_cycle.state() != GpsCycle::OFF) {
     if (!_tracking_active) { _track.reset(millis()); _tracking_active = true; }

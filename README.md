@@ -6,7 +6,7 @@
 
 Built on [MeshCore](https://github.com/meshcore-dev/MeshCore) ·  Based on MeshCore v1.18.0 ·  Download latest [release](../../releases/latest)
 
-> **Updating from V5.x?** Updating from V5.x to V6.x could reset the node identity (new public key) and settings on some devices. **Export your private key in the MeshCore app before updating.** From v6.1 on, FieldMesh keeps its own backup of the identity and settings (see [Identity backup](#identity-backup)).
+> **Updating from v1.x (formerly V5.x)?** Updating from v1.x to v2.x could reset the node identity (new public key) and settings on some devices. **Export your private key in the MeshCore app before updating.** From v2.1 on, FieldMesh keeps its own backup of the identity and settings (see [Identity backup](#identity-backup)).
 
 -----
 
@@ -36,7 +36,7 @@ More about my motivation is readable in my [blog post](https://www.tobiasguertle
 
 FieldMesh separates two things that stock MeshCore conflates: *when did I last hear from this node* and *when did this node last have a GPS fix*. The RECENT page shows all recently heard nodes. The TRACKING page shows only nodes that have sent a GPS position — with distance calculated via Haversine formula — color-coded green (< 5 min) or yellow (older). Only contacts marked as favourites in the companion app appear on the Tracking page (max. 3).
 
-**GPS duty cycle (v6.1).** While GPS is on, the receiver takes a fix every 2 minutes and sleeps in between — the same approach Meshtastic uses. The search time adapts to the sky the receiver can see (short indoors, longer under open sky), and the satellite systems the chip supports (GPS, GLONASS, Galileo, BeiDou) are all switched on. On the T1000-E this gave about 2–2½ days with GPS on in our tests (no exact current measurement). Devices whose GPS cannot be switched off keep it running as before.
+**GPS duty cycle (v2.1).** While GPS is on, the receiver takes a fix every 2 minutes and sleeps in between — the same approach Meshtastic uses. The search time adapts to the sky the receiver can see (short indoors, longer under open sky), and the satellite systems the chip supports (GPS, GLONASS, Galileo, BeiDou) are all switched on. On the T1000-E this gave about 2–2½ days with GPS on in our tests (no exact current measurement). Devices whose GPS cannot be switched off keep it running as before.
 
 **Tracking (GPS-Share on).** Your node sends its position when it matters instead of on a fixed timer:
 
@@ -57,7 +57,7 @@ MeshCore has a feature called **Client Repeat** where a node actively relays pac
 
 FieldMesh corrects the frequency ranges to legal values and adds a **one-press Off-Grid toggle**. It switches to a dedicated off-grid frequency and enables Client Repeat in one step, saving your normal parameters automatically so you can switch back without re-entering anything.
 
-**The region is picked automatically (v6.1)** from your normal frequency — one firmware file for all regions:
+**The region is picked automatically (v2.1)** from your normal frequency — one firmware file for all regions:
 
 | Your normal frequency | Off-Grid uses |
 |---|---|
@@ -78,9 +78,9 @@ Frequency ranges are set correctly for legal operation:
 
 > Off-Grid has no frequency for other regions (e.g. India, Japan, Korea). Do not use Off-Grid there.
 
-#### Smarter relaying in Off-Grid (v6.2)
+#### Smarter relaying in Off-Grid (v2.2)
 
-In Off-Grid every FieldMesh device relays. With many devices close together (festival, camp, ski area) that used to mean every packet was sent again by everyone at once — packets collided and the channel filled up. Since v6.2 FieldMesh uses the **managed flooding of Meshtastic**, a method proven in the field. Our simulations: 20 devices get about the delivery that 10 devices had before (adverts and messages ~92 % instead of ~65 %), with half the airtime.
+In Off-Grid every FieldMesh device relays. With many devices close together (festival, camp, ski area) that used to mean every packet was sent again by everyone at once — packets collided and the channel filled up. Since v2.2 FieldMesh uses the **managed flooding of Meshtastic**, a method proven in the field. Our simulations: 20 devices get about the delivery that 10 devices had before (adverts and messages ~92 % instead of ~65 %), with half the airtime.
 
 - **Wait for a free channel:** a device waits up to 30 s for a free channel instead of sending over others after 4 s.
 - **Far devices relay first:** the relay delay depends on how well the packet was heard. A device that hears the sender weakly (probably further away) relays early, devices close to the sender wait longer.
@@ -96,20 +96,20 @@ What you notice:
 - If you set an interference threshold (`int.thresh`) and there is constant noise, a device in Off-Grid sends only after 30 s instead of 4 s.
 - Counters (Off-Grid only): RADIO page of the ThinkNode M1 shows `Flood TX` and `Relay skip` (adverts not relayed because another device did), the Wio Tracker L1 shows `Skip` next to the TX power. Repeater: dashboard → Network → *Relays sent late*, CLI `get offgrid`.
 
-Normal operation (Off-Grid off) is unchanged. Devices with v6.1 or stock MeshCore in the same Off-Grid network keep working; they relay as before.
+Normal operation (Off-Grid off) is unchanged. Devices with v2.1 or stock MeshCore in the same Off-Grid network keep working; they relay as before.
 
 ### SOS System
 
-Long-press the button on the SOS page to open a two-step confirmation screen (accidental trigger protection). On devices without a display (T1000-E), click once, then press again and hold for 5 seconds (v6.2, see [Headless devices](#ui--usability)). FieldMesh looks for a channel whose name contains "sos" (case-insensitive) and sends your position and battery level:
+Long-press the button on the SOS page to open a two-step confirmation screen (accidental trigger protection). On devices without a display (T1000-E), click once, then press again and hold for 5 seconds (v2.2, see [Headless devices](#ui--usability)). FieldMesh looks for a channel whose name contains "sos" (case-insensitive) and sends your position and battery level:
 
 ```
 !SOS 48.7636,9.1621 bat78%
 !SOS no GPS bat78%
 ```
 
-The position is used if the last fix is at most 2 minutes old. Sending an SOS switches the GPS on if it was off, and it stays on afterwards (v6.2). For 10 minutes after sending, the GPS runs without pause; if the first SOS went out without a position, it is sent once more as soon as a fix is available. ThinkNode M1: if the hardware GPS switch is off, the display shows "GPS switch is off!" — turn it on within the 10 minutes and the SOS is still resent with position. Switching Off-Grid on or off (or changing the radio settings) drops a pending resend, so it never goes out into a network that did not get the first SOS.
+The position is used if the last fix is at most 2 minutes old. Sending an SOS switches the GPS on if it was off, and it stays on afterwards (v2.2). For 10 minutes after sending, the GPS runs without pause; if the first SOS went out without a position, it is sent once more as soon as a fix is available. ThinkNode M1: if the hardware GPS switch is off, the display shows "GPS switch is off!" — turn it on within the 10 minutes and the SOS is still resent with position. Switching Off-Grid on or off (or changing the radio settings) drops a pending resend, so it never goes out into a network that did not get the first SOS.
 
-On the receiving end: an `!SOS` message **in an SOS channel** (name contains "sos") triggers a buzzer alarm that overrides quiet mode and loops until manually acknowledged. The alert screen shows the sending node's name. Normal messages are suppressed while an SOS alert is active. `!SOS` in any other channel (e.g. Public) is shown as a normal message — no alarm (v6.1).
+On the receiving end: an `!SOS` message **in an SOS channel** (name contains "sos") triggers a buzzer alarm that overrides quiet mode and loops until manually acknowledged. The alert screen shows the sending node's name. Normal messages are suppressed while an SOS alert is active. `!SOS` in any other channel (e.g. Public) is shown as a normal message — no alarm (v2.1).
 
 ### Message History & Text Input
 
@@ -135,7 +135,7 @@ Message length is limited to 20 characters. This feature is not available on the
 
 ### Identity Backup
 
-Since v6.1 FieldMesh keeps a copy of the node identity (`/_main.id`) and settings (`/prefs.json`) in a second file system: the external QSPI flash on ThinkNode M1, Wio Tracker L1 and MeshTracker X1, a separate area of the internal flash on the T1000-E. If the main copy is lost (for example after an update), it is restored automatically on the next start.
+Since v2.1 FieldMesh keeps a copy of the node identity (`/_main.id`) and settings (`/prefs.json`) in a second file system: the external QSPI flash on ThinkNode M1, Wio Tracker L1 and MeshTracker X1, a separate area of the internal flash on the T1000-E. If the main copy is lost (for example after an update), it is restored automatically on the next start.
 
 A factory reset from the app or CLI also clears the backup — that is how you really start over. BLE pairings are not part of the backup.
 
@@ -195,14 +195,14 @@ Headless devices (no display, single button) support a focused set of features:
 | Button | Action |
 |---|---|
 | 1× | Acknowledge an SOS alarm |
-| 1× + hold 5 s | Send SOS (v6.2, see below) |
+| 1× + hold 5 s | Send SOS (v2.2, see below) |
 | 2× | Send an advert now |
 | 3× | Buzzer on/off |
-| 4× | GPS and tracking (GPS-Share) on/off together (v6.2, saved, survives a restart) |
+| 4× | GPS and tracking (GPS-Share) on/off together (v2.2, saved, survives a restart) |
 | 5× | Off-Grid on/off |
 | Long press | Power off (within the first 8 s after power-on: CLI rescue mode) |
 
-**Sending SOS (v6.2):** press once, then press again within half a second and **hold**. The buzzer beeps faster and faster and the LED blinks along. After 5 seconds the SOS is sent (one long tone). Release earlier to cancel (short descending tone) — nothing is sent. Three short low tones mean no SOS channel was found. A normal long press without a click before still powers off.
+**Sending SOS (v2.2):** press once, then press again within half a second and **hold**. The buzzer beeps faster and faster and the LED blinks along. After 5 seconds the SOS is sent (one long tone). Release earlier to cancel (short descending tone) — nothing is sent. Three short low tones mean no SOS channel was found. A normal long press without a click before still powers off.
 
 **4×** switches GPS and tracking together: if both are on, both go off; otherwise both go on. GPS without tracking can still be set in the MeshCore app.
 
@@ -218,7 +218,7 @@ All actions give forced buzzer feedback — even when the buzzer is muted:
 | Three short low tones | SOS not sent — no SOS channel |
 | Continuous siren | SOS alarm received — press once to acknowledge |
 
-**Status LED (T1000-E, v6.2):**
+**Status LED (T1000-E, v2.2):**
 
 | LED | Meaning |
 |---|---|
@@ -337,7 +337,7 @@ All MeshCore repeater commands work as usual. FieldMesh adds:
 
 | Command | What it does |
 |---|---|
-| `set offgrid on` / `off` · `get offgrid` | Off-Grid on/off (frequency from the normal frequency: EU 869.4625 / US 916.4625 MHz); normal settings are restored. `get offgrid` also shows the relays sent late (v6.2) |
+| `set offgrid on` / `off` · `get offgrid` | Off-Grid on/off (frequency from the normal frequency: EU 869.4625 / US 916.4625 MHz); normal settings are restored. `get offgrid` also shows the relays sent late (v2.2) |
 | `set roomserver <name>` | Board on with this name |
 | `set roomserver on` / `off` · `get roomserver` | Board on (last name, else the repeater name) / off |
 | `set room.pass <pw>` · `get room.pass` | Room password; `set room.pass` without a password = open. Logs everybody out |
@@ -382,7 +382,7 @@ A channel whose name contains "sos" is an SOS channel: `!SOS` messages there go 
 |**Other hardware**|RAK WiseMesh TAG and similar single-button headless devices — contributions welcome|
 |**Base firmware** |MeshCore v1.18.0                |
 
-FieldMesh has been developed and tested on the ThinkNode M1 (E-Ink, single button) and the Wio Tracker L1 (OLED, joystick). Headless devices (no display, single button) are supported since V5.1 — the Seeed T1000-E is the reference device for this class. The code is written to be portable — all hardware-specific pins are in `variant.h`, layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test it on another platform, please share your findings in [Discussions → Hardware](../../discussions/categories/hardware).
+FieldMesh has been developed and tested on the ThinkNode M1 (E-Ink, single button) and the Wio Tracker L1 (OLED, joystick). Headless devices (no display, single button) are supported since v1.8 — the Seeed T1000-E is the reference device for this class. The code is written to be portable — all hardware-specific pins are in `variant.h`, layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test it on another platform, please share your findings in [Discussions → Hardware](../../discussions/categories/hardware).
 
 -----
 
@@ -463,7 +463,7 @@ In normal mode, this is done with hop limit = 0 (local only). See [GPS Tracking 
 <details>
 <summary><strong>Why does my GPS show no fix for a moment?</strong></summary>
 
-Since v6.1 the GPS sleeps between fixes to save battery and wakes up shortly before the next one (every 2 minutes). Indoors it only searches briefly; under open sky it searches longer. Open the GPS or Tracking page to keep it awake while the display is on.
+Since v2.1 the GPS sleeps between fixes to save battery and wakes up shortly before the next one (every 2 minutes). Indoors it only searches briefly; under open sky it searches longer. Open the GPS or Tracking page to keep it awake while the display is on.
 
 </details>
 
@@ -580,7 +580,7 @@ When activated:
 - `!SOS` is sent in your SOS channel (name contains "sos")
 - your GPS position is included if the last fix is at most 2 minutes old, otherwise "no GPS"
 - your battery level is added
-- the GPS is switched on if it was off and stays on (v6.2)
+- the GPS is switched on if it was off and stays on (v2.2)
 - the GPS runs for 10 minutes and sends the position once more if the first SOS had none — unless you switch Off-Grid or change the radio settings in the meantime
 
 </details>

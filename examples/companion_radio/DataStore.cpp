@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include "DataStore.h"
-#include "IdentityBackup.h"   // FieldMesh v6.1
+#include "IdentityBackup.h"   // FieldMesh v2.1
 
 #if defined(EXTRAFS) || defined(QSPIFLASH)
   #define MAX_BLOBRECS 100
@@ -57,7 +57,7 @@ void DataStore::begin() {
   checkAdvBlobFile();
   #if defined(EXTRAFS) || defined(QSPIFLASH)
   migrateToSecondaryFS();
-  IdentityBackup::begin(_fs, _fsExtra);   // FieldMesh v6.1: restore/refresh identity + prefs backup
+  IdentityBackup::begin(_fs, _fsExtra);   // FieldMesh v2.1: restore/refresh identity + prefs backup
   #endif
 #else
   // init 'blob store' support
@@ -190,7 +190,7 @@ bool DataStore::loadMainIdentity(mesh::LocalIdentity &identity) {
 bool DataStore::saveMainIdentity(const mesh::LocalIdentity &identity) {
   bool ok = identity_store.save("_main", identity);
 #if (defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)) && (defined(EXTRAFS) || defined(QSPIFLASH))
-  if (ok) IdentityBackup::identitySaved(_fs, _fsExtra);   // FieldMesh v6.1
+  if (ok) IdentityBackup::identitySaved(_fs, _fsExtra);   // FieldMesh v2.1
 #endif
   return ok;
 }
@@ -264,7 +264,7 @@ bool DataStore::savePrefs(NodePrefs& _prefs) {
     bool success = _prefs.saveSerial(file);
     file.close();
 #if (defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)) && (defined(EXTRAFS) || defined(QSPIFLASH))
-    if (success) IdentityBackup::prefsSaved(_fs, _fsExtra);   // FieldMesh v6.1
+    if (success) IdentityBackup::prefsSaved(_fs, _fsExtra);   // FieldMesh v2.1
 #endif
     return success;
   }

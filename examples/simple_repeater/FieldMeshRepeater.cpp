@@ -120,7 +120,7 @@ void MyMesh::fmClockSaveLoop() {
   if (ok && fmFsCommit(_fs, FM_CLOCK_FILE)) _fm_clock_saved = now;
 }
 
-// ── Off-Grid managed flooding (v6.2, FloodPolicy.h) ──────────────────────────
+// ── Off-Grid managed flooding (v2.2, FloodPolicy.h) ──────────────────────────
 // Only while Off-Grid; normal operation keeps the upstream behaviour.
 // The box always relays (never cancels) but behaves like Meshtastic ROUTER_LATE: it starts with
 // the same SNR-weighted delay as the companions and, if another node relays first, moves its
