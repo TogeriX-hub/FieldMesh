@@ -193,6 +193,8 @@ FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh featu
 
 ## [4.04] — Wio Tracker L1 Support
 
+*30 March 2026*
+
 ### New features
 - Wio Tracker L1 (Seeed) added as second supported device (OLED display, joystick input)
 - All joystick-specific UI behaviour guarded by `#if UI_HAS_JOYSTICK`
@@ -200,172 +202,338 @@ FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh featu
 
 ---
 
+## [4.03] — Backlight & Display Logic Overhaul
+
+*30 March 2026*
+
+### Fixes
+- `-D AUTO_OFF_MILLIS=0` removed from the ThinkNode M1 `platformio.ini` (added in V1.00) — the display sleeps again after 15 seconds of inactivity
+- 5-minute backlight auto-off timer (V4.00) removed — no longer needed now that the display sleeps
+- Backlight follows the `_backlight_on` state on every wake-up (`checkDisplayOn()`), overriding the GxEPD driver
+
+### Changes
+- Backlight is decoupled from display wake events: incoming messages and adverts wake the display without touching the backlight
+- `refreshDisplay()` — wakes the display briefly when an advert arrives while the RECENT or TRACKING page is shown; also works while a phone is connected (no `hasConnection()` check)
+
+### Technical notes
+- `refreshDisplay()` and `isOnRecentOrTrackingPage()` added to `AbstractUITask` as virtual methods with empty defaults; called from `MyMesh::onDiscoveredContact()` (inside `#ifdef DISPLAY_CLASS`)
+- `_backlight_off_at` member removed from `UITask`
+- Files changed: `AbstractUITask.h`, `MyMesh.cpp`, `ui-new/UITask.h`, `ui-new/UITask.cpp`, `variants/thinknode_m1/platformio.ini`
+
+---
+
+## Versions before GitHub (V1.00 – V4.02)
+
+V1.00 to V4.02 were developed between 26 and 28 March 2026, before this repository existed, on **MeshCore v1.14.1**, for the **Elecrow ThinkNode M1** only. The first upload to GitHub (28 March 2026, commit `1093236`) already contains V4.02. The GitHub releases of these versions are documentation only (no firmware, no source); dates are approximate, reconstructed from the development notes.
+
+Version numbers not listed here were intermediate or failed attempts: V1.01/V1.02 (see V1.03), V1.04 and V1.06 (failed, replaced by V1.05 and V1.07), V3.02–V3.04 (bug-fix rounds between V3.01 and V3.05). During development the RX fix of V3.08 was briefly called "V4.07" — the code comment still says so.
+
+Several mechanisms of this period were replaced later. They are marked *Superseded* below so the old notes are not mistaken for the current design.
+
+---
+
 ## [4.02] — SOS Screen Improvements
 
+*28 March 2026 — first upload to GitHub*
+
+All V4.xx changes before V4.03 are display-only (`ui-new/UITask.cpp`, `ui-new/icons.h`): no logic or class structure changes. Layouts use `display.height()` / `display.width()`, never absolute pixels; large displays are detected at runtime with `display.height() >= 128` (M1), everything else uses the compact layout.
+
 ### Changes
-- New 48×48px advert icon (`advert_icon_large`) added to `icons.h` for large displays — original 32×32 icon unchanged
-- SOS homepage: larger icon on big displays, red "SOS" heading, redundant `showAlert` on page enter removed
-- `SOSSendScreen`: icon size adapts to display size, hint texts use relative Y positions
-- `SOSAlertScreen`: font size fallback for long node names (≥15 characters drops from size 2 to size 1)
+- New 48×48 px icon `advert_icon_large` in `icons.h` (288 bytes, 6 bytes × 48 rows), used only on large displays; the original 32×32 `advert_icon` is unchanged
+- **SOS home page:** on large displays "SOS" in size 3 (red) at Y=30, large icon at `display.height()/2 - 24`; small displays keep the 32×32 icon at Y=16. Hint "SOS: long press" at `display.height() - 13`. The redundant `showAlert` on page enter was removed
+- **`SOSSendScreen`:** icon vertically centred (`display.height()/2 - icon_size/2`), 48×48 on large and 32×32 on small displays; idle and confirmation hints relative to `display.height()`
+- **`SOSAlertScreen`:** on large displays icon at Y=16 below the title, node name centred at Y=72. Node names with 15 or more characters drop from size 2 to size 1 (size 2 fits about 16 characters on 200 px; 15 leaves room for wide letters such as M and W)
 
 ### Notes
-- XBM bitmaps for GxEPD must be bit-reversed per byte (GIMP exports MSB-first, GxEPD reads LSB-first)
+- XBM bitmaps for GxEPD must be bit-reversed per byte: GIMP exports MSB-first, GxEPD reads LSB-first. Conversion per byte: `int(format(byte, '08b')[::-1], 2)`
+- The splash screen in the uploaded code still shows "v3" — the V4.01 splash change was not part of the upload
+
+### ThinkNode M1 operation at V4.02
+Page order: FIRST → RECENT → TRACKING → RADIO → GPS → SOS (USB build without GPS: FIRST → RECENT → TRACKING → RADIO → SOS)
+
+| Lower button | Result |
+|---|---|
+| 1× click / 2× click | next / previous page |
+| 3× click | buzzer mute on/off |
+| Long press on RECENT | send advert now ("Advert sent!") |
+| Long press on TRACKING | open Outdoor settings menu |
+| Long press on SOS | open SOS send screen |
+| Long press on GPS | GPS on/off |
+| Long press in the first 8 s after boot | CLI rescue mode |
+
+| Upper button (backlight, since V4.00) | Result |
+|---|---|
+| Short press, backlight off | backlight on, 5-minute auto-off starts |
+| Short press, backlight on | backlight off |
+| Lower button while backlight on | auto-off timer back to 5 minutes |
+| 5 minutes without a button press | backlight off (*superseded in V4.03*) |
+
+Outdoor settings menu: click = next entry (cyclic), long press = execute. SOS send screen: long press = show confirmation, long press again = send and return home, short press = cancel. SOS alarm: long press = acknowledge, buzzer stops.
+
+TRACKING page symbols: `---` own GPS has no fix (`isEnabled() && isValid()`), `?` the node sent a GPS advert with 0/0 coordinates, `340m` / `1.2km` straight-line distance (Haversine). A node is missing when its last advert had no position. Favourites only, max. 3 entries; green = GPS advert younger than 5 minutes, yellow = older.
+
+`platformio.ini` differences on the M1: both companion environments (BLE and USB) have `AUTO_OFF_MILLIS=0`, `PIN_BUZZER=6` and NonBlockingRTTTL; only BLE has `ENV_INCLUDE_GPS=1` and `BLE_PIN_CODE=123456` (USB without GPS on purpose).
 
 ---
 
-## [4.01] — Version string and hint text cleanup
+## [4.01] — Version String and Hint Text Cleanup
+
+*28 March 2026 (approx.)*
 
 ### Changes
-- Splash screen version string updated to "v4"
-- All remaining hint texts aligned to `display.height() - 13` (a few had been missed in V4.00)
+- Splash screen version string changed from "v3" to "v4" (this change did not make it into the first GitHub upload)
+- All remaining hint texts moved to `display.height() - 13` (a few were still at `- 11` after V4.00)
 
 ---
 
-## [4.00] — UI foundation rework
+## [4.00] — UI Foundation Rework
+
+*28 March 2026 (approx.)*
 
 ### Changes
-- Splash screen redesigned: two visual groups (MeshCore info top, "FieldMesh" branding bottom), large-display only
-- All hint texts and status lines moved from hardcoded pixel values to `display.height() - 13`
-- Display size guards unified: `if (display.height() >= 128)` for large-display layouts throughout
+- **Splash screen** (large displays only): two groups — top: MeshCore logo (Y=4), version string (size 2, Y=22), build date (size 1, Y=42); intentional gap in the middle; bottom: "FieldMesh" in size 3 at `display.height() - 42` and the version string (size 2) at `display.height() - 20`. Small displays keep the compact upstream layout
+- **Hint texts** moved from hard-coded pixel values to `display.height() - 13` (−13 instead of −11 leaves room for descenders g, p, y):
+
+| Screen | Before | After |
+|---|---|---|
+| RECENT / TRACKING hint | 64 − 11 | `display.height() - 13` |
+| Outdoor menu footer, SOS alert hint | 57 | `display.height() - 13` |
+| SOS page hint | 54 | `display.height() - 13` |
+| SOS send screen hints | 54 / 57 | `display.height() - 13` / `- 24` |
+
+- Display size guards unified to `if (display.height() >= 128)`
+- **Backlight toggle on the upper button** (M1): short press switches the backlight, auto-off after 5 minutes, reset by the lower button (`_backlight_on`, `_backlight_off_at`, `_btn2_was_pressed` in `UITask.h`). *Auto-off superseded in V4.03*
 
 ---
 
-## [3.08] — RX restart fix after Off-Grid toggle
+## [3.08] — RX Restart Fix after Off-Grid Toggle
+
+*28 March 2026 (approx.; called "V4.07" in the code comment)*
 
 ### Bug fixes
-- After `toggleOffGrid()`, the receiver was deaf until the next transmitted packet — fixed by calling `advert()` at the end of `toggleOffGrid()`, which runs through the full RadioLibWrapper TX→RX cycle and correctly restores receiver state
+- After `toggleOffGrid()` the receiver stayed deaf until the next transmitted packet (empty RX log; manual workaround: send an advert)
+- Cause: `radio_set_params()` calls RadioLib directly and bypasses the RadioLibWrapper state (`STATE_RX/TX/IDLE`, and the RF switch on the T1000-E). Calling `radio.startReceive()` from `target.cpp` is not enough — the wrapper state stays wrong
+- Fix: `advert()` at the end of `toggleOffGrid()`. The normal TX cycle runs through the wrapper, which restarts receive afterwards and handles RF switch and AGC correctly. Side effect: the node announces itself when the mode changes. Applies to the M1 and the T1000-E branch
+
+This is the origin of the rule "never bypass RadioLibWrapper, never call `radio.startReceive()` directly". (`radio_set_params()` was later removed upstream; FieldMesh uses `radio_driver.setParams()` + `advert()`.)
 
 ---
 
-## [3.07] — Portability and cleanup
+## [3.07] — Portability and Cleanup
+
+*28 March 2026 (approx.)*
+
+Goal: make the code portable to other devices. No functional change on the ThinkNode M1.
 
 ### Changes (3.07a)
-- `PIN_BUTTON2` corrected to GPIO 39 in `variant.h` (was 11) — fix moved out of `UITask.cpp` where it did not belong
-- `DISP_BACKLIGHT` / `BACKLIGHT_BTN` conflict resolved with `#if defined(DISP_BACKLIGHT) && !defined(BACKLIGHT_BTN)` guard
-- All `PIN_BUTTON2` usages wrapped in `#ifdef PIN_BUTTON2`
+- `PIN_BUTTON2` corrected to GPIO 39 (P1.07, per Elecrow datasheet) in `variants/thinknode_m1/variant.h` (was 11) — the hack block at the top of `UITask.cpp` was removed
+- `DISP_BACKLIGHT` / `BACKLIGHT_BTN` conflict resolved: `#ifdef DISP_BACKLIGHT` → `#if defined(DISP_BACKLIGHT) && !defined(BACKLIGHT_BTN)` in `loop()`
+- All three uses of `PIN_BUTTON2` (and `_btn2_was_pressed` in `UITask.h`) wrapped in `#ifdef PIN_BUTTON2` — devices without a second button would not compile otherwise
+
+| Device / flags | Backlight toggle | Auto-off |
+|---|---|---|
+| ThinkNode M1 (`DISP_BACKLIGHT` + `PIN_BUTTON2`) | upper button (GPIO 39) | 5 minutes |
+| Device with `BACKLIGHT_BTN` (e.g. T-Echo) | upstream system | upstream system |
+| `DISP_BACKLIGHT` without `PIN_BUTTON2` | none | 5 minutes |
+| No `DISP_BACKLIGHT` | — | — |
 
 ### Changes (3.07b)
-- Alert texts standardised to English: "SOS sent!", "No SOS channel!", "Advert sent!"
+- Alert texts standardised to English: "SOS gesendet!" → "SOS sent!", "Kein SOS-Channel!" → "No SOS channel!", "Advert sent!"
 
 ### Changes (3.07c)
-- Long press on RECENT page triggers an immediate advert send with "Advert sent!" alert
-- `isOnRecentPage()` helper added to `HomeScreen`
-- `_next_refresh = 0` added in `handleLongPress()` RECENT branch so the alert appears immediately
+- Long press on the RECENT page sends an advert immediately (`advert()` picks zero-hop or flood from `client_repeat`) and shows "Advert sent!"; hint line "Advert: long press" on the page
+- `isOnRecentPage()` helper added to `HomeScreen` (like `isOnTrackingPage()`)
+- `_next_refresh = 0` in the RECENT branch of `handleLongPress()` — needed because `handleLongPress()` sets `c = 0` before the later `_next_refresh = 100` block; without it the alert appears only after 5 seconds
 
 ---
 
-## [3.05] — Timer reset fix + SOS node name display
+## [3.05] — Timer Reset Fix + SOS Node Name Display
+
+*27 March 2026 (approx.)*
 
 ### Bug fixes
-- Auto-advert timer was being reset to +5 minutes on every phone connect or GPS toggle, even if already running — now only starts the timer if it is not already active
-- SOS alert screen was showing the channel name instead of the sending node's name — fixed by extracting the node name from the message text (everything before the first `:`)
+- **Auto-advert timer:** it was reset to +5 minutes on every phone connect or GPS toggle, even when already running. Now (in `setGPSAdvertEnabled()` in `MyMesh.h` and `CMD_SET_OTHER_PARAMS` in `MyMesh.cpp`): off → on = immediate advert + timer starts; on → off = timer stops; already running = no reset, no duplicate advert (`if (next_auto_advert == 0)` check)
+- **SOS alert screen** showed the channel name ("#sos") instead of the sender: `SOSAlertScreen::setAlert()` now takes the node name from the message text (everything before the first `:`, trailing spaces trimmed, max. 31 characters), falling back to the channel name. *Later refined: sender = everything before `": "` (`fmExtractSenderName()` in `ChannelText.h`)*
+
+Files changed: `MyMesh.h`, `MyMesh.cpp`, `ui-new/UITask.cpp`
 
 ---
 
-## [3.01] — SOS system
+## [3.01] — SOS System
+
+*27 March 2026*
 
 ### New features
-- **SOS send**: long press on SOS page opens a two-step confirmation screen; sends `!SOS lat,lon` or `!SOS no GPS` to the first channel whose name contains "sos" (case-insensitive)
-- **SOS receive**: incoming `!SOS` messages trigger a dedicated alert screen with the sender's node name and a buzzer alarm that overrides quiet mode and loops until manually acknowledged
-- Normal incoming messages are suppressed while the SOS alert screen is active
-- `triggerSOS()` compatibility stub added to `AbstractUITask.h`
-- Page order after V3: FIRST → RECENT → TRACKING → RADIO → GPS → SOS
+- **SOS send**: long press on the SOS page opens a two-step confirmation screen; `sendSOS()` sends `!SOS lat,lon` (4 decimals) or `!SOS no GPS` to the first channel whose name contains "sos" (case-insensitive)
+- **SOS receive**: `onChannelMessageRecv()` checks for `!SOS` before the normal `newMsg()` and calls `triggerSOS()` instead; a dedicated alert screen shows the sender and a siren (`siren:d=8,o=5,b=100:d,e,d,e,d,e,d,e`) loops until acknowledged
+- Page order after V3: FIRST → RECENT → TRACKING → RADIO → GPS → SOS (ADVERT page removed)
+
+| Situation | Behaviour |
+|---|---|
+| No channel with "sos" in its name | alert "No SOS channel!", no crash |
+| `!SOS` received, phone connected | display turns on anyway, alarm shown |
+| `!SOS` received, buzzer muted | buzzer switched on, stays on after acknowledging |
+| Normal message during alarm | ignored, the SOS screen has priority |
+| Siren tune ends | `poll()` sees `isPlaying() == false` and restarts it |
 
 ### Notes
-- `strstr()` used instead of `strncmp()` for SOS detection because MeshCore prepends the node name to channel message text
+- `strstr()` instead of `strncmp()` because MeshCore prepends the node name ("NodeName: !SOS lat,lon")
+- The siren runs via `triggerSOS()` / `playSOSAlarm()`, not `notify()`, so it can override quiet mode. Other tones unchanged from upstream: direct message `MsgRcv3`, channel message `kerplop`, menu action `ack`
+- `triggerSOS()` added to `AbstractUITask.h` as a virtual method with an empty default (keeps `ui-orig` compiling)
+- Files changed: `AbstractUITask.h`, `MyMesh.h`, `MyMesh.cpp`, `ui-new/UITask.h`, `ui-new/UITask.cpp`
 
 ---
 
-## [2.07] — contact.type serial fix
+## [2.07] — contact.type Serial Fix
+
+*27 March 2026*
 
 ### Bug fixes
-- `writeContactRespFrame()` was sending `contact.type` with bit 4 set to the companion app — app received `type=0x11` instead of `0x01`, breaking contact recognition, messaging, and telemetry
-- Fix: mask bit 4 in both `writeContactRespFrame()` (outgoing) and `updateContactFromFrame()` (incoming)
+- Main cause of the contact problems: `writeContactRespFrame()` sent `contact.type` with bit 4 set to the companion app — the app received `type=0x11` instead of `0x01` and did not recognise the contact (no messaging, no telemetry)
+- Fix in `MyMesh.cpp`: mask bit 4 in `writeContactRespFrame()` (outgoing, `contact.type & 0x0F`) and in `updateContactFromFrame()` (incoming, bit 4 from the app is not taken over)
+
+*Superseded in V6.0: the bit-4 approach was removed completely (see V1.05).*
 
 ---
 
-## [2.06] — contact.type persistence fix
+## [2.06] — contact.type Persistence Fix
+
+*27 March 2026*
 
 ### Bug fixes
-- `saveContacts()` was writing `contact.type` with bit 4 set to flash — fixed by masking before write: `clean_type = c.type & 0x0F`
+- `saveContacts()` in `DataStore.cpp` wrote `contact.type` with bit 4 set to flash — now masked before writing (`clean_type = c.type & 0x0F`)
+
+*Superseded in V6.0 (see V1.05).*
 
 ---
 
-## [2.04 / 2.05] — Flood advert in Off-Grid mode
+## [2.04 / 2.05] — Flood Advert in Off-Grid Mode
+
+*27 March 2026*
 
 ### Changes
-- In Off-Grid mode (`client_repeat=1`), `advert()` now sends a flood packet instead of zero-hop
+- In Off-Grid mode (`client_repeat=1`), `advert()` sends a flood packet (`sendFlood(pkt, (uint32_t)0, _prefs.path_hash_mode + 1)`) instead of zero-hop, so adverts travel through the group
 - `allowPacketForward()` returns `true` when `client_repeat != 0`
-- V2.05: compiler ambiguity in `sendFlood()` call fixed with explicit `(uint32_t)0` cast
+- V2.05: fixes the V2.04 compiler error "sendFlood ambiguous" with the explicit `(uint32_t)0` cast
 
 ---
 
-## [2.03] — Off-Grid recommended settings (documentation only)
+## [2.03] — Off-Grid Recommended Settings (documentation only)
 
-Recommended EU Off-Grid parameters: 869.4625 MHz / BW 125 kHz / SF 11 / CR 5 — Sub-Band g1, 10% duty cycle, no LBT required. Note: the 865–868 MHz band requires LBT and is not usable.
+*27 March 2026*
+
+Recommended EU Off-Grid parameters: 869.4625 MHz (channel 1/2 of sub-band g1 at BW 125) / BW 125 kHz / SF 11 / CR 5 (4/5), max. 25 mW ERP, max. 10 % duty cycle, no LBT required. The 865–868 MHz band requires LBT and AFA, which MeshCore does not implement — it is not usable.
 
 ---
 
-## [2.02] — Off-Grid menu on tracking page
+## [2.02] — Off-Grid Menu on Tracking Page
+
+*27 March 2026*
 
 ### New features
-- **Outdoor settings menu** — long press on TRACKING page opens a menu with GPS-Share toggle, Off-Grid toggle, and Back
-- Off-Grid mode switches to 869.4625 MHz / BW125 / SF11 / CR5 and enables client repeat in one step
-- Normal radio parameters saved automatically to flash before switching; restored on Off-Grid disable
+- **Outdoor settings menu** — long press on the TRACKING page opens a menu replacing the simple GPS-share toggle:
+
+| Entry | Function |
+|---|---|
+| GPS-Share [ON]/[OFF] | auto-advert with GPS every 5 minutes |
+| Off-Grid [ON]/[OFF] | switch to 869.4625 MHz / BW 125 / SF 11 / CR 5 and enable client repeat |
+| Back | close the menu |
+
+- Normal radio parameters are saved before switching and restored when Off-Grid is turned off; the parameters apply immediately without a reboot. If no normal parameters were saved yet (`normal_freq == 0`), only repeat is switched off
 
 ### Files changed
-- `NodePrefs.h`: four new fields (`normal_freq`, `normal_bw`, `normal_sf`, `normal_cr`)
-- `DataStore.cpp`: save/load new fields at bytes 90–99
-- `MyMesh.h/.cpp`: `isOffGridActive()`, `toggleOffGrid()`
-- `UITask.h/.cpp`: `OutdoorMenuScreen`, `outdoor_menu` member, `handleLongPress()` dispatch
+- `NodePrefs.h`: four fields at the end of the struct (`float normal_freq`, `float normal_bw`, `uint8_t normal_sf`, `uint8_t normal_cr`)
+- `DataStore.cpp`: saved/loaded at bytes 90–99 of the binary prefs file, after `rx_boosted_gain` (byte 89), read backwards-compatibly
+- `MyMesh.h/.cpp`: `isOffGridActive()`, `toggleOffGrid()` (constants `OFFGRID_FREQ/BW/SF/CR`), applied with `radio_set_params()`
+- `ui-new/UITask.h/.cpp`: `OutdoorMenuScreen`, `outdoor_menu` member, `handleLongPress()` dispatch
+
+*Later changes: prefs moved to JSON in V6.0 (the binary migration still reads bytes 90–99); FieldMesh settings live in the `"fm"` object; `radio_set_params()` replaced by `radio_driver.setParams()`; the Off-Grid frequency is chosen automatically per region (`OffGrid.h`).*
 
 ---
 
-## [2.01] — Off-Grid frequency correction
+## [2.01] — Off-Grid Frequency Correction
+
+*27 March 2026*
 
 ### Bug fixes
-- EU 433 MHz default was a single illegal point frequency → corrected to 433.050–434.790 MHz
-- EU 869 MHz default was in a 0.1% duty cycle sub-band (practically unusable) → corrected to 869.400–869.650 MHz (Sub-Band g1, 10% DC)
-- US/AU 915 MHz default was outside the legal band → corrected to 915.000–928.000 MHz
+`repeat_freq_ranges[]` in `MyMesh.cpp` — the upstream values were single points or outside the legal bands:
+
+| Band | Before | After |
+|---|---|---|
+| EU 433 MHz | 433.000 MHz (illegal point frequency) | 433.050 – 434.790 MHz |
+| EU 869 MHz | 869.000 MHz (0.1 % duty cycle, practically unusable) | 869.400 – 869.650 MHz (sub-band g1, 10 % DC, no LBT) |
+| US/AU 915 MHz | 918.000 MHz (outside the range) | 915.000 – 928.000 MHz |
+
+These ranges are still FieldMesh values today and are never replaced by upstream values.
 
 ---
 
-## [1.08] — Two separate timestamps
+## [1.08] — Two Separate Timestamps
+
+*27 March 2026 (approx.) — basis for V2*
 
 ### Changes
-- `AdvertPath` struct gains `gps_timestamp` (updated only on GPS adverts) alongside `recv_timestamp` (updated on every advert)
-- RECENT page uses `recv_timestamp`; TRACKING page uses `gps_timestamp` for colour coding
+- `AdvertPath` struct gains `gps_timestamp` (updated only on GPS adverts) next to `recv_timestamp` (updated on every advert)
+- RECENT page uses `recv_timestamp`; TRACKING page uses `gps_timestamp` for the colour coding
+- TRACKING page inserted into the `HomePage` enum, ADVERT page removed; Haversine distance (`calcDistance()`) added at the top of `UITask.cpp`
+- Files changed: `MyMesh.h`, `MyMesh.cpp`, `ui-new/UITask.cpp`
 
 ---
 
-## [1.07] — RECENT always, TRACKING GPS only
+## [1.07] — RECENT Always, TRACKING GPS Only
+
+*26 March 2026 (approx.)*
 
 ### Changes
-- `recv_timestamp` now always updated on advert receive (node always appears on RECENT)
-- `has_gps` only set when the advert contains GPS coordinates (filter for TRACKING page)
+- `recv_timestamp` is always updated on advert receive (node always appears on RECENT)
+- `has_gps` only set when the advert contains GPS coordinates (filter for the TRACKING page)
+- Remaining issue: both pages still shared `recv_timestamp` — solved in V1.08
+
+V1.06 (failed): skipping the `advert_paths` update for adverts without GPS made nodes disappear from RECENT.
 
 ---
 
-## [1.05] — has_gps flag
+## [1.05] — has_gps Flag
+
+*26 March 2026 (approx.)*
 
 ### Changes
-- Bit 4 (`ADV_LATLON_MASK=0x10`) from the advert payload is stored in `contact.type` in `BaseChatMesh.cpp`
-- `AdvertPath` gains `has_gps` field — set when at least one GPS advert has been received from that node
-- TRACKING page now filters correctly: only nodes with `has_gps=true` are shown
+- Bit 4 (`ADV_LATLON_MASK = 0x10`) of the advert payload is stored in `contact.type` in `BaseChatMesh.cpp` (`populateContactFromAdvert()` and the update block: `type | (hasLatLon() ? 0x10 : 0)`)
+- `AdvertPath` gains `has_gps` — set when at least one GPS advert was received from that node
+- TRACKING page only shows nodes with `has_gps = true`
+- Files changed: `BaseChatMesh.cpp`, `MyMesh.h`, `MyMesh.cpp`, `ui-new/UITask.cpp`
+
+V1.04 (failed): updating `recv_timestamp` only on GPS adverts did not work because `contact.gps_lat/lon` keeps the old value for known contacts.
+
+*Superseded in V6.0: `contact.type` is no longer modified; the GPS flag of the current advert comes from `lastAdvertHasLatLon()` (`BaseChatMesh`). The masking fixes of V2.06 and V2.07 were removed with it.*
 
 ---
 
-## [1.03] — advert() GPS validity fix
+## [1.03] — advert() GPS Validity Fix
+
+*26 March 2026 (approx.)*
 
 ### Bug fixes
-- `advert()` was sending GPS coordinates even when GPS was powered off, because `isValid()` without `isEnabled()` still returned the last known fix state
+- `advert()` sent GPS coordinates even when GPS was switched off, because `isValid()` without `isEnabled()` still returned the last fix state. A position is now only included when `loc->isEnabled() && loc->isValid()`
+
+### Earlier steps
+- V1.01: the GPS page showed "fix" while GPS was off — fixed with `nmea->isEnabled() && nmea->isValid()` (sat / pos / alt show `---` otherwise). V1.01 also tried to advert stored coordinates; that part was reverted in V1.02
+
+*Today stricter: a position is only sent with a fix younger than 2 minutes (`GpsCycle::hasFreshFix()`).*
 
 ---
 
-## [1.00] — Initial release
+## [1.00] — Initial Release
+
+*26 March 2026 (approx.) — MeshCore v1.14.1, ThinkNode M1*
 
 ### New features
-- **Auto-advert timer** — node advertises its position every 5 minutes when GPS sharing is enabled; zero-hop only in normal mode
-- **TRACKING page** — shows contacts that have sent a GPS position, with distance (Haversine) and colour coding (green < 5 min, yellow older); favourites only, max. 3 entries
-- BLUETOOTH and SHUTDOWN pages removed from home screen rotation
+- **Auto-advert timer** — node advertises its position every 5 minutes when GPS sharing is enabled (`advert_loc_policy == ADVERT_LOC_SHARE`); zero-hop only in normal mode
+- **TRACKING page** — shows contacts that have sent a GPS position, with distance (Haversine) and colour coding (green < 5 min, yellow older); favourites only, max. 3 entries (GPS filter and timestamps refined in V1.05–V1.08)
+- BLUETOOTH and SHUTDOWN pages removed from the home screen rotation
+- E-Ink fix: `-D AUTO_OFF_MILLIS=0` in both M1 companion environments — without it the display switched off after 15 seconds; GxEPD only redraws the panel when the content changes (*reverted in V4.03*)
 
+### Technical notes
+- `MyMesh.h`: `AUTO_ADVERT_INTERVAL_MS` (5 minutes), `AdvertPath` struct (pubkey prefix, path, name, `recv_timestamp`), `next_auto_advert` (0 = inactive)
+- `MyMesh.cpp`: timer initialised in the constructor, started in `begin()`, checked in `loop()` before the `dirty_contacts_expiry` block
+- Files changed: `MyMesh.h`, `MyMesh.cpp`, `ui-new/UITask.cpp`, `variants/thinknode_m1/platformio.ini`
