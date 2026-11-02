@@ -3,6 +3,16 @@
 All notable changes to FieldMesh are documented here.
 For how to use the features, see the [README](README.md).
 
+## Versioning
+
+From V6.2 on, FieldMesh versions follow **MAJOR.MINOR.PATCH**:
+
+- **Major** (e.g. V7.0) — a new MeshCore base that changes how the firmware behaves, or anything you notice when updating (settings migrated, re-pairing, new install steps). V6.0 is an example.
+- **Minor** (e.g. V6.2) — new features. V6.2 is the same as V6.2.0.
+- **Patch** (e.g. V6.2.1) — bug fixes only, no new features.
+
+Note: the old tag `v5.09` is an early V5 build and comes before `v5.1`.
+
 ---
 
 ## [V6.1] - GPS Duty Cycle, Smarter Tracking & FieldMesh Repeater
