@@ -1,5 +1,14 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Question or help with setup
+    url: https://github.com/TogeriX-hub/FieldMesh/discussions/categories/q-a
+    about: Flashing, settings, how something works - ask in Discussions (Q&A).
+  - name: Feature idea
+    url: https://github.com/TogeriX-hub/FieldMesh/discussions/new?category=ideas
+    about: Ideas for the trackers or the FieldMesh Repeater go to Discussions (Ideas).
+  - name: Hardware report or question
+    url: https://github.com/TogeriX-hub/FieldMesh/discussions/new?category=hardware
+    about: Tried FieldMesh on a device, or want to know if a device could work? Discussions (Hardware).
   - name: Problem with stock MeshCore
     url: https://github.com/meshcore-dev/MeshCore/issues
     about: Issues that also happen without FieldMesh belong to the MeshCore project.

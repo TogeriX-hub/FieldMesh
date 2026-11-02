@@ -1,7 +1,10 @@
-name: Feature idea
-description: An idea that fits the outdoor / off-grid use case.
-labels: ["enhancement"]
+title: "[Idea] "
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Ideas for the trackers and for the FieldMesh Repeater are both welcome. Tell us the situation first - it helps more than a finished solution.
+
   - type: textarea
     id: situation
     attributes:

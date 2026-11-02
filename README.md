@@ -26,7 +26,7 @@ The goal is a node you can put in your backpack, forget about, and trust that it
 
 More about my motivation is readable in my [blog post](https://www.tobiasguertler.de/blog/en/fieldmesh).
 
-**Contents:** [Features](#features) · [UI & Usability](#ui--usability) · [FieldMesh Repeater (Station G2)](#fieldmesh-repeater-station-g2) · [Hardware](#hardware) · [Building](#building) · [Limitations](#limitations--known-issues) · [FAQ](#faq)
+**Contents:** [Features](#features) · [UI & Usability](#ui--usability) · [FieldMesh Repeater (Station G2)](#fieldmesh-repeater-station-g2) · [Hardware](#hardware) · [Building](#building) · [Limitations](#limitations--known-issues) · [FAQ](#faq) · [Discussions](../../discussions)
 
 -----
 
@@ -382,7 +382,7 @@ A channel whose name contains "sos" is an SOS channel: `!SOS` messages there go 
 |**Other hardware**|RAK WiseMesh TAG and similar single-button headless devices — contributions welcome|
 |**Base firmware** |MeshCore v1.18.0                |
 
-FieldMesh has been developed and tested on the ThinkNode M1 (E-Ink, single button) and the Wio Tracker L1 (OLED, joystick). Headless devices (no display, single button) are supported since V5.1 — the Seeed T1000-E is the reference device for this class. The code is written to be portable — all hardware-specific pins are in `variant.h`, layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test it on another platform, please open an issue with your findings.
+FieldMesh has been developed and tested on the ThinkNode M1 (E-Ink, single button) and the Wio Tracker L1 (OLED, joystick). Headless devices (no display, single button) are supported since V5.1 — the Seeed T1000-E is the reference device for this class. The code is written to be portable — all hardware-specific pins are in `variant.h`, layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test it on another platform, please share your findings in [Discussions → Hardware](../../discussions/categories/hardware).
 
 -----
 
@@ -675,14 +675,15 @@ The box probably runs from its second app slot after an update from the dashboar
 
 ## Contributing
 
-This is a personal project that grew out of wanting a more field-ready node. If you:
+This is a personal project that grew out of wanting a more field-ready node. Feedback of any kind is welcome:
 
-- test it on other hardware and want to share results
-- find a bug
-- have a feature idea that fits the outdoor/off-grid use case
-- want to adapt the Off-Grid defaults for another region
+- **Questions and help with setup** → [Discussions → Q&A](../../discussions/categories/q-a)
+- **Tested it on other hardware**, or want to know if a device could work → [Discussions → Hardware](../../discussions/categories/hardware)
+- **Feature ideas** for the trackers or the repeater → [Discussions → Ideas](../../discussions/categories/ideas)
+- **Found a bug** → [open an issue](../../issues/new/choose)
+- **Code**, e.g. Off-Grid defaults for another region → pull request
 
-…feel free to open an issue or pull request. The more platforms this works on, the better.
+The more platforms this works on, the better.
 
 -----
 
