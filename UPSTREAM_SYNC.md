@@ -39,7 +39,7 @@ git diff <upstream-tag> HEAD --stat -- src variants examples platformio.ini
 `ChannelText.h`, `IdentityBackup.h`, `GpsLog.h`, `FloodPolicy.h`, `FloodLog.h` ·
 `examples/simple_repeater/`: `FieldMesh*.cpp`, `FieldMesh*.h` ·
 `variants/station_g2/partitions_fieldmesh.csv` · `test/test_fieldmesh_*` ·
-`.github/workflows/fieldmesh-*.yml` · `.github/ISSUE_TEMPLATE/` · `README.md`, `RELEASE.md`,
+`.github/workflows/fieldmesh-*.yml` · `.github/ISSUE_TEMPLATE/` · `docs/FieldMesh/` (images, web flasher) · `README.md`, `RELEASE.md`,
 `UPSTREAM_SYNC.md`.
 
 If upstream renames or changes an API these files use, the build check shows it.
