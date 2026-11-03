@@ -858,7 +858,7 @@ Flash one of the Ethernet-enabled firmware variants:
 
 ## 8. FieldMesh Fork — FAQ
 
-> Questions specific to [FieldMesh](https://github.com/TogeriX-hub/FieldMesh), a MeshCore fork optimized for outdoor and off-grid use.
+> Questions specific to [FieldMesh](https://github.com/fieldmesh-radio/FieldMesh), a MeshCore fork optimized for outdoor and off-grid use.
 
 <details>
 <summary><strong>Why do I not see some nodes in the TRACKING view?</strong></summary>
