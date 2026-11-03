@@ -1,4 +1,4 @@
-# FieldMesh: web flasher on GitHub Pages (https://togerix-hub.github.io/FieldMesh/).
+# FieldMesh: web flasher on GitHub Pages (https://fieldmesh-radio.github.io/FieldMesh/).
 # Runs when a release is published (not for pre-releases) or by hand with a release tag.
 # Puts the release files of the devices in docs/FieldMesh/flasher/devices.json on the page.
 # Needs Settings -> Pages -> Source: "GitHub Actions".

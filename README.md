@@ -10,8 +10,8 @@
 <p align="center"><img src="docs/FieldMesh/images/hero_mountain.jpg" width="100%"></p>
 
 <p align="center">
-  <a href="https://togerix-hub.github.io/FieldMesh/"><img src="https://img.shields.io/badge/WEB%20FLASHER-INSTALL-F2B544?style=for-the-badge&labelColor=0F1412" alt="Web Flasher: install"></a>
-  <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/TogeriX-hub/FieldMesh?style=for-the-badge&label=RELEASE&color=F2B544&labelColor=0F1412" alt="Latest release"></a>
+  <a href="https://fieldmesh-radio.github.io/FieldMesh/"><img src="https://img.shields.io/badge/WEB%20FLASHER-INSTALL-F2B544?style=for-the-badge&labelColor=0F1412" alt="Web Flasher: install"></a>
+  <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/fieldmesh-radio/FieldMesh?style=for-the-badge&label=RELEASE&color=F2B544&labelColor=0F1412" alt="Latest release"></a>
   <a href="https://github.com/meshcore-dev/MeshCore"><img src="https://img.shields.io/badge/MESHCORE-v1.18.0-F2B544?style=for-the-badge&labelColor=0F1412" alt="Based on MeshCore v1.18.0"></a>
 </p>
 
@@ -37,7 +37,7 @@ More about my motivation is readable in my [blog post](https://www.tobiasguertle
 
 ## Install
 
-**Easiest: [FieldMesh Web Flasher](https://togerix-hub.github.io/FieldMesh/)** — pick your device, click Flash. Works in Chrome or Edge on a computer. Settings, contacts and identity stay on the device.
+**Easiest: [FieldMesh Web Flasher](https://fieldmesh-radio.github.io/FieldMesh/)** — pick your device, click Flash. Works in Chrome or Edge on a computer. Settings, contacts and identity stay on the device.
 
 Manual install: download the file for your device from the [latest release](../../releases/latest) — `.zip` for the ThinkNode M1, Wio Tracker L1 and T1000-E (MeshCore web flasher → custom firmware), `_full.bin` for the Station G2 (esptool-js, address `0x0`).
 

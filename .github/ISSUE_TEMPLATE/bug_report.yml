@@ -7,7 +7,7 @@ body:
       value: |
         Thanks for taking the time! The questions below are the ones that are needed to reproduce most problems.
         If the same happens with stock MeshCore, please report it to [MeshCore](https://github.com/meshcore-dev/MeshCore/issues) instead.
-        Not sure if it is a bug, or need help with setup? Ask in [Discussions (Q&A)](https://github.com/TogeriX-hub/FieldMesh/discussions/categories/q-a) first.
+        Not sure if it is a bug, or need help with setup? Ask in [Discussions (Q&A)](https://github.com/fieldmesh-radio/FieldMesh/discussions/categories/q-a) first.
 
   - type: dropdown
     id: device
