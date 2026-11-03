@@ -1,9 +1,9 @@
-<h1 align="center">
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/FieldMesh/brand/logo-dark.svg">
     <img src="docs/FieldMesh/brand/logo-light.svg" alt="FieldMesh" width="440">
   </picture>
-</h1>
+</p>
 
 <p align="center"><b>A MeshCore firmware fork optimized for outdoor use — festivals, hiking, off-grid events, and situations where you need your radio network to do more than stock MeshCore offers.</b></p>
 
@@ -16,8 +16,6 @@
 </p>
 
 > **Updating from v1.x (formerly V5.x)?** Updating from v1.x to v2.x could reset the node identity (new public key) and settings on some devices. **Export your private key in the MeshCore app before updating.** From v2.1 on, FieldMesh keeps its own backup of the identity and settings (see [Identity backup](#identity-backup)).
-
------
 
 ## Why FieldMesh?
 
@@ -37,15 +35,11 @@ More about my motivation is readable in my [blog post](https://www.tobiasguertle
 
 **Contents:** [Install](#install) · [Features](#features) · [UI & Usability](#ui--usability) · [FieldMesh Repeater (Station G2)](#fieldmesh-repeater-station-g2) · [Hardware](#hardware) · [Building](#building) · [Limitations](#limitations--known-issues) · [FAQ](#faq) · [Discussions](../../discussions)
 
------
-
 ## Install
 
 **Easiest: [FieldMesh Web Flasher](https://togerix-hub.github.io/FieldMesh/)** — pick your device, click Flash. Works in Chrome or Edge on a computer. Settings, contacts and identity stay on the device.
 
 Manual install: download the file for your device from the [latest release](../../releases/latest) — `.zip` for the ThinkNode M1, Wio Tracker L1 and T1000-E (MeshCore web flasher → custom firmware), `_full.bin` for the Station G2 (esptool-js, address `0x0`).
-
------
 
 ## Features
 
@@ -156,8 +150,6 @@ Since v2.1 FieldMesh keeps a copy of the node identity (`/_main.id`) and setting
 
 A factory reset from the app or CLI also clears the backup — that is how you really start over. BLE pairings are not part of the backup.
 
------
-
 ## UI & Usability
 
 - Splash screen with version info and "FieldMesh" branding
@@ -250,8 +242,6 @@ Off-Grid, charging and low battery are not shown on the LED.
 The Off-Grid state is saved and restored on boot. To check it without a display: press 5×, listen (ascending = was off, now on; descending = was on, now off), then press 5× again to return to the original state.
 
 </details>
-
------
 
 ## FieldMesh Repeater (Station G2)
 
@@ -388,8 +378,6 @@ A channel whose name contains "sos" is an SOS channel: `!SOS` messages there go 
 |---|---|
 | Repeater settings, Off-Grid state, room (name, password, posts, users), WiFi on/off, SOS channels, team with last known data, weather forecast, clock (as a high-water mark, saved every 5 min) | Other heard nodes, SOS list in the dashboard (the SOS posts on the board stay), statistics |
 
------
-
 ## Hardware
 
 |                  |                                |
@@ -400,8 +388,6 @@ A channel whose name contains "sos" is an SOS channel: `!SOS` messages there go 
 |**Base firmware** |MeshCore v1.18.0                |
 
 FieldMesh has been developed and tested on the ThinkNode M1 (E-Ink, single button) and the Wio Tracker L1 (OLED, joystick). Headless devices (no display, single button) are supported since v1.8 — the Seeed T1000-E is the reference device for this class. The code is written to be portable — all hardware-specific pins are in `variant.h`, layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test it on another platform, please share your findings in [Discussions → Hardware](../../discussions/categories/hardware).
-
------
 
 ## Building
 
@@ -424,8 +410,6 @@ pio run -e Station_G2_fieldmesh_repeater                 # firmware.bin = update
 pio run -e Station_G2_fieldmesh_repeater -t mergebin     # firmware-merged.bin = full image (0x0)
 ```
 
------
-
 ## Limitations & Known Issues
 
 - Tested on ThinkNode M1, Wio Tracker L1, T1000-E and Station G2 — other hardware untested
@@ -438,8 +422,6 @@ pio run -e Station_G2_fieldmesh_repeater -t mergebin     # firmware-merged.bin =
 - Repeater: switching from a stock repeater needs one full-image flash; back up the key first (see [Getting started](#getting-started))
 - Repeater: the dashboard WiFi is open (no password) — anyone in range can read the board and see node positions; setup actions need the admin password
 - Repeater: weather only arrives when a phone with mobile data opens the dashboard; some Android phones keep all traffic on the box WiFi and cannot load it
-
------
 
 ## FAQ
 
@@ -690,8 +672,6 @@ The box probably runs from its second app slot after an update from the dashboar
 
 </details>
 
------
-
 ## Contributing
 
 This is a personal project that grew out of wanting a more field-ready node. Feedback of any kind is welcome:
@@ -704,13 +684,9 @@ This is a personal project that grew out of wanting a more field-ready node. Fee
 
 The more platforms this works on, the better.
 
------
-
 ## Relationship to MeshCore
 
 FieldMesh is a fork of [MeshCore](https://github.com/meshcore-dev/MeshCore). It is not affiliated with or endorsed by the MeshCore project. The goal is to stay close to upstream and periodically merge new releases — FieldMesh logic lives in its own files where possible, and upstream files only carry small, marked hooks. Semantic compatibility after upstream changes still requires manual review. Every touchpoint and the sync procedure are listed in [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md).
-
------
 
 <p align="center">
   <picture>
