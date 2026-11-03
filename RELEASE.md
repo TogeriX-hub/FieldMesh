@@ -50,7 +50,7 @@ Still based on MeshCore v1.18.0. One firmware file per device for all regions.
 
 - **SOS alarm only in SOS channels** — `!SOS` raises the alarm only in a channel whose name contains "sos" (the same rule as for sending); in other channels, e.g. Public, it is shown as a normal message
 - Release files: 3 firmware files (M1, L1, T1000-E) instead of 6, plus the Station G2 repeater
-- Splash screen shows "v6.1" (the number at the time)
+- Splash screen shows "v2.1.0" on the ThinkNode M1 (release file rebuilt in November 2026; the original build showed "v6.1")
 - Outdated PDF documentation (1.0.0–1.6.0) and the duplicate FAQ removed — the README is the documentation
 
 ### Bug Fixes
@@ -91,7 +91,7 @@ FieldMesh now runs on MeshCore v1.18.0 (previously v1.15.0). All FieldMesh featu
 - **GPS flag of adverts** is now passed via `BaseChatMesh::lastAdvertHasLatLon()` instead of bit 4 (`0x10`) in `contact.type` — `contact.type` is no longer modified, the three masking points are gone
 - **Static BLE PIN** moved to `main.cpp` (upstream moved the PIN logic there)
 - Off-Grid uses the upstream radio wrapper call `radio_driver.setParams()` (upstream removed `radio_set_params()`)
-- Splash screen shows "v6"
+- Splash screen shows "v2.0.0" on the ThinkNode M1 (release files rebuilt in November 2026; the original build showed "v6")
 
 ### Bug Fixes
 
