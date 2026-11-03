@@ -400,18 +400,19 @@ function renderBoard(){
 
 // ---- mesh: nodes ----
 function nodeTeam(x){return x.k in pend?pend[x.k]:!!x.tm;}
-function renderNodes(){
+function renderMeshStats(){
  if(!S)return;
- // stat cards (status data)
  const duty=S.duty_ms/36000,eu=S.freq>=869.4&&S.freq<=869.65;
  setT('m-duty',duty.toFixed(1)+' %');$('m-dutyb').style.width=Math.min(100,eu?duty*10:duty)+'%';
  setT('m-dutyl',eu?'last hour · limit 10 %':'last hour');
  setT('m-noise',S.noise+' dBm');
  setT('m-env',S.temp!=null?S.temp+' °C'+(S.hum!=null?' · '+S.hum+' %':''):S.mcu!=null?'chip '+S.mcu+' °C':' ');
  if(!N)return;
+ const n=nowOf(N,tN),nodes=N.nodes||[],team=nodes.filter(nodeTeam);
+ setT('m-team',team.filter(x=>n-x.a<900).length+' of '+team.length);setT('m-nodes',String(nodes.length));}
+function renderNodes(){
+ if(!S||!N)return;
  const n=nowOf(N,tN),nodes=N.nodes||[];
- const team=nodes.filter(nodeTeam);
- setT('m-team',team.filter(x=>n-x.a<900).length+' of '+team.length);setT('m-nodes',String(nodes.length));
  const rows=nodes.map(x=>{const g=x.la!=null?geo(x.la,x.lo):null;return{x:x,g:g,tm:nodeTeam(x)};});
  const ord=(a,b)=>st.sort==='dist'?((a.g?a.g.d:1e12)-(b.g?b.g.d:1e12))||(b.x.a-a.x.a):(b.x.a-a.x.a);
  const tm=rows.filter(r=>r.tm).sort(ord);
@@ -591,7 +592,7 @@ function render(){
  for(const g of document.querySelectorAll('[data-seg]'))for(const b of g.querySelectorAll('button')){const on=String(st[g.dataset.seg])===b.dataset.v;if(b.getAttribute('aria-pressed')!==String(on))b.setAttribute('aria-pressed',on);}
  show('v-nodes',st.sub==='nodes');show('v-net',st.sub==='network');show('v-list',st.view==='list');show('v-radar',st.view==='radar');
  renderBoard();
- if(st.tab==='mesh'){if(st.sub==='nodes')renderNodes();else renderNet();}
+ if(st.tab==='mesh'){renderMeshStats();if(st.sub==='nodes')renderNodes();else renderNet();}
  document.body.classList.toggle('no-topo',st.tab==='mesh'&&st.sub==='nodes'&&st.view==='radar');   // lines would run into the radar labels
  if(st.tab==='setup')renderSetup();}
 
