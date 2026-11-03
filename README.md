@@ -378,7 +378,7 @@ A channel whose name contains "sos" is an SOS channel: `!SOS` messages there go 
 |                  |                                |
 |------------------|--------------------------------|
 |**Tested on**     |Elecrow ThinkNode M1 (E-Ink), Seeed Wio Tracker L1 (OLED), Seeed T1000-E (no display), Station G2 (FieldMesh Repeater)|
-|**Build from source, untested**|Heltec Mesh Node T1, SenseCAP MeshTracker X1, Wio Tracker L1 E-Ink, Wio Tracker L1 1W — no prebuilt firmware|
+|**Build from source, untested**|Heltec Mesh Node T1, SenseCAP MeshTracker X1, Wio Tracker L1 E-Ink, Wio Tracker L1 1W, Heltec V4 and Station G3 ESP32 (FieldMesh Repeater) — no prebuilt firmware|
 |**Other hardware**|RAK WiseMesh TAG and similar single-button headless devices — contributions welcome|
 |**Base firmware** |MeshCore v1.18.0                |
 
@@ -396,6 +396,8 @@ FieldMesh builds the same way as MeshCore, with [PlatformIO](https://platformio.
 | Wio Tracker L1 | `WioTrackerL1_companion_radio_ble` |
 | T1000-E | `t1000e_companion_radio_ble` |
 | Station G2 (FieldMesh Repeater) | `Station_G2_fieldmesh_repeater` |
+| Station G3 ESP32 (FieldMesh Repeater, untested) | `Station_G3_ESP32_fieldmesh_repeater` |
+| Heltec V4 OLED (FieldMesh Repeater, untested) | `heltec_v4_fieldmesh_repeater` |
 
 `…_companion_radio_usb` environments connect to the app over USB instead of BLE.
 

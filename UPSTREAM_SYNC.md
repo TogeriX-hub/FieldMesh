@@ -81,6 +81,8 @@ equivalent place.
 | File | FieldMesh change |
 |---|---|
 | `variants/station_g2/platformio.ini` | env `Station_G2_fieldmesh_repeater` |
+| `variants/station_g3_esp32/platformio.ini` | env `Station_G3_ESP32_fieldmesh_repeater` (uses `variants/station_g2/partitions_fieldmesh.csv`) |
+| `variants/heltec_v4/platformio.ini` | env `heltec_v4_fieldmesh_repeater` |
 | `variants/wio-tracker-l1/target.*`, `wio-tracker-l1-1w/target.*` | `joystick_up`, `joystick_down` buttons |
 | `variants/thinknode_m1/variant.h` | `PIN_BUTTON2` = 39 - see 4. |
 
