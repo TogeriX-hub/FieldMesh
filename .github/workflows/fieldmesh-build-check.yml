@@ -30,6 +30,8 @@ jobs:
           - Heltec_t1_companion_radio_ble
           - Station_G2_fieldmesh_repeater
           - Station_G2_repeater
+          - Station_G3_ESP32_fieldmesh_repeater
+          - heltec_v4_fieldmesh_repeater
 
     steps:
       - name: Clone Repo
