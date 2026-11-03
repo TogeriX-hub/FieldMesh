@@ -59,6 +59,8 @@ def main():
 
     for f in ("index.html", "nrf52_dfu_flasher.js", "nrf52_dfu_flasher.LICENSE.txt"):
         shutil.copy2(HERE / f, out / f)
+    for d in ("img", "fonts"):
+        shutil.copytree(HERE / d, out / d)
     libs = Path(a.libs)
     shutil.copy2(libs / "esptool-js/package/bundle.js", out / "lib/esptool.js")
     shutil.copy2(libs / "esptool-js/package/LICENSE", out / "lib/esptool.LICENSE.txt")
