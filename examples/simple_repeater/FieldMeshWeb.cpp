@@ -20,7 +20,7 @@
 #include <ESPAsyncWebServer.h>
 #include <Update.h>
 #include <elegantWebpage.h>   // ELEGANT_HTML: the upstream update page (AsyncElegantOTA), reused as is
-#include "FieldMeshWebPage.h"   // FM_PAGE: the dashboard (HTML/CSS/JS in one string)
+#include "FieldMeshWebAssets.h"   // FM_WEB_ASSETS: dashboard page, font, contour lines (generated from web/ before the build)
 
 #define FM_WEB_SNAPSHOT_INTERVAL  2000
 #define FM_WEB_MAX_STATIONS       10              // phones at the same time (ESP32-S3 allows up to 15)
@@ -176,11 +176,17 @@ static void fmJsonStr(char*& dp, const char* end, const char* s) {
 }
 
 static void fmWebSetupRoutes() {
-  fm_server->on("/", HTTP_GET, [](AsyncWebServerRequest* request) {
-    AsyncWebServerResponse* res = request->beginResponse(200, "text/html", (const uint8_t*)FM_PAGE, strlen(FM_PAGE));   // ESP32: flash is memory-mapped
-    res->addHeader("Cache-Control", "no-store");
-    request->send(res);
-  });
+  // dashboard page ("/", never cached) and its files below /fm/ (versioned URLs, cached for a year);
+  // all of it from flash (memory-mapped on the ESP32), the page and the SVGs gzipped
+  for (size_t i = 0; i < FM_WEB_ASSET_COUNT; i++) {
+    const FmWebAsset* a = &FM_WEB_ASSETS[i];
+    fm_server->on(a->path, HTTP_GET, [a](AsyncWebServerRequest* request) {
+      AsyncWebServerResponse* res = request->beginResponse(200, a->type, a->data, a->len);
+      if (a->gzip) res->addHeader("Content-Encoding", "gzip");
+      res->addHeader("Cache-Control", a->cache ? "public, max-age=31536000, immutable" : "no-store");
+      request->send(res);
+    });
+  }
   fm_server->on("/api/status", HTTP_GET, [](AsyncWebServerRequest* request) {
     String body;
     if (fm_snap_mutex && xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {

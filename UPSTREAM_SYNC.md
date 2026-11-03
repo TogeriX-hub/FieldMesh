@@ -37,7 +37,7 @@ git diff <upstream-tag> HEAD --stat -- src variants examples platformio.ini
 
 `examples/companion_radio/`: `MyMeshFieldMesh.cpp`, `OffGrid.h`, `GpsCycle.h`, `TrackScheduler.h`,
 `ChannelText.h`, `IdentityBackup.h`, `GpsLog.h`, `FloodPolicy.h`, `FloodLog.h` ·
-`examples/simple_repeater/`: `FieldMesh*.cpp`, `FieldMesh*.h` ·
+`examples/simple_repeater/`: `FieldMesh*.cpp`, `FieldMesh*.h`, `web/` (dashboard page, font, contour lines, `fm_web_assets.py`) ·
 `variants/station_g2/partitions_fieldmesh.csv` · `test/test_fieldmesh_*` ·
 `.github/workflows/fieldmesh-*.yml` · `.github/ISSUE_TEMPLATE/` · `docs/FieldMesh/` (images, web flasher) · `README.md`, `RELEASE.md`,
 `UPSTREAM_SYNC.md`.
@@ -80,7 +80,7 @@ equivalent place.
 
 | File | FieldMesh change |
 |---|---|
-| `variants/station_g2/platformio.ini` | env `Station_G2_fieldmesh_repeater` |
+| `variants/station_g2/platformio.ini` | env `Station_G2_fieldmesh_repeater` (all three repeater envs: `extra_scripts` = `${esp32_base.extra_scripts}` + `pre:examples/simple_repeater/web/fm_web_assets.py`; if upstream changes `extra_scripts` of `esp32_base`, nothing to do) |
 | `variants/station_g3_esp32/platformio.ini` | env `Station_G3_ESP32_fieldmesh_repeater` (uses `variants/station_g2/partitions_fieldmesh.csv`) |
 | `variants/heltec_v4/platformio.ini` | env `heltec_v4_fieldmesh_repeater` |
 | `variants/wio-tracker-l1/target.*`, `wio-tracker-l1-1w/target.*` | `joystick_up`, `joystick_down` buttons |

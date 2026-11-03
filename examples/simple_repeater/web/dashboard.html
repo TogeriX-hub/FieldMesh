@@ -1,13 +1,4 @@
-#pragma once
-// FieldMesh repeater: the WiFi dashboard page (P5e), served as one string from flash.
-// Plain HTML/CSS/JS, no libraries (works without internet). The page never reloads itself:
-// it polls the JSON snapshots and only replaces the parts whose data changed, so open rows,
-// the radar zoom and half-typed text stay as they are.
-//
-// APIs (FieldMeshWeb.cpp): /api/status, /api/board, /api/nodes, /api/network (GET),
-// /api/post, /api/time, /api/login, /api/logout, /api/admin (POST), /api/admin?id= (GET).
-
-static const char FM_PAGE[] PROGMEM = R"HTML(<!doctype html>
+<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
@@ -699,4 +690,4 @@ $('lform').addEventListener('submit',e=>{
 
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){sendTime();tick=0;poll();}});
 sendTime();poll();setInterval(poll,1000);
-</script></body></html>)HTML";
+</script></body></html>
