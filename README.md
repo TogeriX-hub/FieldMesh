@@ -15,39 +15,137 @@
   <a href="https://github.com/meshcore-dev/MeshCore"><img src="https://img.shields.io/badge/MESHCORE-v1.18.0-F2B544?style=for-the-badge&labelColor=0F1412" alt="Based on MeshCore v1.18.0"></a>
 </p>
 
-> **Updating from v1.x (formerly V5.x)?** Updating from v1.x to v2.x could reset the node identity (new public key) and settings on some devices. **Export your private key in the MeshCore app before updating.** From v2.1 on, FieldMesh keeps its own backup of the identity and settings (see [Identity backup](#identity-backup)).
+**Contents:** [Why FieldMesh?](#why-fieldmesh) · [Supported devices](#supported-devices) · [Install & update](#install--update) · [Using your device](#using-your-device) · [Features](#features) · [FieldMesh Repeater](#fieldmesh-repeater-station-g2) · [Building](#building-from-source) · [Limitations](#limitations--known-issues) · [FAQ](#faq)
 
 ## Why FieldMesh?
 
 MeshCore is a great platform, but some things that matter in the field require manual workarounds or aren't there at all. FieldMesh adds:
 
-- **Battery-friendly GPS tracking** — the GPS sleeps between fixes; your node sends its position when you move, plus a heartbeat every 10 minutes, zero-hop only — no extra network load
-- **A dedicated tracking page** — see your contacts' GPS positions and distances at a glance
-- **A real Off-Grid mode** — builds on MeshCore's Client Repeat feature, with legal frequencies picked automatically for your region and a one-press toggle instead of manual parameter entry
-- **An SOS system** — send and receive emergency alerts with buzzer alarm, even if your phone isn't connected
-- **Message history** — browse received messages directly on the device, no phone required
-- **Text input & send** — compose and send channel messages via joystick on supported devices (Wio Tracker L1)
+- **Battery-friendly GPS tracking** — the GPS sleeps between fixes; your node sends its position when you move, plus a heartbeat every 10 minutes, to nodes in direct range only — no extra network load
+- **A tracking page** — your contacts' positions and distances at a glance
+- **Off-Grid mode** — one press switches your group to its own frequency (picked automatically for your region) where every node relays
+- **SOS** — send and receive emergency alerts with a buzzer alarm, even if your phone isn't connected
+- **Messages without a phone** — read received messages on the device; write channel messages on the Wio Tracker L1
 - **FieldMesh Repeater** — turns a Station G2 into a base station for your camp: repeater, message board, SOS display, weather and a WiFi dashboard for phones
 
-The goal is a node you can put in your backpack, forget about, and trust that it's doing its job.
+The goal is a node you can put in your backpack, forget about, and trust that it's doing its job. More about the motivation in my [blog post](https://www.tobiasguertler.de/blog/en/fieldmesh).
 
-More about my motivation is readable in my [blog post](https://www.tobiasguertler.de/blog/en/fieldmesh).
+## Supported devices
 
-**Contents:** [Install](#install) · [Features](#features) · [UI & Usability](#ui--usability) · [FieldMesh Repeater (Station G2)](#fieldmesh-repeater-station-g2) · [Hardware](#hardware) · [Building](#building) · [Limitations](#limitations--known-issues) · [FAQ](#faq)
+| Device | What it is | Release file |
+|---|---|---|
+| **Elecrow ThinkNode M1** | Tracker with E-Ink display, GPS switch, one button, buzzer | `ThinkNode_M1_companion_radio_ble_FieldMesh…zip` |
+| **Seeed Wio Tracker L1** | Tracker with OLED display and joystick (can write messages) | `WioTrackerL1_companion_radio_ble_FieldMesh…zip` |
+| **Seeed T1000-E** | Card-sized tracker without display, one button, buzzer | `t1000e_companion_radio_ble_FieldMesh…zip` |
+| **Station G2** | FieldMesh Repeater — base station for a camp or a tour | `Station_G2_fieldmesh_repeater_FieldMesh…_full.bin` |
 
-## Install
+The trackers are normal MeshCore companions: pair them with the MeshCore app as usual. All FieldMesh features also work without the phone.
 
-**Easiest: [FieldMesh Web Flasher](https://fieldmesh-radio.github.io/FieldMesh/)** — pick your device, click Flash. Works in Chrome or Edge on a computer. Settings, contacts and identity stay on the device.
+Other devices can be [built from source](#building-from-source) but are not tested on hardware and have no prebuilt firmware.
 
-Manual install: download the file for your device from the [latest release](../../releases/latest) — `.zip` for the ThinkNode M1, Wio Tracker L1 and T1000-E (MeshCore web flasher → custom firmware), `_full.bin` for the Station G2 (esptool-js, address `0x0`).
+## Install & update
+
+### Web flasher (recommended)
+
+1. Open the **[FieldMesh Web Flasher](https://fieldmesh-radio.github.io/FieldMesh/)** in **Chrome or Edge on a computer** (Windows, macOS, Linux). Phones and Safari do not work.
+2. Connect the device with a USB **data** cable and pick it in the list.
+3. Follow the two or three steps on the page:
+   - **ThinkNode M1, Wio Tracker L1, T1000-E:** *Start update mode*, then *Flash* (pick the port again — its name may change).
+   - **Station G2:** *Flash*. If the G2 is not found: hold the download button, press reset briefly, release, click *Flash* again.
+
+The flasher installs the current release, for the first installation and for every update. It never erases the device.
+
+> [!IMPORTANT]
+> **Back up your private key first** if you come from a **stock MeshCore repeater** on the Station G2 or from **FieldMesh 1.x** (formerly V5.x). In both cases the device's identity (public key) and settings can be lost:
+> - **Station G2:** the FieldMesh Repeater uses a larger app partition. Run `get prv.key` on the USB serial console and keep the output; restore with `set prv.key …`.
+> - **Trackers on FieldMesh 1.x:** export the private key in the MeshCore app.
+>
+> Updates within FieldMesh 2.x keep settings, contacts and identity. Before any first install, exporting the private key in the MeshCore app is a good habit anyway. Since 2.1 the trackers also keep their own backup of identity and settings (see [Identity backup](#identity-backup)).
+
+### Manual install
+
+Download the file for your device from the [latest release](../../releases/latest) (see [Supported devices](#supported-devices)).
+
+- **ThinkNode M1, Wio Tracker L1, T1000-E:** flash the `.zip` with the [MeshCore Flasher](https://flasher.meshcore.io) as custom firmware.
+- **Station G2:** write the `…_full.bin` at address **0x0** with [esptool-js](https://espressif.github.io/esptool-js/). Do **not** use *Erase Flash*. Download mode: hold the download button, press reset briefly, release.
+
+### Updating the repeater
+
+- **From the dashboard** (once the box is running): *Setup* → log in → *Firmware update*, upload the `…_update.bin`. Settings, room, team and identity stay. The box restarts by itself.
+- **Via USB:** the FieldMesh Web Flasher or esptool-js (full image at 0x0, as above). This always works.
+
+<details>
+<summary><strong>Why not the update file or the MeshCore Flasher over USB?</strong></summary>
+
+The ESP32 has two app slots. An update from the dashboard is written to the slot that is not running and the box then starts from there. Flashers that write the update file to 0x10000 (like the MeshCore Flasher) always write slot 1 — if the box currently runs from slot 2, that update is ignored. The full image also resets the start slot to slot 1.
+
+</details>
+
+## Using your device
+
+<p align="center">
+  <img src="docs/FieldMesh/images/ui_sos.jpg" width="32%">
+  <img src="docs/FieldMesh/images/ui_messages.jpg" width="32%">
+  <img src="docs/FieldMesh/images/ui_settings.jpg" width="32%">
+</p>
+
+More pictures: [UI images](docs/FieldMesh/images/)
+
+### ThinkNode M1 and Wio Tracker L1 (display)
+
+**Pages** (left to right): Messages · Recent · Tracking · Radio · GPS · Sensors (where available) · Repeater discovery · SOS
+
+| | ThinkNode M1 (one button) | Wio Tracker L1 (joystick) |
+|---|---|---|
+| Next / previous page | Short press / double press | Joystick right / left |
+| Page action | Long press | Long joystick press (short press on Messages, GPS and Repeater discovery) |
+| Buzzer on/off | Triple press | Triple press on the back button |
+| Back | — | Back button |
+
+| Page | Page action |
+|---|---|
+| Messages | Message menu: all messages, favourites only, *Send Message* (L1) |
+| Recent | Send an advert now |
+| Tracking | *Outdoor Settings*: **GPS-Share** (tracking) and **Off-Grid** on/off |
+| GPS | GPS on/off |
+| Repeater discovery | Scan for repeaters in direct range |
+| SOS | Open the SOS send screen (two steps) |
+
+In the message history a short press shows the next message, a long press clears all. On an SOS alarm, a long press acknowledges it. A long press within the first 8 seconds after power-on starts the CLI rescue mode (upstream).
+
+**ThinkNode M1 GPS switch:** the GPS only runs when the hardware switch **and** the GPS setting are on. Turning the switch on also turns the setting on.
+
+### T1000-E (no display)
+
+| Button | Action |
+|---|---|
+| 1× | Acknowledge an SOS alarm |
+| 2× | Send an advert now |
+| 3× | Buzzer on/off |
+| 4× | GPS on/off (saved, survives a restart) |
+| 5× | Off-Grid on/off (saved, survives a restart) |
+| Long press | Power off (within the first 8 s after power-on: CLI rescue mode) |
+
+GPS-Share (tracking) is switched in the MeshCore app (location sharing in the advert settings). Sending an SOS needs a display for the two-step confirmation — the T1000-E receives SOS alarms only.
+
+Every action answers with a tone, even when the buzzer is muted:
+
+| Tone | Meaning |
+|---|---|
+| Ascending (c → e) | Turned on (GPS, buzzer, Off-Grid) |
+| Descending (e → c) | Turned off |
+| Double beep | Advert sent |
+| Continuous siren | SOS alarm received — press once to acknowledge |
+
+To check the Off-Grid state: press 5× and listen (ascending = was off, now on; descending = was on, now off), then press 5× again to return to the original state.
 
 ## Features
 
 ### GPS Tracking & Auto-Advert
 
-FieldMesh separates two things that stock MeshCore conflates: *when did I last hear from this node* and *when did this node last have a GPS fix*. The RECENT page shows all recently heard nodes. The TRACKING page shows only nodes that have sent a GPS position — with distance calculated via Haversine formula — color-coded green (< 5 min) or yellow (older). Only contacts marked as favourites in the companion app appear on the Tracking page (max. 3).
+FieldMesh separates two things that stock MeshCore conflates: *when did I last hear from this node* and *when did this node last have a GPS fix*. The **RECENT** page shows all recently heard nodes. The **TRACKING** page shows only nodes that have sent a GPS position, with the distance to you — green (< 5 min) or yellow (older). Only contacts marked as favourites in the MeshCore app appear on the Tracking page (max. 3).
 
-**GPS duty cycle (v2.1).** While GPS is on, the receiver takes a fix every 2 minutes and sleeps in between — the same approach Meshtastic uses. The search time adapts to the sky the receiver can see (short indoors, longer under open sky), and the satellite systems the chip supports (GPS, GLONASS, Galileo, BeiDou) are all switched on. On the T1000-E this gave about 2–2½ days with GPS on in our tests (no exact current measurement). Devices whose GPS cannot be switched off keep it running as before.
+**GPS duty cycle.** While GPS is on, the receiver takes a fix every 2 minutes and sleeps in between — the same approach Meshtastic uses. The search time adapts to the sky the receiver can see (short indoors, longer under open sky), and all satellite systems the chip supports (GPS, GLONASS, Galileo, BeiDou) are used. On the T1000-E this gave about 2–2½ days with GPS on in our tests (no exact current measurement). Devices whose GPS cannot be switched off keep it running.
 
 **Tracking (GPS-Share on).** Your node sends its position when it matters instead of on a fixed timer:
 
@@ -58,40 +156,35 @@ FieldMesh separates two things that stock MeshCore conflates: *when did I last h
 | Moving fast (≥ 30 km/h, e.g. by car or bike) | Fix every 60 s, adverts at most every 60 s |
 | Nothing changed for 10 min | Heartbeat advert (with position if the last fix is ≤ 2 min old) |
 
-Adverts are sent **zero-hop in normal mode**, so they only reach nodes in direct range without adding load to the wider network. In Off-Grid mode they are flooded, which is the right behaviour when you're actively trying to extend reach across a local group. A position is only included when the fix is at most 2 minutes old — never stale or cached coordinates.
-
-**ThinkNode M1 GPS switch:** the GPS only runs when the hardware switch **and** the GPS setting are on. Turning the switch on also turns the setting on.
+In normal mode adverts are sent **zero-hop** — they only reach nodes in direct range and add no load to the wider network. In Off-Grid mode they are flooded, so the whole group sees them. A position is only included when the fix is at most 2 minutes old — never stale or cached coordinates.
 
 ### Off-Grid Mode
 
-MeshCore has a feature called **Client Repeat** where a node actively relays packets to extend network reach. FieldMesh builds on this — but the upstream frequency defaults for Client Repeat were problematic: the EU 433 MHz value was a single illegal point frequency, the 869 MHz value landed in a sub-band with 0.1% duty cycle (practically unusable), and the 915 MHz value was outside the legal band in some regions.
+One press switches your node to a **separate Off-Grid frequency** and turns on **Client Repeat**, so every FieldMesh node in your group relays for the others — useful in the mountains, at a festival or anywhere without mesh infrastructure. Your normal radio settings are saved and restored when you switch back. Switching sends an advert right away so nearby nodes know.
 
-FieldMesh corrects the frequency ranges to legal values and adds a **one-press Off-Grid toggle**. It switches to a dedicated off-grid frequency and enables Client Repeat in one step, saving your normal parameters automatically so you can switch back without re-entering anything.
-
-**The region is picked automatically (v2.1)** from your normal frequency — one firmware file for all regions:
+The region is picked automatically from your normal frequency — one firmware for all regions:
 
 | Your normal frequency | Off-Grid uses |
 |---|---|
-| below 900 MHz (EU/UK) | **869.4625 MHz** / BW125 / SF11 / CR5 (EU sub-band g3: 500 mW ERP, 10% duty cycle) |
+| below 900 MHz (EU/UK) | **869.4625 MHz** / BW125 / SF11 / CR5 (EU sub-band g3: 500 mW ERP, 10 % duty cycle) |
 | 900 MHz and above (US/AU) | **916.4625 MHz** / BW125 / SF11 / CR5 |
 
-**Off-Grid uses a completely separate frequency from your normal MeshCore network.** For example, the EU/UK Narrow preset runs on 869.618 MHz / BW62.5. Off-Grid runs on 869.4625 MHz / BW125. The two signals don't overlap — there is a ~62 kHz gap between them. You can run Off-Grid mode at a festival or in the field without interfering with the wider MeshCore network around you.
+Off-Grid does not overlap with your normal MeshCore network: the EU/UK Narrow preset, for example, runs on 869.618 MHz / BW62.5 — there is a ~62 kHz gap. In Off-Grid you only see nodes that are also in Off-Grid.
 
-Switching modes triggers an immediate advert so nearby nodes know you've changed frequency.
+FieldMesh also corrects the Client Repeat frequency ranges of upstream MeshCore to legal values:
 
-Frequency ranges are set correctly for legal operation:
+| Region | Range |
+|---|---|
+| EU 433 MHz | 433.050 – 434.790 MHz |
+| EU 869 MHz | 869.400 – 869.650 MHz (sub-band g3) |
+| US/AU 915 MHz | 915.000 – 928.000 MHz |
 
-|Region       |Range                              |
-|-------------|-----------------------------------|
-|EU 433 MHz   |433.050 – 434.790 MHz              |
-|EU 869 MHz   |869.400 – 869.650 MHz (Sub-Band g3)|
-|US/AU 915 MHz|915.000 – 928.000 MHz              |
-
+> [!WARNING]
 > Off-Grid has no frequency for other regions (e.g. India, Japan, Korea). Do not use Off-Grid there.
 
-### SOS System
+### SOS
 
-Long-press the button on the SOS page to open a two-step confirmation screen (accidental trigger protection). FieldMesh looks for a channel whose name contains "sos" (case-insensitive) and sends your position and battery level:
+On the SOS page, a long press opens a two-step confirmation screen (protection against accidental triggering). FieldMesh sends to the channel whose name contains "sos" (case-insensitive, e.g. `#sos`) — set one up in the MeshCore app first. The message carries your position and battery level:
 
 ```
 !SOS 48.7636,9.1621 bat78%
@@ -100,110 +193,27 @@ Long-press the button on the SOS page to open a two-step confirmation screen (ac
 
 The position is used if the last fix is at most 2 minutes old. After sending, the GPS stays on for 10 minutes; if the first SOS went out without a position, it is sent once more as soon as a fix is available. A GPS that you switched off is not switched on for an SOS.
 
-On the receiving end: an `!SOS` message **in an SOS channel** (name contains "sos") triggers a buzzer alarm that overrides quiet mode and loops until manually acknowledged. The alert screen shows the sending node's name. Normal messages are suppressed while an SOS alert is active. `!SOS` in any other channel (e.g. Public) is shown as a normal message — no alarm (v2.1).
+**Receiving:** an `!SOS` message **in an SOS channel** triggers a buzzer alarm that overrides quiet mode and loops until you acknowledge it. The alert screen shows the sender's name; normal messages are held back while the alarm is active. `!SOS` in any other channel (e.g. Public) is shown as a normal message — no alarm.
 
-### Message History & Text Input
+### Messages without a phone
 
-Standalone messaging — no phone required.
+**Message history (all devices with a display).** Received messages are kept in RAM (up to 32) and can be read on the device. The home screen shows an unread counter and the latest message from a favourite. The message menu filters for all messages or favourites only. The history shows one message at a time, newest first, with sender, channel or `[DM]`, time and text. When you have stepped through all unread messages, the display returns to the home screen.
 
-**Message History (all devices)**
+What you read or clear on the device never affects the MeshCore app — the app still gets all messages.
 
-Received messages are stored in a RAM ring buffer (up to 32 entries) and browsable directly on the device. The home screen shows an unread counter and the name and timestamp of the most recent message from a favourite contact. Long-pressing on the home screen opens a filter menu where you can choose to view all messages or messages from favourites only.
+**Writing messages (Wio Tracker L1).** Message menu → *Send Message*:
 
-The history view shows one message at a time — newest first — with sender name, channel name or `[DM]`, timestamp, and message text. Short press advances to the next message; long press clears all remaining messages at once. When you've stepped through all unread messages, the display returns to the home screen automatically.
+1. Choose a channel with the joystick.
+2. Pick the characters one by one (left/right, short press confirms); a long press sends.
+3. "Sent!" is shown, then the message history.
 
-The unread counter in the UI is independent from MeshCore's internal sync queue — browsing or clearing messages on the device never affects smartphone sync.
+Up to 20 characters, channels only (no direct messages).
 
-**Text Input & Send (Wio Tracker L1 only)**
+### Identity backup
 
-On the Wio Tracker L1 (joystick input), you can compose and send messages directly from the device. From the message filter menu, select "Send Message" to start the flow:
-
-1. **Channel selection** — choose from your configured channels using the joystick
-2. **Text composition** — select characters one by one using left/right on the joystick, confirm each with a short press; long press sends the message
-3. After sending, a brief "Sent!" confirmation is shown before returning to the message history
-
-Message length is limited to 20 characters. This feature is not available on the ThinkNode M1 (single-button input only).
-
-### Identity Backup
-
-Since v2.1 FieldMesh keeps a copy of the node identity (`/_main.id`) and settings (`/prefs.json`) in a second file system: the external QSPI flash on ThinkNode M1, Wio Tracker L1 and MeshTracker X1, a separate area of the internal flash on the T1000-E. If the main copy is lost (for example after an update), it is restored automatically on the next start.
+Since 2.1 FieldMesh keeps a copy of the node identity (`/_main.id`) and settings (`/prefs.json`) in a second file system: the external QSPI flash on the ThinkNode M1 and Wio Tracker L1, a separate area of the internal flash on the T1000-E. If the main copy is lost (for example after an update), it is restored automatically at the next start.
 
 A factory reset from the app or CLI also clears the backup — that is how you really start over. BLE pairings are not part of the backup.
-
-## UI & Usability
-
-- Splash screen with version info and "FieldMesh" branding
-- Backlight fix for Elecrow M1
-- → [UI images](docs/FieldMesh/images/)
-
-<p align="center">
-  <img src="docs/FieldMesh/images/ui_sos.jpg" width="32%">
-  <img src="docs/FieldMesh/images/ui_messages.jpg" width="32%">
-  <img src="docs/FieldMesh/images/ui_settings.jpg" width="32%">
-</p>
-
-<details>
-<summary><strong>Devices with a display (ThinkNode M1, Wio Tracker L1)</strong></summary>
-
-**Home screen pages** (left to right): Messages · Recent · Tracking · Radio · GPS · Sensors (where available) · Repeater discovery · SOS
-
-| | ThinkNode M1 (one button) | Wio Tracker L1 (joystick) |
-|---|---|---|
-| Next / previous page | Short press / double press | Joystick right / left |
-| Page action | Long press | Long joystick press (short press on Messages, GPS and Repeater discovery) |
-| Buzzer on/off | Triple press | Triple press on the back button |
-| Back | — | Back button |
-
-**Page actions (long press):**
-
-| Page | Action |
-|---|---|
-| Messages | Open the message menu (all messages, favourites only, *Send Message* on the L1) |
-| Recent | Send an advert now |
-| Tracking | Open *Outdoor Settings*: **GPS-Share** (tracking) and **Off-Grid** on/off |
-| GPS | GPS on/off |
-| Repeater discovery | Scan for repeaters in direct range |
-| SOS | Open the SOS send screen (two steps) |
-
-In the message history a short press shows the next message, a long press clears all. On an SOS alarm, a long press acknowledges it.
-
-Long press within the first 8 seconds after power-on starts the CLI rescue mode (upstream).
-
-</details>
-
-<details>
-<summary><strong>Headless devices (T1000-E, RAK WiseMesh TAG)</strong></summary>
-
-Headless devices (no display, single button) support a focused set of features:
-
-- receive and relay mesh messages, GPS tracking
-- toggle Off-Grid mode
-- receive SOS alarms via buzzer (sending SOS needs a screen for the two-step confirmation)
-- send adverts, toggle GPS, toggle buzzer mute
-
-| Button | Action |
-|---|---|
-| 1× | Acknowledge an SOS alarm |
-| 2× | Send an advert now |
-| 3× | Buzzer on/off |
-| 4× | GPS on/off (saved, survives a restart) |
-| 5× | Off-Grid on/off |
-| Long press | Power off (within the first 8 s after power-on: CLI rescue mode) |
-
-GPS-Share (tracking) is switched in the MeshCore app (location sharing in the advert settings).
-
-All actions give forced buzzer feedback — even when the buzzer is muted:
-
-| Tone | Meaning |
-|---|---|
-| Ascending (c → e) | Feature turned on (GPS, buzzer, Off-Grid) |
-| Descending (e → c) | Feature turned off |
-| Double beep | Advert sent |
-| Continuous siren | SOS alarm received — press once to acknowledge |
-
-The Off-Grid state is saved and restored on boot. To check it without a display: press 5×, listen (ascending = was off, now on; descending = was on, now off), then press 5× again to return to the original state.
-
-</details>
 
 ## FieldMesh Repeater (Station G2)
 
@@ -216,19 +226,18 @@ The Off-Grid state is saved and restored on boot. To check it without a display:
 
 The FieldMesh Repeater turns a **Station G2** into a base station for a camp, a festival or a multi-day tour — for example in a box with a power station. It is a normal MeshCore repeater (all repeater settings and CLI commands work as usual) with these additions:
 
-- **Off-Grid** — switch the whole repeater to the Off-Grid frequency of your FieldMesh nodes and back, live, from the menu, the CLI or the dashboard
+- **Off-Grid** — switch the whole repeater to the Off-Grid frequency of your FieldMesh nodes and back, from the menu, the CLI or the dashboard
 - **Message board** — a room server as a **second identity** next to the repeater (own name and key, e.g. "BaseCamp"); the repeater keeps repeating
 - **Room commands** — `!weather`, `!ping`, `!status` for everyone, `!commands` and `/<CLI command>` for the repeater admin, right from the room chat
 - **SOS on the board** — SOS messages heard in your SOS channels appear on the board and in the dashboard
 - **WiFi dashboard** — an open WiFi for phones with board, SOS, nodes (list and radar), network statistics and setup
 - **Weather** — phones in the WiFi that have mobile data load a 48 h forecast for the box; `!weather` (or `!wetter` in German) answers in the room even when nobody has internet out in the field
 
-The transmit power is never changed by FieldMesh — keep the manufacturer's recommended setting for the Station G2.
+FieldMesh never changes the transmit power — keep the manufacturer's recommended setting for the Station G2.
 
 ### Getting started
 
-1. **Flash the full image once.** The repeater uses a larger app partition, so the first installation must be the full image (`…_full.bin`) written at address **0x0** with [esptool-js](https://espressif.github.io/esptool-js/) (Chrome/Edge on a computer). Do **not** use *Erase Flash*. Put the G2 into download mode: hold the download button, press reset briefly, release.
-   > Coming from a stock MeshCore repeater? Back up your key first: `get prv.key` on the USB serial console (restore with `set prv.key …`). In one of our tests settings and identity were lost when switching to the new partition table.
+1. **Install** the FieldMesh Repeater — see [Install & update](#install--update). Coming from a stock MeshCore repeater: back up the key first.
 2. **Set the repeater up as usual** (name, admin password, radio preset, location) with the MeshCore app or the CLI. Set the box position with `set lat` / `set lon` or later in the dashboard — it is needed for distances, the radar and the weather.
 3. **Turn on the board:** `set roomserver BaseCamp` (or *Room* in the G2 menu). Optional password: `set room.pass <pw>`.
 4. **Turn on the WiFi dashboard:** `set wifi on` (or *WiFi* in the G2 menu). The WiFi is named after the room (or after the repeater while the room is off).
@@ -297,6 +306,12 @@ Wetter: 16°, meist sonnig. Regen ab 17 Uhr (80 %). Nacht 8°, morgen 8–16°.
 
 The answer gives the weather now, the most important event of the next 12 hours (thunderstorm, rain or snow, "possible" from 30 %, otherwise how long it stays dry), gusts above 50 km/h, the night low and tomorrow's range, and the age of the data when it is older than 6 hours. The weather location is the box position, or other coordinates set in *Setup* or with `set weather.loc`.
 
+### What survives a restart
+
+| Kept | Lost (RAM only) |
+|---|---|
+| Repeater settings, Off-Grid state, room (name, password, posts, users), WiFi on/off, SOS channels, team with last known data, weather forecast, clock (as a high-water mark, saved every 5 min) | Other heard nodes, SOS list in the dashboard (the SOS posts on the board stay), statistics |
+
 ### CLI reference
 
 All MeshCore repeater commands work as usual. FieldMesh adds:
@@ -327,31 +342,7 @@ A channel whose name contains "sos" is an SOS channel: `!SOS` messages there go 
 
 </details>
 
-### Updating the repeater
-
-- **From the dashboard (recommended):** *Setup* → log in → *Firmware update*, upload the `…_update.bin`. Only the app is updated — settings, room, team and identity stay. The box restarts by itself.
-- **Via USB:** the full image (`…_full.bin`) at **0x0** with esptool-js, without *Erase Flash*. This always works.
-
-> **Why the full image?** The ESP32 has two app slots. An update from the dashboard is written to the slot that is not running and the box then starts from there. Web flashers that write the update file to 0x10000 always write slot 1 — if the box currently runs from slot 2, that update is ignored. The full image also resets the start slot to slot 1.
-
-### What survives a restart
-
-| Kept | Lost (RAM only) |
-|---|---|
-| Repeater settings, Off-Grid state, room (name, password, posts, users), WiFi on/off, SOS channels, team with last known data, weather forecast, clock (as a high-water mark, saved every 5 min) | Other heard nodes, SOS list in the dashboard (the SOS posts on the board stay), statistics |
-
-## Hardware
-
-|                  |                                |
-|------------------|--------------------------------|
-|**Tested on**     |Elecrow ThinkNode M1 (E-Ink), Seeed Wio Tracker L1 (OLED), Seeed T1000-E (no display), Station G2 (FieldMesh Repeater)|
-|**Build from source, untested**|Heltec Mesh Node T1, SenseCAP MeshTracker X1, Wio Tracker L1 E-Ink, Wio Tracker L1 1W — no prebuilt firmware|
-|**Other hardware**|RAK WiseMesh TAG and similar single-button headless devices — contributions welcome|
-|**Base firmware** |MeshCore v1.18.0                |
-
-FieldMesh has been developed and tested on the ThinkNode M1 (E-Ink, single button) and the Wio Tracker L1 (OLED, joystick). Headless devices (no display, single button) are supported since v1.8 — the Seeed T1000-E is the reference device for this class. The code is written to be portable — all hardware-specific pins are in `variant.h`, layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test it on another platform, please open an issue with your findings.
-
-## Building
+## Building from source
 
 FieldMesh builds the same way as MeshCore, with [PlatformIO](https://platformio.org). No additional dependencies beyond what MeshCore already requires.
 
@@ -370,264 +361,179 @@ pio run -e Station_G2_fieldmesh_repeater                 # firmware.bin = update
 pio run -e Station_G2_fieldmesh_repeater -t mergebin     # firmware-merged.bin = full image (0x0)
 ```
 
+**Untested devices** (build from source only, no prebuilt firmware): Heltec Mesh Node T1, SenseCAP MeshTracker X1, Wio Tracker L1 E-Ink, Wio Tracker L1 1W. Other single-button devices without a display (e.g. RAK WisMesh Tag) could work like the T1000-E — contributions welcome.
+
+The code is written to be portable: hardware-specific pins are in `variant.h`, the layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test FieldMesh on another device, please share your findings in [Discussions → Hardware](../../discussions/categories/hardware).
+
 ## Limitations & Known Issues
 
-- Tested on ThinkNode M1, Wio Tracker L1, T1000-E and Station G2 — other hardware untested
+- Tested on ThinkNode M1, Wio Tracker L1, T1000-E and Station G2 only
 - Off-Grid knows EU/UK and US/AU frequencies only — do not use it in other regions (e.g. India, Japan, Korea)
 - SOS needs a channel whose name contains "sos" — for sending and for the alarm
-- Headless devices can receive SOS but not send it
-- Tracking page shows a maximum of 3 contacts (favourited in the companion app)
-- Message history is RAM-only — stored messages are lost on reboot (intentional)
-- Text input and send is available on Wio Tracker L1 only — the ThinkNode M1 single button does not support text composition
-- Message send supports channels only — no direct message (DM) sending via device UI
-- Repeater: switching from a stock repeater needs one full-image flash; back up the key first (see [Getting started](#getting-started))
+- The T1000-E can receive SOS but not send it
+- The Tracking page shows at most 3 contacts (favourites in the MeshCore app)
+- The message history is RAM-only — it is empty after a restart (on purpose)
+- Writing messages on the device: Wio Tracker L1 only, channels only (no direct messages)
+- Repeater: switching from a stock repeater changes the partition table — back up the key first (see [Install & update](#install--update))
 - Repeater: the dashboard WiFi is open (no password) — anyone in range can read the board and see node positions; setup actions need the admin password
 - Repeater: weather only arrives when a phone with mobile data opens the dashboard; some Android phones keep all traffic on the box WiFi and cannot load it
 
 ## FAQ
 
+### Installing and updating
+
 <details>
-<summary><strong>Why do I not see some nodes in the TRACKING view?</strong></summary>
+<summary><strong>Which file do I need?</strong></summary>
 
-Only nodes that have recently sent a GPS position are shown in TRACKING.
-Additionally, the node must be marked as a favorite in the MeshCore app.
-
-If a node appears in RECENT but not in TRACKING, it most likely:
-- has not sent GPS data
-- is not marked as favorite
+None, if you use the [FieldMesh Web Flasher](https://fieldmesh-radio.github.io/FieldMesh/) — it picks the right file. For a manual install: `.zip` for ThinkNode M1, Wio Tracker L1 and T1000-E, `…_full.bin` for the Station G2. The `…_update.bin` is only for updating a running FieldMesh Repeater from its dashboard. See [Supported devices](#supported-devices).
 
 </details>
 
-
 <details>
-<summary><strong>Why is my own position not shown?</strong></summary>
+<summary><strong>Will I lose my contacts, settings or identity when updating?</strong></summary>
 
-Your position is only available if your device has a valid GPS fix.
-
-Make sure:
-- GPS is enabled (via long press on the GPS screen, 4× press on headless devices, or the hardware switch on the M1)
-- your device has a GPS fix (not "GPS NO FIX")
-
-Without a GPS fix, no position can be sent or displayed.
+Not when you update FieldMesh 2.x — neither the web flasher nor the dashboard update erases anything. Back up your private key first if you come from a stock MeshCore repeater on the Station G2 or from FieldMesh 1.x (formerly V5.x); in those cases identity and settings can be lost. See [Install & update](#install--update).
 
 </details>
 
+<details>
+<summary><strong>Can I flash from my phone?</strong></summary>
+
+No. Flashing over USB needs Chrome or Edge on a computer (Windows, macOS, Linux). A running FieldMesh Repeater can be updated from a phone through its dashboard.
+
+</details>
+
+<details>
+<summary><strong>The web flasher does not find my device or "Start update mode" does nothing</strong></summary>
+
+Use a USB data cable (some cables only charge) and close other programs that use the port (e.g. a serial monitor or the MeshCore app over USB). If *Start update mode* does nothing, put the device into update (DFU) mode by hand — see the device's manual — then click *Flash*. Station G2: hold the download button, press reset briefly, release, then click *Flash* again.
+
+</details>
+
+<details>
+<summary><strong>Repeater: an update over USB has no effect</strong></summary>
+
+The box probably runs from its second app slot after an update from the dashboard, and the update file was written to the first one (this happens with the MeshCore Flasher). Use the FieldMesh Web Flasher, update from the dashboard again, or flash the full image at 0x0 with esptool-js. See [Updating the repeater](#updating-the-repeater).
+
+</details>
+
+### Tracking & GPS
+
+<details>
+<summary><strong>Why do I not see some nodes on the Tracking page?</strong></summary>
+
+The Tracking page only shows nodes that
+
+- have sent a GPS position (GPS on, with a fix, and GPS-Share on), and
+- are marked as favourites in the MeshCore app.
+
+It shows at most 3 nodes, so the display stays readable in the field; newer adverts can replace older entries. A node that is on the Recent page but not on Tracking has most likely sent no position or is not a favourite.
+
+</details>
+
+<details>
+<summary><strong>Why is my own position not shown or sent?</strong></summary>
+
+Your device needs a GPS fix. Check that GPS is on (long press on the GPS page, 4× press on the T1000-E, and the hardware switch on the ThinkNode M1) and that the GPS page does not show "NO FIX". For tracking, GPS-Share must be on too (Tracking page → *Outdoor Settings*, or location sharing in the MeshCore app).
+
+</details>
 
 <details>
 <summary><strong>How often is my position sent?</strong></summary>
 
-With GPS-Share on: at the first fix, whenever you moved 100 m or more (at most every 2 minutes, every 60 s when moving fast), and otherwise every 10 minutes as a heartbeat.
-In normal mode, this is done with hop limit = 0 (local only). See [GPS Tracking & Auto-Advert](#gps-tracking--auto-advert).
+With GPS-Share on: at the first fix, whenever you moved 100 m or more (at most every 2 minutes, every 60 s when moving fast), and otherwise every 10 minutes as a heartbeat. See [GPS Tracking & Auto-Advert](#gps-tracking--auto-advert).
 
 </details>
 
+<details>
+<summary><strong>Why are my positions not forwarded through the mesh?</strong></summary>
+
+In normal mode, position adverts are sent zero-hop (direct range only) to keep load off the wider network. In Off-Grid mode they are flooded through your group.
+
+</details>
 
 <details>
 <summary><strong>Why does my GPS show no fix for a moment?</strong></summary>
 
-Since v2.1 the GPS sleeps between fixes to save battery and wakes up shortly before the next one (every 2 minutes). Indoors it only searches briefly; under open sky it searches longer. Open the GPS or Tracking page to keep it awake while the display is on.
+The GPS sleeps between fixes to save battery and wakes up shortly before the next one (every 2 minutes). Indoors it only searches briefly; under open sky it searches longer. Open the GPS or Tracking page to keep it awake while the display is on.
 
 </details>
-
 
 <details>
 <summary><strong>Why is the distance to other nodes inaccurate?</strong></summary>
 
-The distance is only a rough estimate.
-It is calculated once when a GPS advert is received and is not continuously updated to save energy.
-
-Additionally, GPS accuracy itself can vary depending on the environment.
+It is a rough estimate: it is calculated once when a position is received and not updated continuously, to save energy. GPS accuracy also depends on the surroundings.
 
 </details>
 
+### Off-Grid
 
 <details>
-<summary><strong>Why are only a few nodes shown in TRACKING?</strong></summary>
+<summary><strong>What is Off-Grid mode and when should I use it?</strong></summary>
 
-TRACKING is limited to a maximum of 3 favorite nodes.
-This is intentional to keep the display clean and usable in the field.
-
-New incoming adverts may replace older entries.
+Off-Grid switches your node to a separate frequency and turns on Client Repeat, so every FieldMesh node in your group relays for the others. Use it where there is no mesh infrastructure (mountains, remote areas), for a closed group, or to keep a busy group off the main network. Your normal radio settings are saved and restored when you switch back. See [Off-Grid Mode](#off-grid-mode).
 
 </details>
-
 
 <details>
-<summary><strong>What happens if a node has no GPS?</strong></summary>
+<summary><strong>Why do I see fewer nodes — or none from the wider network?</strong></summary>
 
-Nodes can still send adverts without GPS.
-This allows you to see that a node is nearby even if no position is available.
-To calculate distances, your own device should have GPS enabled.
+Off-Grid is probably on. In Off-Grid you only see nodes that are also in Off-Grid; messages from the main mesh do not reach you. Switch Off-Grid off to get back to the normal network.
 
 </details>
-
-
-<details>
-<summary><strong>Why are my GPS adverts not forwarded through the mesh?</strong></summary>
-
-In normal mode, GPS adverts are sent with hop limit = 0.
-This is intentional to reduce network load and avoid unnecessary traffic.
-Only in Off-Grid mode, adverts are flooded.
-
-</details>
-
-
-<details>
-<summary><strong>Why am I not seeing nodes from the wider network?</strong></summary>
-
-Check if Off-Grid mode is enabled.
-In Off-Grid mode, your device operates on a different frequency and is isolated from the normal mesh.
-Disable Off-Grid mode to reconnect to the main network.
-
-</details>
-
-
-<details>
-<summary><strong>What does Off-Grid mode do?</strong></summary>
-
-Off-Grid mode enables Client Repeat functionality.
-Your node behaves similar to a repeater and forwards messages.
-This happens on a separate frequency to avoid interfering with the main MeshCore network.
-
-</details>
-
 
 <details>
 <summary><strong>Can I change the Off-Grid frequency?</strong></summary>
 
-The Off-Grid frequency is picked automatically from your normal frequency: below 900 MHz the EU frequency (869.4625 MHz), from 900 MHz the US frequency (916.4625 MHz). One firmware file works in both regions.
-Other frequencies can only be set in the code (`OffGrid.h`).
+It is picked automatically from your normal frequency: below 900 MHz the EU frequency (869.4625 MHz), from 900 MHz the US frequency (916.4625 MHz). Other frequencies can only be set in the code (`OffGrid.h`). Do not use Off-Grid in other regions.
 
 </details>
 
+### SOS
 
 <details>
-<summary><strong>Why do I see fewer nodes in Off-Grid mode?</strong></summary>
+<summary><strong>How do I send an SOS?</strong></summary>
 
-Off-Grid mode uses a separate frequency.
-You will only see nodes that are also in Off-Grid mode.
-
-</details>
-
-
-<details>
-<summary><strong>When should I use Off-Grid mode?</strong></summary>
-
-Off-Grid mode is useful when:
-
-- you are in areas without existing mesh infrastructure (e.g. mountains)
-- you are operating in a closed group
-- you want to avoid interfering with the main network
-
-Note that you will not receive messages from the main mesh while in Off-Grid mode.
+First create a channel whose name contains "sos" (e.g. `#sos`) in the MeshCore app — on your device and on your group's devices. Then: SOS page → long press → confirm in two steps. The message `!SOS` goes to that channel with your position (if the last fix is at most 2 minutes old, otherwise "no GPS") and your battery level. The GPS then stays on for 10 minutes and sends the position once more if the first SOS had none. The T1000-E cannot send an SOS.
 
 </details>
-
-
-<details>
-<summary><strong>What happens to my settings when switching Off-Grid mode?</strong></summary>
-
-Your normal radio settings are stored and restored automatically.
-Switching between modes does not require manual reconfiguration.
-
-</details>
-
-
-<details>
-<summary><strong>How does the SOS feature work?</strong></summary>
-
-The SOS function is protected by a two-step confirmation to prevent accidental triggering.
-
-When activated:
-- `!SOS` is sent in your SOS channel (name contains "sos")
-- your GPS position is included if the last fix is at most 2 minutes old, otherwise "no GPS"
-- your battery level is added
-- the GPS stays on for 10 minutes and sends the position once more if the first SOS had none
-
-</details>
-
 
 <details>
 <summary><strong>What happens when an SOS is received?</strong></summary>
 
-When an `!SOS` message is received in an SOS channel:
-
-- a dedicated screen opens
-- the sender's node name is displayed
-- the buzzer (if available) will sound
-
-The alarm will continue until manually confirmed. `!SOS` in other channels (e.g. Public) does not trigger the alarm.
+When `!SOS` arrives in an SOS channel, an alert screen opens with the sender's name and the buzzer sounds — even in quiet mode — until you acknowledge it (long press; one press on the T1000-E). `!SOS` in other channels (e.g. Public) does not trigger the alarm. A FieldMesh Repeater shows it on its board and in the dashboard.
 
 </details>
 
+### Messages
 
 <details>
-<summary><strong>Where are received messages stored?</strong></summary>
+<summary><strong>Where are received messages stored? Does clearing them affect the app?</strong></summary>
 
-Messages are stored in RAM only — up to 32 entries in a ring buffer.
-They are lost when the device reboots. This is intentional: the device is not a permanent message store, and smartphone sync via the MeshCore companion app is unaffected by what the device UI shows or clears.
+Up to 32 messages are kept in RAM and are gone after a restart — on purpose, the device is not a message store. The history on the device is only a display copy: reading or clearing it never affects the MeshCore app, which still gets all messages. The unread counter on the home screen counts the messages you have not stepped through on the device.
 
 </details>
 
-
 <details>
-<summary><strong>Does clearing messages on the device affect smartphone sync?</strong></summary>
+<summary><strong>Can I send messages without the app?</strong></summary>
 
-No. The message history shown on the device is a display copy only.
-Clearing it — either one by one or all at once — never touches MeshCore's internal sync queue.
-Your companion app will still receive all messages that arrived while it was connected or reconnects.
+On the Wio Tracker L1: message menu → *Send Message*, choose a channel, write with the joystick (up to 20 characters). Channels only — direct messages need the app. The ThinkNode M1 (one button) cannot write messages.
 
 </details>
 
+### Repeater
 
 <details>
-<summary><strong>Can I send messages without the companion app?</strong></summary>
-
-Yes, on the Wio Tracker L1. Long-press on the home screen to open the message menu, then select "Send Message". You will be prompted to choose a channel, then compose your text using the joystick. Messages can be up to 20 characters long.
-
-This feature is not available on the ThinkNode M1 — single-button input does not support text composition.
-
-</details>
-
-
-<details>
-<summary><strong>Can I send direct messages (DMs) from the device?</strong></summary>
-
-No. The text send feature supports channel messages only.
-Direct messages require the companion app.
-
-</details>
-
-
-<details>
-<summary><strong>What does the unread counter on the home screen show?</strong></summary>
-
-The counter shows how many received messages you have not yet stepped through in the message history view.
-It is independent from MeshCore's internal message queue and is not affected by smartphone sync state.
-
-</details>
-
-
-<details>
-<summary><strong>Repeater: why does the dashboard not open by itself when I join the WiFi?</strong></summary>
+<summary><strong>Why does the dashboard not open by itself when I join the WiFi?</strong></summary>
 
 On purpose. The box has no captive portal: phones see a WiFi without internet and keep using mobile data. Open `http://192.168.4.1` (QR code on the box); the page then moves on to `http://<room name>.local` if your phone supports it.
 
 </details>
 
-
 <details>
-<summary><strong>Repeater: the weather says "no data yet" — why?</strong></summary>
+<summary><strong>The weather says "no data yet" — why?</strong></summary>
 
-No phone with mobile data has opened the dashboard since the box location was set. Open the dashboard with mobile data on, or tap *Load now* in *Setup → Weather*. The box also needs a position (Setup → Box position) or a weather location.
-
-</details>
-
-
-<details>
-<summary><strong>Repeater: an update from the web flasher has no effect</strong></summary>
-
-The box probably runs from its second app slot after an update from the dashboard. Update from the dashboard again, or flash the full image at 0x0 with esptool-js. See [Updating the repeater](#updating-the-repeater).
+No phone with mobile data has opened the dashboard since the box location was set. Open the dashboard with mobile data on, or tap *Load now* in *Setup → Weather*. The box also needs a position (*Setup → Box position*) or a weather location.
 
 </details>
 
