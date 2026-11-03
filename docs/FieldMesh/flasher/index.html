@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FieldMesh Flasher</title>
+<style>
+  :root {
+    --bg: #f6f7f5; --card: #ffffff; --text: #1d2420; --muted: #5d6a63; --line: #d9dfdb;
+    --accent: #2f6b4f; --accent-text: #ffffff; --warn-bg: #fff4dc; --warn-line: #e3b85a;
+    --err: #b3261e; --ok: #2f6b4f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121614; --card: #1b201d; --text: #e6ece8; --muted: #9aa8a0; --line: #2e3632;
+      --accent: #5fae86; --accent-text: #0d130f; --warn-bg: #2d2615; --warn-line: #8a6d2b;
+      --err: #f2827a; --ok: #7fd1a6;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  h2 { font-size: 1.05rem; margin: 0 0 12px; }
+  a { color: var(--accent); }
+  .muted { color: var(--muted); font-size: .92rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 16px; margin-top: 16px; }
+  .warn { background: var(--warn-bg); border-color: var(--warn-line); }
+  .devices { display: grid; gap: 8px; }
+  .dev { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line);
+         border-radius: 10px; cursor: pointer; }
+  .dev:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .dev input { accent-color: var(--accent); width: 18px; height: 18px; margin: 0; }
+  .dev b { display: block; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  button { font: inherit; font-weight: 600; padding: 10px 18px; border-radius: 8px; cursor: pointer;
+           border: 1px solid var(--accent); background: var(--accent); color: var(--accent-text); }
+  button.secondary { background: transparent; color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  ol { margin: 8px 0 0; padding-left: 20px; }
+  progress { width: 100%; height: 12px; margin-top: 12px; accent-color: var(--accent); }
+  #status { margin-top: 8px; min-height: 1.5em; }
+  #status.err { color: var(--err); }
+  #status.ok { color: var(--ok); font-weight: 600; }
+  details { margin-top: 12px; }
+  pre { white-space: pre-wrap; word-break: break-word; font-size: .8rem; max-height: 240px; overflow: auto;
+        background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 8px 0 0; }
+  footer { margin-top: 24px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>FieldMesh Flasher</h1>
+  <div class="muted" id="version">Loading firmware list...</div>
+
+  <div class="card warn hidden" id="noSerial">
+    This browser cannot talk to USB devices. Please use <b>Chrome</b> or <b>Edge</b> on a computer
+    (Windows, macOS, Linux). Phones and Safari do not work.
+  </div>
+
+  <div class="card">
+    <h2>1. Choose your device</h2>
+    <div class="devices" id="devices"></div>
+  </div>
+
+  <div class="card hidden" id="flashCard">
+    <h2>2. Flash</h2>
+    <div class="muted">Your settings, contacts and identity stay on the device - nothing is erased.
+      Connect the device to this computer with a USB data cable.</div>
+
+    <div id="espSteps" class="hidden">
+      <ol>
+        <li>Click <b>Flash</b> and pick the device's port.</li>
+        <li>Wait until it says done. The device restarts by itself.</li>
+      </ol>
+      <div class="row"><button id="espFlash">Flash</button></div>
+    </div>
+
+    <div id="nrfSteps" class="hidden">
+      <ol>
+        <li>Click <b>Start update mode</b> and pick the device's port. The device restarts into update mode.</li>
+        <li>Click <b>Flash</b> and pick the port again (its name may have changed).</li>
+      </ol>
+      <div class="row">
+        <button id="nrfDfu" class="secondary">Start update mode</button>
+        <button id="nrfFlash">Flash</button>
+      </div>
+      <div class="muted" style="margin-top:8px">Already in update mode? Go straight to <b>Flash</b>.
+        If <b>Start update mode</b> does nothing, put the device into update (DFU) mode by hand -
+        see your device's manual - and then click <b>Flash</b>.</div>
+    </div>
+
+    <progress id="progress" max="100" value="0" class="hidden"></progress>
+    <div id="status"></div>
+    <details><summary class="muted">Log</summary><pre id="log"></pre></details>
+  </div>
+
+  <footer class="muted">
+    <p id="downloads"></p>
+    <p>Source and documentation: <a href="https://github.com/TogeriX-hub/FieldMesh">github.com/TogeriX-hub/FieldMesh</a>.
+      Questions and test reports: <a href="https://github.com/TogeriX-hub/FieldMesh/discussions">Discussions</a>.</p>
+    <p>Uses <a href="https://github.com/espressif/esptool-js">esptool-js</a> (Apache-2.0),
+      <a href="https://github.com/gildas-lormeau/zip.js">zip.js</a> (BSD-3-Clause) and the nRF52 DFU flasher by
+      Liam Cottle from <a href="https://github.com/liamcottle/rnode-flasher">rnode-flasher</a> (MIT).</p>
+  </footer>
+</main>
+
+<script src="lib/zip.min.js"></script>
+<script src="nrf52_dfu_flasher.js"></script>
+<script type="module">
+import { ESPLoader, Transport } from "./lib/esptool.js";
+
+const $ = (id) => document.getElementById(id);
+let firmware = null;
+let device = null;
+let busy = false;
+
+if (window.zip) window.zip.configure({ useWebWorkers: false });
+if (!("serial" in navigator)) $("noSerial").classList.remove("hidden");
+
+function log(line) {
+  $("log").textContent += line + "\n";
+  $("log").scrollTop = $("log").scrollHeight;
+}
+function setStatus(text, kind = "") {
+  $("status").textContent = text;
+  $("status").className = kind;
+}
+function setProgress(pct) {
+  const p = $("progress");
+  if (pct === null) { p.classList.add("hidden"); return; }
+  p.classList.remove("hidden");
+  p.value = pct;
+}
+function setBusy(b) {
+  busy = b;
+  for (const id of ["espFlash", "nrfDfu", "nrfFlash"]) $(id).disabled = b || !("serial" in navigator);
+  for (const r of document.querySelectorAll("input[name=dev]")) r.disabled = b;
+}
+function isCancel(e) { return e && e.name === "NotFoundError"; }
+
+async function fetchFirmware() {
+  const res = await fetch(device.file);
+  if (!res.ok) throw new Error(`Download failed (${res.status})`);
+  return res;
+}
+
+function selectDevice(d) {
+  device = d;
+  $("flashCard").classList.remove("hidden");
+  $("espSteps").classList.toggle("hidden", d.platform !== "esp32");
+  $("nrfSteps").classList.toggle("hidden", d.platform !== "nrf52");
+  setStatus("");
+  setProgress(null);
+}
+
+async function init() {
+  try {
+    const res = await fetch("firmware/firmware.json", { cache: "no-store" });
+    firmware = await res.json();
+  } catch (e) {
+    $("version").textContent = "Could not load the firmware list.";
+    return;
+  }
+  const date = firmware.published ? new Date(firmware.published).toLocaleDateString() : "";
+  $("version").innerHTML = "";
+  $("version").append(`FieldMesh ${firmware.version}${date ? " · released " + date : ""} · `);
+  const a = document.createElement("a");
+  a.href = firmware.releaseUrl; a.textContent = "release notes";
+  $("version").append(a);
+
+  const list = $("devices");
+  const dl = $("downloads");
+  dl.append("Manual download: ");
+  firmware.devices.forEach((d, i) => {
+    const label = document.createElement("label");
+    label.className = "dev";
+    const input = document.createElement("input");
+    input.type = "radio"; input.name = "dev"; input.value = d.id;
+    input.addEventListener("change", () => selectDevice(d));
+    const text = document.createElement("span");
+    const b = document.createElement("b"); b.textContent = d.name;
+    const s = document.createElement("span"); s.className = "muted"; s.textContent = d.role;
+    text.append(b, s);
+    label.append(input, text);
+    list.append(label);
+
+    const link = document.createElement("a");
+    link.href = d.file; link.textContent = d.name; link.download = "";
+    if (i) dl.append(" · ");
+    dl.append(link);
+  });
+  setBusy(false);
+}
+
+// ESP32: write the full image (bootloader, partition table, app) at 0x0, no erase.
+// The settings partition (SPIFFS) lies behind the image and stays untouched.
+$("espFlash").addEventListener("click", async () => {
+  if (busy || !device) return;
+  let port;
+  try {
+    port = await navigator.serial.requestPort();
+  } catch (e) {
+    if (!isCancel(e)) setStatus(String(e.message || e), "err");
+    return;
+  }
+  setBusy(true);
+  setProgress(0);
+  const transport = new Transport(port, false);
+  try {
+    setStatus("Downloading firmware...");
+    const data = new Uint8Array(await (await fetchFirmware()).arrayBuffer());
+    setStatus("Connecting...");
+    const terminal = { clean() {}, writeLine: (s) => log(s), write: (s) => log(s) };
+    const loader = new ESPLoader({ transport, baudrate: 460800, terminal, debugLogging: false });
+    await loader.main();
+    const chip = loader.chip && loader.chip.CHIP_NAME;
+    if (device.chip && chip && chip !== device.chip) {
+      throw new Error(`This is a ${chip}, not the ${device.name} (${device.chip}). Wrong port?`);
+    }
+    setStatus("Flashing - do not unplug...");
+    await loader.writeFlash({
+      fileArray: [{ data, address: 0x0 }],
+      flashMode: "keep", flashFreq: "keep", flashSize: "keep",
+      eraseAll: false, compress: true,
+      reportProgress: (_i, written, total) => setProgress(Math.floor(written / total * 100)),
+    });
+    await loader.after("hard_reset");
+    setProgress(100);
+    setStatus("Done - the device restarts with FieldMesh " + firmware.version + ".", "ok");
+  } catch (e) {
+    log(String(e && e.stack || e));
+    let msg = "Flashing failed: " + (e.message || e);
+    if (device.bootHint) msg += " " + device.bootHint;
+    setStatus(msg, "err");
+  } finally {
+    try { await transport.disconnect(); } catch (e) { /* already closed */ }
+    setBusy(false);
+  }
+});
+
+// nRF52 step 1: 1200 baud touch restarts the device into its serial DFU bootloader.
+$("nrfDfu").addEventListener("click", async () => {
+  if (busy || !device) return;
+  let port;
+  try {
+    port = await navigator.serial.requestPort();
+  } catch (e) {
+    if (!isCancel(e)) setStatus(String(e.message || e), "err");
+    return;
+  }
+  setBusy(true);
+  try {
+    setStatus("Restarting into update mode...");
+    await new Nrf52DfuFlasher(port).enterDfuMode();
+    setStatus("The device should now be in update mode. Click Flash and pick the port again.");
+  } catch (e) {
+    log(String(e && e.stack || e));
+    setStatus("Could not start update mode: " + (e.message || e) + " Put the device into update mode by hand, then click Flash.", "err");
+  } finally {
+    setBusy(false);
+  }
+});
+
+// nRF52 step 2: send the DFU zip (application only) to the bootloader.
+$("nrfFlash").addEventListener("click", async () => {
+  if (busy || !device) return;
+  let port;
+  try {
+    port = await navigator.serial.requestPort();
+  } catch (e) {
+    if (!isCancel(e)) setStatus(String(e.message || e), "err");
+    return;
+  }
+  setBusy(true);
+  setProgress(0);
+  try {
+    setStatus("Downloading firmware...");
+    const blob = await (await fetchFirmware()).blob();
+    setStatus("Flashing - do not unplug...");
+    await new Nrf52DfuFlasher(port).flash(blob, (pct) => setProgress(pct));
+    setProgress(100);
+    setStatus("Done - the device restarts with FieldMesh " + firmware.version + ".", "ok");
+  } catch (e) {
+    log(String(e && e.stack || e));
+    setStatus("Flashing failed: " + (e.message || e) + " Is the device in update mode?", "err");
+  } finally {
+    try { await port.close(); } catch (e) { /* already closed */ }
+    setBusy(false);
+  }
+});
+
+setBusy(true);
+init();
+</script>
+</body>
+</html>

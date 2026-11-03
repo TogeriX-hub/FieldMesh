@@ -1,0 +1,36 @@
+[
+  {
+    "id": "m1",
+    "name": "Elecrow ThinkNode M1",
+    "role": "Companion",
+    "platform": "nrf52",
+    "env": "ThinkNode_M1_companion_radio_ble",
+    "suffix": ".zip"
+  },
+  {
+    "id": "l1",
+    "name": "Seeed Wio Tracker L1",
+    "role": "Companion",
+    "platform": "nrf52",
+    "env": "WioTrackerL1_companion_radio_ble",
+    "suffix": ".zip"
+  },
+  {
+    "id": "t1000e",
+    "name": "Seeed T1000-E",
+    "role": "Companion",
+    "platform": "nrf52",
+    "env": "t1000e_companion_radio_ble",
+    "suffix": ".zip"
+  },
+  {
+    "id": "g2",
+    "name": "Station G2",
+    "role": "FieldMesh Repeater",
+    "platform": "esp32",
+    "chip": "ESP32-S3",
+    "env": "Station_G2_fieldmesh_repeater",
+    "suffix": "_full.bin",
+    "bootHint": "Hold the firmware download button, press reset briefly, release the download button, then click Flash again."
+  }
+]

@@ -1,0 +1,75 @@
+# FieldMesh: web flasher on GitHub Pages (https://togerix-hub.github.io/FieldMesh/).
+# Runs when a release is published (not for pre-releases) or by hand with a release tag.
+# Puts the release files of the devices in docs/FieldMesh/flasher/devices.json on the page.
+# Needs Settings -> Pages -> Source: "GitHub Actions".
+name: FieldMesh Flasher
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag for the flasher, e.g. v2.1.0 (empty = latest release)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fieldmesh-flasher
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event_name != 'release' || !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Download release files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_INPUT: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          TAG="$TAG_INPUT"
+          if [ -z "$TAG" ]; then
+            TAG=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName -q .tagName)
+          fi
+          echo "Release: $TAG"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,publishedAt,url > release.json
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir assets \
+            --pattern '*.zip' --pattern '*_full.bin'
+          ls -l assets
+
+      - name: Get flasher libraries (pinned versions)
+        run: |
+          mkdir -p libs/esptool-js libs/zipjs
+          cd libs
+          npm pack esptool-js@0.7.1 @zip.js/zip.js@2.8.11
+          tar xzf esptool-js-0.7.1.tgz -C esptool-js
+          tar xzf zip.js-zip.js-2.8.11.tgz -C zipjs
+
+      - name: Build site
+        run: python3 docs/FieldMesh/flasher/build_site.py --release release.json --assets assets --libs libs --out site
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
