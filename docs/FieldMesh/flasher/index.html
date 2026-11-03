@@ -5,106 +5,161 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FieldMesh Flasher</title>
 <style>
+  @font-face { font-family: "Barlow Semi Condensed"; font-weight: 600; font-display: swap;
+    src: url(fonts/barlow-semi-condensed-latin-600-normal.woff2) format("woff2"); }
+  @font-face { font-family: "Barlow Semi Condensed"; font-weight: 700; font-display: swap;
+    src: url(fonts/barlow-semi-condensed-latin-700-normal.woff2) format("woff2"); }
   :root {
-    --bg: #f6f7f5; --card: #ffffff; --text: #1d2420; --muted: #5d6a63; --line: #d9dfdb;
-    --accent: #2f6b4f; --accent-text: #ffffff; --warn-bg: #fff4dc; --warn-line: #e3b85a;
-    --err: #b3261e; --ok: #2f6b4f;
+    --bg: #0F1412; --surface: #171E1A; --border: #243029; --border2: #33413A;
+    --text: #E6EBE6; --muted: #9AA59C; --text2: #C9D2CB;
+    --accent: #F2B544; --accent-text: #F2B544; --on-accent: #1B1405; --sel-bg: #2A2312; --live: #6FD3A0;
+    --err-bg: #2A1412; --err-border: #7A2A22; --err-text: #FFE3DF;
+    --warn-bg: #2A2312; --warn-border: #6B5521; --warn-title: #F2D08A; --warn-text: #E9DDBE;
+    --topo: url(img/topo-dark.svg);
+    --cond: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+    color-scheme: dark;
   }
-  @media (prefers-color-scheme: dark) {
+  @media (prefers-color-scheme: light) {
     :root {
-      --bg: #121614; --card: #1b201d; --text: #e6ece8; --muted: #9aa8a0; --line: #2e3632;
-      --accent: #5fae86; --accent-text: #0d130f; --warn-bg: #2d2615; --warn-line: #8a6d2b;
-      --err: #f2827a; --ok: #7fd1a6;
+      --bg: #F3F5F2; --surface: #FFFFFF; --border: #D9E0DA; --border2: #BCC6BF;
+      --text: #16201A; --muted: #56625A; --text2: #34413A;
+      --accent-text: #8A5A00; --sel-bg: #FFF6E0; --live: #1F9D60;
+      --err-bg: #FDEDEA; --err-border: #E0796E; --err-text: #4A0F0B;
+      --warn-bg: #FFF4D6; --warn-border: #D9AE45; --warn-title: #6B4A00; --warn-text: #4A3A10;
+      --topo: url(img/topo-light.svg);
+      color-scheme: light;
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 48px; }
-  h1 { font-size: 1.6rem; margin: 0 0 4px; }
-  h2 { font-size: 1.05rem; margin: 0 0 12px; }
-  a { color: var(--accent); }
-  .muted { color: var(--muted); font-size: .92rem; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-          padding: 16px; margin-top: 16px; }
-  .warn { background: var(--warn-bg); border-color: var(--warn-line); }
-  .devices { display: grid; gap: 8px; }
-  .dev { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line);
-         border-radius: 10px; cursor: pointer; }
-  .dev:has(input:checked) { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-  .dev input { accent-color: var(--accent); width: 18px; height: 18px; margin: 0; }
-  .dev b { display: block; }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-  button { font: inherit; font-weight: 600; padding: 10px 18px; border-radius: 8px; cursor: pointer;
-           border: 1px solid var(--accent); background: var(--accent); color: var(--accent-text); }
-  button.secondary { background: transparent; color: var(--accent); }
-  button:disabled { opacity: .45; cursor: default; }
-  ol { margin: 8px 0 0; padding-left: 20px; }
-  progress { width: 100%; height: 12px; margin-top: 12px; accent-color: var(--accent); }
-  #status { margin-top: 8px; min-height: 1.5em; }
-  #status.err { color: var(--err); }
-  #status.ok { color: var(--ok); font-weight: 600; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
+  body { min-height: 100vh; background: var(--bg) var(--topo) no-repeat center bottom / 1280px auto; padding-bottom: 400px; }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 0 16px; }
+  .top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding-top: 28px; }
+  .brand { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .logo { display: block; width: 280px; max-width: 62vw; height: auto; }
+  .cond { font-family: var(--cond); font-weight: 700; text-transform: uppercase; }
+  .kicker { font-family: var(--cond); font-weight: 700; font-size: 15px; letter-spacing: .28em; }
+  .meta { text-align: right; font-size: 14px; color: var(--muted); }
+  .meta a { color: var(--muted); }
+  .badge { display: inline-block; font-family: var(--cond); font-weight: 700; font-size: 15px; letter-spacing: .12em;
+           padding: 3px 10px; border-radius: 4px; background: var(--accent); color: var(--on-accent); }
+  .stripes { display: flex; align-items: center; gap: 6px; padding-top: 16px; }
+  .stripes span { width: 14px; height: 6px; background: var(--accent); transform: skewX(-30deg); }
+  .stripes i { flex: 1; height: 1px; background: var(--border); margin-left: 8px; }
+  main { display: flex; flex-direction: column; gap: 24px; padding-top: 32px; padding-bottom: 32px; }
+  .label { font-family: var(--cond); font-weight: 700; font-size: 14px; letter-spacing: .24em; color: var(--muted); margin: 0 0 10px; }
+  .card { padding: 16px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); }
+  .muted { color: var(--muted); font-size: 14px; line-height: 1.45; }
+  a { color: var(--accent-text); }
+  .devices { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+  .dev { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px;
+         border: 1.5px solid var(--border2); border-radius: 8px; background: var(--surface); cursor: pointer; }
+  .dev input { position: absolute; opacity: 0; pointer-events: none; }
+  .dev b { display: block; font-size: 17px; }
+  .dev .role { color: var(--muted); font-size: 14px; }
+  .dev .kind { font-family: var(--cond); font-size: 13px; font-weight: 700; letter-spacing: .08em; padding: 2px 7px; border-radius: 4px;
+               background: var(--border); color: var(--text2); white-space: nowrap; }
+  .dev:has(input:checked) { border-color: var(--accent); background: var(--sel-bg); }
+  .dev:has(input:checked) .kind { background: var(--accent); color: var(--on-accent); }
+  .dev:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  ol { margin: 12px 0 0; padding-left: 20px; line-height: 1.6; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+  .btn { height: 48px; padding: 0 24px; border-radius: 6px; border: 0; background: var(--accent); color: var(--on-accent);
+         font-family: var(--cond); font-size: 17px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+  .btn.ghost { background: transparent; border: 2px solid var(--accent); color: var(--accent-text); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .note { margin-top: 14px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border2);
+          color: var(--text2); font-size: 14px; line-height: 1.45; }
+  .warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); margin: 0; }
+  .warn b { color: var(--warn-title); }
+  progress { -webkit-appearance: none; appearance: none; width: 100%; height: 8px; margin-top: 16px;
+             border: 0; border-radius: 4px; background: var(--border); overflow: hidden; }
+  progress::-webkit-progress-bar { background: var(--border); }
+  progress::-webkit-progress-value { background: var(--accent); }
+  progress::-moz-progress-bar { background: var(--accent); }
+  #status { margin-top: 10px; min-height: 1.4em; font-size: 15px; }
+  #status.err { padding: 10px 12px; border-radius: 8px; background: var(--err-bg); border: 1px solid var(--err-border); color: var(--err-text); }
+  #status.ok { color: var(--live); font-weight: 700; }
   details { margin-top: 12px; }
-  pre { white-space: pre-wrap; word-break: break-word; font-size: .8rem; max-height: 240px; overflow: auto;
-        background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px; margin: 8px 0 0; }
-  footer { margin-top: 24px; }
-  .hidden { display: none; }
+  summary { cursor: pointer; }
+  pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; max-height: 240px; overflow: auto;
+        background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px; margin: 8px 0 0; }
+  footer p { margin: 0 0 8px; }
+  .hidden { display: none !important; }
+  @media (max-width: 480px) { .top { flex-direction: column; align-items: flex-start; } .meta { text-align: left; } }
 </style>
 </head>
 <body>
-<main>
-  <h1>FieldMesh Flasher</h1>
-  <div class="muted" id="version">Loading firmware list...</div>
-
-  <div class="card warn hidden" id="noSerial">
-    This browser cannot talk to USB devices. Please use <b>Chrome</b> or <b>Edge</b> on a computer
-    (Windows, macOS, Linux). Phones and Safari do not work.
+<header>
+  <div class="wrap top">
+    <div class="brand">
+      <picture>
+        <source srcset="img/logo-light.svg" media="(prefers-color-scheme: light)">
+        <img class="logo" src="img/logo-dark.svg" alt="FieldMesh" width="630" height="95">
+      </picture>
+      <div class="kicker">FIRMWARE FLASHER</div>
+    </div>
+    <div class="meta">
+      <span class="badge" id="badge">…</span>
+      <div id="version" style="margin-top:6px">Loading…</div>
+    </div>
+  </div>
+  <div class="wrap stripes" aria-hidden="true"><span></span><span></span><span></span><i></i></div>
+</header>
+<main class="wrap">
+  <div class="note warn hidden" id="noSerial">
+    <b>Browser not supported.</b> Flashing needs Chrome or Edge on a computer (Windows, macOS, Linux).
+    Phones and Safari do not work.
   </div>
 
-  <div class="card">
-    <h2>1. Choose your device</h2>
+  <section>
+    <h2 class="label">01 · CHOOSE YOUR DEVICE</h2>
     <div class="devices" id="devices"></div>
-  </div>
+  </section>
 
-  <div class="card hidden" id="flashCard">
-    <h2>2. Flash</h2>
-    <div class="muted">Your settings, contacts and identity stay on the device - nothing is erased.
-      Connect the device to this computer with a USB data cable.</div>
+  <section class="hidden" id="flashCard">
+    <h2 class="label">02 · FLASH</h2>
+    <div class="card">
+      <div class="muted">Connect the device to this computer with a USB data cable.
+        Settings, contacts and identity stay on the device – nothing is erased.</div>
 
-    <div id="espSteps" class="hidden">
-      <ol>
-        <li>Click <b>Flash</b> and pick the device's port.</li>
-        <li>Wait until it says done. The device restarts by itself.</li>
-      </ol>
-      <div class="row"><button id="espFlash">Flash</button></div>
-    </div>
-
-    <div id="nrfSteps" class="hidden">
-      <ol>
-        <li>Click <b>Start update mode</b> and pick the device's port. The device restarts into update mode.</li>
-        <li>Click <b>Flash</b> and pick the port again (its name may have changed).</li>
-      </ol>
-      <div class="row">
-        <button id="nrfDfu" class="secondary">Start update mode</button>
-        <button id="nrfFlash">Flash</button>
+      <div id="espSteps" class="hidden">
+        <ol>
+          <li>Click <b>Flash</b> and pick the device's port.</li>
+          <li>Wait until it says done. The device restarts by itself.</li>
+        </ol>
+        <div class="row"><button class="btn" id="espFlash">Flash</button></div>
       </div>
-      <div class="muted" style="margin-top:8px">Already in update mode? Go straight to <b>Flash</b>.
-        If <b>Start update mode</b> does nothing, put the device into update (DFU) mode by hand -
-        see your device's manual - and then click <b>Flash</b>.</div>
-    </div>
 
-    <progress id="progress" max="100" value="0" class="hidden"></progress>
-    <div id="status"></div>
-    <details><summary class="muted">Log</summary><pre id="log"></pre></details>
-  </div>
+      <div id="nrfSteps" class="hidden">
+        <ol>
+          <li>Click <b>Start update mode</b> and pick the device's port. The device restarts into update mode.</li>
+          <li>Click <b>Flash</b> and pick the port again – its name may have changed.</li>
+        </ol>
+        <div class="row">
+          <button class="btn ghost" id="nrfDfu">Start update mode</button>
+          <button class="btn" id="nrfFlash">Flash</button>
+        </div>
+        <div class="note">Already in update mode? Go straight to <b>Flash</b>.
+          If <b>Start update mode</b> does nothing, put the device into update (DFU) mode by hand –
+          see your device's manual – and then click <b>Flash</b>.</div>
+      </div>
+
+      <progress id="progress" max="100" value="0" class="hidden"></progress>
+      <div id="status"></div>
+      <details><summary class="muted">Log</summary><pre id="log"></pre></details>
+    </div>
+  </section>
 
   <footer class="muted">
     <p id="downloads"></p>
-    <p>Source and documentation: <a href="https://github.com/TogeriX-hub/FieldMesh">github.com/TogeriX-hub/FieldMesh</a>.
-      Questions and test reports: <a href="https://github.com/TogeriX-hub/FieldMesh/discussions">Discussions</a>.</p>
+    <p><a href="https://github.com/TogeriX-hub/FieldMesh">FieldMesh on GitHub</a> ·
+      <a href="https://github.com/TogeriX-hub/FieldMesh/discussions">Discussions</a></p>
     <p>Uses <a href="https://github.com/espressif/esptool-js">esptool-js</a> (Apache-2.0),
-      <a href="https://github.com/gildas-lormeau/zip.js">zip.js</a> (BSD-3-Clause) and the nRF52 DFU flasher by
-      Liam Cottle from <a href="https://github.com/liamcottle/rnode-flasher">rnode-flasher</a> (MIT).</p>
+      <a href="https://github.com/gildas-lormeau/zip.js">zip.js</a> (BSD-3-Clause), the nRF52 DFU flasher by
+      Liam Cottle from <a href="https://github.com/liamcottle/rnode-flasher">rnode-flasher</a> (MIT) and
+      Barlow Semi Condensed (SIL OFL 1.1).</p>
   </footer>
 </main>
 
@@ -162,12 +217,13 @@ async function init() {
     const res = await fetch("firmware/firmware.json", { cache: "no-store" });
     firmware = await res.json();
   } catch (e) {
-    $("version").textContent = "Could not load the firmware list.";
+    $("version").textContent = "Could not load the firmware list."; $("badge").classList.add("hidden");
     return;
   }
   const date = firmware.published ? new Date(firmware.published).toLocaleDateString() : "";
+  $("badge").textContent = "V" + firmware.version;
   $("version").innerHTML = "";
-  $("version").append(`FieldMesh ${firmware.version}${date ? " · released " + date : ""} · `);
+  if (date) $("version").append("released " + date + " · ");
   const a = document.createElement("a");
   a.href = firmware.releaseUrl; a.textContent = "release notes";
   $("version").append(a);
@@ -183,9 +239,11 @@ async function init() {
     input.addEventListener("change", () => selectDevice(d));
     const text = document.createElement("span");
     const b = document.createElement("b"); b.textContent = d.name;
-    const s = document.createElement("span"); s.className = "muted"; s.textContent = d.role;
+    const s = document.createElement("span"); s.className = "role"; s.textContent = d.role;
     text.append(b, s);
-    label.append(input, text);
+    const kind = document.createElement("span"); kind.className = "kind";
+    kind.textContent = d.platform === "esp32" ? "ESP32" : "nRF52";
+    label.append(input, text, kind);
     list.append(label);
 
     const link = document.createElement("a");
