@@ -537,6 +537,10 @@ No phone with mobile data has opened the dashboard since the box location was se
 
 </details>
 
+## How FieldMesh is made
+
+FieldMesh is my project: I decide what it does, design the interface, test on my own devices and decide what gets released. The code is written together with Claude (Anthropic) as a coding assistant, visible through the `Co-Authored-By` lines in the commits. Every version starts with a written plan, the FieldMesh logic is unit-tested, CI builds all devices, and prebuilt firmware only exists for devices it has run on.
+
 ## Contributing
 
 This is a personal project that grew out of wanting a more field-ready node. If you:
