@@ -1,10 +1,19 @@
-# FieldMesh
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/FieldMesh/brand/logo-dark.svg">
+    <img src="docs/FieldMesh/brand/logo-light.svg" alt="FieldMesh" width="440">
+  </picture>
+</h1>
 
-**A MeshCore firmware fork optimized for outdoor use — festivals, hiking, off-grid events, and situations where you need your radio network to do more than stock MeshCore offers.**
+<p align="center"><b>A MeshCore firmware fork optimized for outdoor use — festivals, hiking, off-grid events, and situations where you need your radio network to do more than stock MeshCore offers.</b></p>
 
 <p align="center"><img src="docs/FieldMesh/images/hero_mountain.jpg" width="100%"></p>
 
-Built on [MeshCore](https://github.com/meshcore-dev/MeshCore) ·  Based on MeshCore v1.18.0 ·  Download latest [release](../../releases/latest)
+<p align="center">
+  <a href="https://togerix-hub.github.io/FieldMesh/"><img src="https://img.shields.io/badge/WEB%20FLASHER-INSTALL-F2B544?style=for-the-badge&labelColor=0F1412" alt="Web Flasher: install"></a>
+  <a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/TogeriX-hub/FieldMesh?style=for-the-badge&label=RELEASE&color=F2B544&labelColor=0F1412" alt="Latest release"></a>
+  <a href="https://github.com/meshcore-dev/MeshCore"><img src="https://img.shields.io/badge/MESHCORE-v1.18.0-F2B544?style=for-the-badge&labelColor=0F1412" alt="Based on MeshCore v1.18.0"></a>
+</p>
 
 > **Updating from v1.x (formerly V5.x)?** Updating from v1.x to v2.x could reset the node identity (new public key) and settings on some devices. **Export your private key in the MeshCore app before updating.** From v2.1 on, FieldMesh keeps its own backup of the identity and settings (see [Identity backup](#identity-backup)).
 
@@ -26,7 +35,15 @@ The goal is a node you can put in your backpack, forget about, and trust that it
 
 More about my motivation is readable in my [blog post](https://www.tobiasguertler.de/blog/en/fieldmesh).
 
-**Contents:** [Features](#features) · [UI & Usability](#ui--usability) · [FieldMesh Repeater (Station G2)](#fieldmesh-repeater-station-g2) · [Hardware](#hardware) · [Building](#building) · [Limitations](#limitations--known-issues) · [FAQ](#faq) · [Discussions](../../discussions)
+**Contents:** [Install](#install) · [Features](#features) · [UI & Usability](#ui--usability) · [FieldMesh Repeater (Station G2)](#fieldmesh-repeater-station-g2) · [Hardware](#hardware) · [Building](#building) · [Limitations](#limitations--known-issues) · [FAQ](#faq) · [Discussions](../../discussions)
+
+-----
+
+## Install
+
+**Easiest: [FieldMesh Web Flasher](https://togerix-hub.github.io/FieldMesh/)** — pick your device, click Flash. Works in Chrome or Edge on a computer. Settings, contacts and identity stay on the device.
+
+Manual install: download the file for your device from the [latest release](../../releases/latest) — `.zip` for the ThinkNode M1, Wio Tracker L1 and T1000-E (MeshCore web flasher → custom firmware), `_full.bin` for the Station G2 (esptool-js, address `0x0`).
 
 -----
 
@@ -695,4 +712,11 @@ FieldMesh is a fork of [MeshCore](https://github.com/meshcore-dev/MeshCore). It 
 
 -----
 
-*FieldMesh — MeshCore for the field.*
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/FieldMesh/brand/topo-dark.svg">
+    <img src="docs/FieldMesh/brand/topo-light.svg" alt="" width="100%">
+  </picture>
+</p>
+
+<p align="center"><i>FieldMesh — MeshCore for the field.</i></p>
