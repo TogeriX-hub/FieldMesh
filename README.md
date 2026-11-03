@@ -578,14 +578,7 @@ No phone with mobile data has opened the dashboard since the box location was se
 
 ## How FieldMesh is made
 
-FieldMesh is my project. I decide what it does and how it should behave in the field, design the interface and the look, test on my own devices and decide what gets released. The code is written together with Claude (Anthropic) as a coding assistant — commits carry a `Co-Authored-By` line, so this is visible in the history.
-
-How changes get in:
-
-- **Plan first:** every version starts with a written plan — scope, decisions and the reasons for them. Larger features are researched before any code is written; the smarter Off-Grid relaying, for example, was simulated and checked against Meshtastic's implementation first.
-- **Tested logic:** FieldMesh logic lives in its own small files with unit tests, so it can be checked without hardware.
-- **Every device builds on every change:** the CI builds all FieldMesh devices for every development push and every pull request.
-- **Hardware before release:** prebuilt firmware is only published for devices it has run on — the ThinkNode M1, Wio Tracker L1, T1000-E and Station G2. Everything else stays "build from source, untested".
+FieldMesh is my project: I decide what it does, design the interface, test on my own devices and decide what gets released. The code is written together with Claude (Anthropic) as a coding assistant, visible through the `Co-Authored-By` lines in the commits. Every version starts with a written plan, the FieldMesh logic is unit-tested, CI builds all devices, and prebuilt firmware only exists for devices it has run on.
 
 ## Contributing
 
