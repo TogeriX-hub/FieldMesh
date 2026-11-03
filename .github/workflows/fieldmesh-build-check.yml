@@ -42,3 +42,22 @@ jobs:
 
       - name: Build ${{ matrix.environment }}
         run: pio run -e ${{ matrix.environment }}
+
+      # FieldMesh repeaters: test files to download from the run (Summary -> Artifacts), kept 14 days.
+      # _full.bin = whole image for USB at 0x0, _update.bin = app only (dashboard update).
+      - name: Test files (FieldMesh repeaters)
+        if: endsWith(matrix.environment, '_fieldmesh_repeater')
+        run: |
+          pio run -e "${{ matrix.environment }}" -t mergebin
+          mkdir -p out
+          B="${{ matrix.environment }}_FieldMesh-test-${GITHUB_SHA::7}"
+          cp ".pio/build/${{ matrix.environment }}/firmware-merged.bin" "out/${B}_full.bin"
+          cp ".pio/build/${{ matrix.environment }}/firmware.bin" "out/${B}_update.bin"
+
+      - name: Upload test files (FieldMesh repeaters)
+        if: endsWith(matrix.environment, '_fieldmesh_repeater')
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.environment }}-test
+          path: out/*
+          retention-days: 14
