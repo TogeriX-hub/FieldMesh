@@ -1,6 +1,6 @@
-// FieldMesh: tests for the sun and moon maths behind '!sun', '!day' and '!moon'
+// FieldMesh: tests for the sun maths behind '!sun' / '!sonne'
 // (examples/simple_repeater/FieldMeshSunText.h). Reference values come from PyEphem 4.2.1
-// (VSOP87/ELP theories, independent of the NOAA/Meeus formulas used in the firmware),
+// (VSOP87 theory, independent of the NOAA formulas used in the firmware),
 // generated with the same definition: events around the solar noon of the civil date,
 // rise/set with the upper limb at -34' (centre -0.833 deg), civil twilight with the centre
 // at -6 deg, no extra refraction. Places cover both hemispheres, the tropics, both sides of
@@ -88,44 +88,6 @@ const SunRef SUN[] = {
   {61.22, -149.90, 2040, 7, 4, 0, 2225017962u, 2225086482u, 1, 0u, 0u},
 };
 
-struct MoonRef { uint32_t t; int illum1000; int waxing; };
-const MoonRef MOON[] = {
-  {1768435200u, 135, 0},
-  {1768500000u, 90, 0},
-  {1773964800u, 12, 1},
-  {1774029600u, 39, 1},
-  {1778371200u, 491, 0},
-  {1778436000u, 415, 0},
-  {1782000000u, 408, 1},
-  {1782064800u, 486, 1},
-  {1788048000u, 963, 0},
-  {1788112800u, 927, 0},
-  {1790121600u, 859, 1},
-  {1790186400u, 907, 1},
-  {1793750400u, 272, 0},
-  {1793815200u, 204, 0},
-  {1797811200u, 867, 1},
-  {1797876000u, 921, 1},
-  {1898467200u, 197, 0},
-  {1898532000u, 136, 0},
-  {2224972800u, 247, 0},
-  {2225037600u, 186, 0},
-  {1795478400u, 992, 1},
-  {1795543200u, 998, 0},
-  {1796774400u, 2, 0},
-  {1796839200u, 6, 1},
-  {1803859200u, 426, 0},
-  {1803924000u, 357, 0},
-};
-
-struct NextRef { uint32_t t, full, newm; };
-const NextRef NEXT[] = {
-  {1793750400u, 1795532009u, 1794207723u},
-  {1767225600u, 1767434571u, 1768765915u},
-  {1813017600u, 1813365855u, 1814670119u},
-  {1948579200u, 1951111953u, 1949905235u},
-};
-
 // first and last days of midnight sun and polar night in Tromsoe, day by day
 struct EdgeRef { int y, m, d; int st; uint32_t rise, set; };
 const EdgeRef EDGE[] = {
@@ -184,8 +146,6 @@ const EdgeRef EDGE[] = {
 };
 
 constexpr int SUN_TOL_S = 60;           // one minute, the precision we show
-constexpr int MOON_TOL_1000 = 15;       // 1.5 % illumination
-constexpr int NEXT_TOL_S = 3 * 3600;    // "full moon in 3 days"
 
 uint32_t day0(const SunRef& r) { return (uint32_t)fmDaysFromCivil(r.y, r.m, r.d) * 86400UL; }
 
@@ -231,14 +191,14 @@ TEST(FieldMeshSun, PolarDayAndNight) {
   // but civil twilight still gives a few hours of light in December
   const uint32_t jun = (uint32_t)fmDaysFromCivil(2026, 6, 21) * 86400UL;
   const uint32_t dec = (uint32_t)fmDaysFromCivil(2026, 12, 21) * 86400UL;
-  EXPECT_EQ(fmSunDayLength(69.65, 18.96, jun), 86400u);
-  EXPECT_EQ(fmSunDayLength(69.65, 18.96, dec), 0u);
-  uint32_t a, b;
+  uint32_t a = 0, b = 0;
+  EXPECT_EQ(fmSunEvent(69.65, 18.96, jun, FM_SUN_ALT_RISESET, a, b), FM_SUN_ALWAYS_UP);
+  EXPECT_EQ(fmSunEvent(69.65, 18.96, dec, FM_SUN_ALT_RISESET, a, b), FM_SUN_ALWAYS_DOWN);
   EXPECT_EQ(fmSunEvent(69.65, 18.96, dec, FM_SUN_ALT_CIVIL, a, b), FM_SUN_NORMAL);
   EXPECT_LT(a, b);
   // McMurdo (Antarctica) the other way round
-  EXPECT_EQ(fmSunDayLength(-77.85, 166.67, dec), 86400u);
-  EXPECT_EQ(fmSunDayLength(-77.85, 166.67, jun), 0u);
+  EXPECT_EQ(fmSunEvent(-77.85, 166.67, dec, FM_SUN_ALT_RISESET, a, b), FM_SUN_ALWAYS_UP);
+  EXPECT_EQ(fmSunEvent(-77.85, 166.67, jun, FM_SUN_ALT_RISESET, a, b), FM_SUN_ALWAYS_DOWN);
 }
 
 TEST(FieldMeshSun, PolarEdgeDaysMatchEphem) {
@@ -285,51 +245,5 @@ TEST(FieldMeshSun, EventsStayOnTheirDay) {
       EXPECT_LT(noon, s);
       EXPECT_NEAR((double)noon, d0 + 43200.0 - lon * 240.0, 17 * 60);   // equation of time <= 16.5 min
     }
-  }
-}
-
-TEST(FieldMeshSun, YearExtremes) {
-  uint32_t lo, sh; int lmd, smd;
-  fmSunYearExtremes(48.78, 9.18, 2026, lo, sh, lmd, smd);   // Stuttgart
-  EXPECT_NEAR(lo / 60.0, 16 * 60 + 10, 3);                    // ephem: 16 h 10 min
-  EXPECT_NEAR(sh / 60.0, 8 * 60 + 16, 3);                     // ephem: 8 h 16 min
-  EXPECT_EQ(lmd / 100, 6);
-  EXPECT_EQ(smd / 100, 12);
-  fmSunYearExtremes(-33.87, 151.21, 2026, lo, sh, lmd, smd); // Sydney: swapped
-  EXPECT_EQ(lmd / 100, 12);
-  EXPECT_EQ(smd / 100, 6);
-  EXPECT_GT(lo, sh);
-}
-
-TEST(FieldMeshMoon, IlluminationMatchesEphem) {
-  for (const MoonRef& r : MOON) {
-    FmMoon m = fmMoonAt(r.t);
-    SCOPED_TRACE(testing::Message() << "t=" << r.t);
-    EXPECT_NEAR(m.illum * 1000.0, (double)r.illum1000, MOON_TOL_1000);
-    // waxing/waning is only meaningful away from new and full moon
-    if (r.illum1000 > 20 && r.illum1000 < 980) {
-      EXPECT_EQ(m.elong < 180.0 ? 1 : 0, r.waxing);
-    }
-  }
-}
-
-TEST(FieldMeshMoon, PhaseNamesFollowIllumination) {
-  for (const MoonRef& r : MOON) {
-    FmMoon m = fmMoonAt(r.t);
-    if (m.phase == FM_MOON_NEW) { EXPECT_LT(m.illum, 0.03); }
-    if (m.phase == FM_MOON_FULL) { EXPECT_GT(m.illum, 0.97); }
-    if (m.phase == FM_MOON_FIRST_QUARTER || m.phase == FM_MOON_LAST_QUARTER) {
-      EXPECT_NEAR(m.illum, 0.5, 0.12);
-    }
-    EXPECT_NE(fmMoonPhaseName(m.phase, true), nullptr);
-    EXPECT_NE(fmMoonPhaseName(m.phase, false), nullptr);
-  }
-}
-
-TEST(FieldMeshMoon, NextFullAndNewMoonMatchEphem) {
-  for (const NextRef& r : NEXT) {
-    SCOPED_TRACE(testing::Message() << "t=" << r.t);
-    EXPECT_NEAR((double)fmMoonNext(r.t, 180.0), (double)r.full, NEXT_TOL_S);
-    EXPECT_NEAR((double)fmMoonNext(r.t, 0.0), (double)r.newm, NEXT_TOL_S);
   }
 }

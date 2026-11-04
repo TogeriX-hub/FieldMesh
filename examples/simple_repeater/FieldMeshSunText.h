@@ -1,5 +1,5 @@
 #pragma once
-// FieldMesh repeater: sun and moon for the SunCast room commands ('!sun', '!day', '!moon').
+// FieldMesh repeater: sun times for the room command '!sun' / '!sonne' (after Tobias' SunCast).
 // Plain C++ without Arduino/MeshCore, so the maths can be tested on a PC
 // (test/test_fieldmesh_sun). Everything is computed offline from the box position and the
 // date - no internet needed, which is the point for an off-grid box.
@@ -9,8 +9,6 @@
 //   minute of ephem/astral up to the polar circles.
 //   Sunrise/sunset: centre of the sun at -0.833 deg (34' refraction + 16' semi-diameter).
 //   "Daylight until": end of civil twilight, centre at -6 deg (enough light outdoors).
-// Moon: illuminated fraction and phase from the phase angle (Meeus ch. 48, short series),
-//   good to about 1 % - plenty for "waxing gibbous, 78 %".
 //
 // All times are unix seconds UTC. Local time is the caller's job.
 
@@ -130,111 +128,4 @@ static inline int fmSunEvent(double lat, double lon, uint32_t day0, double alt,
   rise = (uint32_t)lround(ev[0]);
   set = (uint32_t)lround(ev[1]);
   return FM_SUN_NORMAL;
-}
-
-// Length of daylight (sunrise to sunset) in seconds; 86400 for polar day, 0 for polar night.
-static inline uint32_t fmSunDayLength(double lat, double lon, uint32_t day0) {
-  uint32_t r, s;
-  int st = fmSunEvent(lat, lon, day0, FM_SUN_ALT_RISESET, r, s);
-  if (st == FM_SUN_ALWAYS_UP) return 86400;
-  if (st == FM_SUN_ALWAYS_DOWN) return 0;
-  return s - r;
-}
-
-// Longest and shortest daylight of the year 'y' (seconds). The solstices move by about a day
-// between years and the day length changes by seconds there, so a few days around 21 June and
-// 21 December are enough. 'long_md' / 'short_md' get month*100+day of those days (swapped on
-// the southern hemisphere).
-static inline void fmSunYearExtremes(double lat, double lon, int32_t y,
-                                     uint32_t& longest, uint32_t& shortest,
-                                     int& long_md, int& short_md) {
-  longest = 0; shortest = 86401; long_md = short_md = 0;
-  const int cand[2] = { 6, 12 };
-  for (int c = 0; c < 2; c++) {
-    for (int d = 19; d <= 23; d++) {
-      uint32_t day0 = (uint32_t)fmDaysFromCivil(y, cand[c], d) * 86400UL;
-      uint32_t len = fmSunDayLength(lat, lon, day0);
-      if (len > longest)  { longest = len;  long_md = cand[c] * 100 + d; }
-      if (len < shortest) { shortest = len; short_md = cand[c] * 100 + d; }
-    }
-  }
-}
-
-// ---- moon ----
-
-#define FM_MOON_NEW              0
-#define FM_MOON_WAXING_CRESCENT  1
-#define FM_MOON_FIRST_QUARTER    2
-#define FM_MOON_WAXING_GIBBOUS   3
-#define FM_MOON_FULL             4
-#define FM_MOON_WANING_GIBBOUS   5
-#define FM_MOON_LAST_QUARTER     6
-#define FM_MOON_WANING_CRESCENT  7
-
-struct FmMoon {
-  double  illum;      // illuminated fraction 0..1
-  double  elong;      // elongation from the sun 0..360 deg (0 new, 90 first quarter, 180 full)
-  uint8_t phase;      // FM_MOON_*
-};
-
-// Moon at unix time t (Meeus ch. 48, phase angle from the short series).
-static inline FmMoon fmMoonAt(double t) {
-  const double T = (t / 86400.0 + 2440587.5 - 2451545.0) / 36525.0;
-  const double D  = fmNorm360(297.8501921 + T * (445267.1114034 + T * (-0.0018819 + T * (1.0 / 545868.0 - T / 113065000.0))));
-  const double M  = fmNorm360(357.5291092 + T * (35999.0502909 + T * (-0.0001536 + T / 24490000.0)));
-  const double Mp = fmNorm360(134.9633964 + T * (477198.8675055 + T * (0.0087414 + T * (1.0 / 69699.0 - T / 14712000.0))));
-  const double Dr = fmRad(D), Mr = fmRad(M), Mpr = fmRad(Mp);
-  const double i = 180.0 - D - 6.289 * sin(Mpr) + 2.100 * sin(Mr) - 1.274 * sin(2 * Dr - Mpr)
-                 - 0.658 * sin(2 * Dr) - 0.214 * sin(2 * Mpr) - 0.110 * sin(Dr);
-  FmMoon m;
-  m.illum = (1.0 + cos(fmRad(i))) / 2.0;
-  m.elong = fmNorm360(180.0 - i);
-  // Named phases cover +-1 day around the exact moment (about 12 deg of elongation), so
-  // "full moon" is shown on the evening people would call it full.
-  const double e = m.elong;
-  if (e < 6.0 || e >= 354.0)      m.phase = FM_MOON_NEW;
-  else if (e < 84.0)              m.phase = FM_MOON_WAXING_CRESCENT;
-  else if (e < 96.0)              m.phase = FM_MOON_FIRST_QUARTER;
-  else if (e < 174.0)             m.phase = FM_MOON_WAXING_GIBBOUS;
-  else if (e < 186.0)             m.phase = FM_MOON_FULL;
-  else if (e < 264.0)             m.phase = FM_MOON_WANING_GIBBOUS;
-  else if (e < 276.0)             m.phase = FM_MOON_LAST_QUARTER;
-  else                            m.phase = FM_MOON_WANING_CRESCENT;
-  return m;
-}
-
-static inline const char* fmMoonPhaseName(uint8_t p, bool en) {
-  switch (p) {
-    case FM_MOON_NEW:             return en ? "new moon" : "Neumond";
-    case FM_MOON_WAXING_CRESCENT: return en ? "waxing crescent" : "zunehmende Sichel";
-    case FM_MOON_FIRST_QUARTER:   return en ? "first quarter" : "zunehmender Halbmond";
-    case FM_MOON_WAXING_GIBBOUS:  return en ? "waxing gibbous" : "zunehmender Mond";
-    case FM_MOON_FULL:            return en ? "full moon" : "Vollmond";
-    case FM_MOON_WANING_GIBBOUS:  return en ? "waning gibbous" : "abnehmender Mond";
-    case FM_MOON_LAST_QUARTER:    return en ? "last quarter" : "abnehmender Halbmond";
-  }
-  return en ? "waning crescent" : "abnehmende Sichel";
-}
-
-// Next moment after t (unix UTC) when the elongation reaches 'target' deg (0 = new moon,
-// 180 = full moon). Steps half a day and bisects; accurate to a couple of hours, enough for
-// "full moon in 3 days". Returns 0 if nothing is found within 31 days (cannot happen).
-static inline uint32_t fmMoonNext(double t, double target) {
-  auto diff = [target](double tt) {            // signed distance to target, -180..180
-    double d = fmNorm360(fmMoonAt(tt).elong - target);
-    return d >= 180.0 ? d - 360.0 : d;
-  };
-  double a = t, da = diff(a);
-  for (int s = 0; s < 62; s++) {
-    double b = a + 43200.0, db = diff(b);
-    if (da < 0 && db >= 0 && db - da < 90.0) {  // crossing (not the wrap on the far side)
-      for (int i = 0; i < 20; i++) {
-        double m = (a + b) / 2, dm = diff(m);
-        if (dm < 0) a = m; else b = m;
-      }
-      return (uint32_t)lround((a + b) / 2);
-    }
-    a = b; da = db;
-  }
-  return 0;
 }
