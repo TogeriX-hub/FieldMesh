@@ -590,15 +590,7 @@ FieldMesh is my project: I decide what it does, design the interface, test on my
 
 ## Contributing
 
-This is a personal project that grew out of wanting a more field-ready node. Feedback of any kind is welcome:
-
-- **Questions and help with setup** → [Discussions → Q&A](../../discussions/categories/q-a)
-- **Tested it on other hardware**, or want to know if a device could work → [Discussions → Hardware](../../discussions/categories/hardware)
-- **Feature ideas** for the trackers or the repeater → [Discussions → Ideas](../../discussions/categories/ideas)
-- **Found a bug** → [open an issue](../../issues/new/choose)
-- **Code**, e.g. Off-Grid defaults for another region → pull request
-
-The more platforms this works on, the better.
+Questions, test reports from other hardware, ideas and code are all welcome — where each goes and how to contribute code: [CONTRIBUTING.md](.github/CONTRIBUTING.md). The more platforms this works on, the better.
 
 ## Relationship to MeshCore
 
