@@ -401,6 +401,14 @@ pio run -e Station_G2_fieldmesh_repeater                 # firmware.bin = update
 pio run -e Station_G2_fieldmesh_repeater -t mergebin     # firmware-merged.bin = full image (0x0)
 ```
 
+Your own builds show the FieldMesh version **dev**. To put a version on them, set it as a build flag (the release workflow does the same):
+
+```
+PLATFORMIO_BUILD_FLAGS="-DFIELDMESH_VERSION='\"v2.2.0-mybuild\"'" pio run -e ThinkNode_M1_companion_radio_ble
+```
+
+**Which version is on my device?** The splash screen shows it (M1, L1, Station G2). In the app the firmware version reads like `v1.18.0-fm2.2.0` (MeshCore 1.18.0, FieldMesh 2.2.0) – also on the T1000-E; on the repeater also via `ver` and on the dashboard (Network).
+
 **Untested devices** (build from source only, no prebuilt firmware): Heltec Mesh Node T1, SenseCAP MeshTracker X1, Wio Tracker L1 E-Ink, Wio Tracker L1 1W, and as FieldMesh Repeater the Heltec V4 and the Station G3 ESP32. Other single-button devices without a display (e.g. RAK WisMesh Tag) could work like the T1000-E — contributions welcome.
 
 The code is written to be portable: hardware-specific pins are in `variant.h`, the layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test FieldMesh on another device, please share your findings in [Discussions → Hardware](../../discussions/categories/hardware).
