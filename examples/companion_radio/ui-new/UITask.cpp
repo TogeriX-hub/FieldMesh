@@ -2,6 +2,7 @@
 #include <helpers/TxtDataHelpers.h>
 #include "../MyMesh.h"
 #include "../OffGrid.h"   // FieldMesh v2.1: Off-Grid region label
+#include "../FieldMeshVersion.h"   // FieldMesh v2.2 (#17): version on the splash screen
 #include "target.h"
 #include <time.h>
 #ifdef ENABLE_WIFI_INTERFACE
@@ -108,27 +109,31 @@ public:
       display.setColor(UIColor::primary_txt);
       display.drawTextCentered(display.width() / 2, display.height() - 42, "FieldMesh");
 
+      // FieldMesh version (#17), set by the release workflow; long test/dev names in small text
       display.setTextSize(2);
       display.setColor(UIColor::primary_txt);
-      display.drawTextCentered(display.width() / 2, display.height() - 20, "v2.1");
+      if (display.getTextWidth(FIELDMESH_VERSION) > display.width()) display.setTextSize(1);
+      display.drawTextCentered(display.width() / 2, display.height() - 20, FIELDMESH_VERSION);
     } else {
       // ── Kleines Display (L1/Heltec V3/Techo, 64/80px) — Upstream v1.18 Layout ─
       int logoWidth = 128;
       display.setColor(UIColor::corp_blue);
       display.drawXbm((display.width() - logoWidth) / 2, 3, meshcore_logo, logoWidth, 13);
 
-      // meshcore website
-      const char* website = "https://meshcore.io";
+      // FieldMesh version (#17) instead of the meshcore website; only the version if too wide
+      char fm_line[40];
+      snprintf(fm_line, sizeof(fm_line), "FieldMesh %s", FIELDMESH_VERSION);
       display.setColor(UIColor::primary_txt);
       display.setTextSize(1);
-      uint16_t websiteWidth = display.getTextWidth(website);
-      display.setCursor((display.width() - websiteWidth) / 2, 22);
-      display.print(website);
+      display.drawTextCentered(display.width()/2, 22,
+          display.getTextWidth(fm_line) <= display.width() ? fm_line : FIELDMESH_VERSION);
 
-      // version info
+      // MeshCore version the build is based on
+      char mc_line[32];
+      snprintf(mc_line, sizeof(mc_line), "MeshCore %s", _version_info);
       display.setColor(UIColor::primary_txt);
       display.setTextSize(1);
-      display.drawTextCentered(display.width()/2, 35, _version_info);
+      display.drawTextCentered(display.width()/2, 35, mc_line);
 
       display.setColor(UIColor::secondary_txt);
       display.setTextSize(1);
