@@ -103,6 +103,12 @@ struct FmFeedEntry {
 #define FM_WX_FILE              "/fm_weather"
 #include "FieldMeshWeatherText.h"            // FmWx, FM_WX_HOURS, FM_WX_REFRESH_S, text rules
 
+// ---- sun times + time zone (2.3, FieldMeshSun.cpp) ----
+// '!sonne' / '!sun' in the room: sunrise, sunset, daylight until, offline from the box
+// position. Local time from the POSIX rule in "tz", set by every phone that opens the
+// dashboard (derived from the browser) or on the setup page.
+#include "FieldMeshTimeZone.h"               // FmTz, FM_TZ_LEN, fmTzParse()
+
 #define FM_ROOM_POSTS_FILE      "/fm_room_posts"     // board survives a reboot
 #define FM_ROOM_CLIENTS_FILE    "/fm_room_clients"   // logged-in users survive a reboot
 #define FM_ROOM_SAVE_DELAY      10000                // lazy write after the last change (ms)
@@ -123,6 +129,7 @@ public:
   float   wx_lat = 0;
   float   wx_lon = 0;
   uint8_t wx_imp = 0;           // 1 = '!weather' in degF / mph (US), 0 = degC / km/h
+  char    tz[FM_TZ_LEN] = "";   // POSIX time zone rule, empty = not known (sun times in UTC)
 
 protected:
   void structure() override {
@@ -139,6 +146,7 @@ protected:
     def("wx_lat", wx_lat);
     def("wx_lon", wx_lon);
     def("wx_imp", wx_imp);
+    def("tz", tz, sizeof(tz));
   }
 };
 

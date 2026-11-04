@@ -223,6 +223,11 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   void fmWxSave();
   bool fmWxHandleCommand(const char* command, char* reply);
 
+  // sun times + time zone (FieldMeshSun.cpp)
+  bool fmTzGet(FmTz& tz);                            // false = no (valid) time zone set
+  bool fmTzStore(const char* rule);                  // from a phone / setup page; false = invalid
+  bool fmSunHandleCommand(const char* command, char* reply);
+
   bool fmRoomActive() const { return _fm.room_enabled && _room_id_loaded; }
   bool fmRoomLoadIdentity(bool create);
   void fmRoomPrepare(mesh::Packet* pkt);   // set the room identity as sender (src hash)

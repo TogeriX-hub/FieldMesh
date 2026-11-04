@@ -32,6 +32,7 @@ static AsyncWebServer* fm_server = NULL;
 static SemaphoreHandle_t fm_snap_mutex = NULL;
 static char fm_snap[1280] = "{}";
 static volatile uint32_t fm_pending_time = 0;   // phone clock, handed over to loop()
+static char fm_pending_tz[FM_TZ_LEN] = "";      // phone time zone rule, guarded by fm_snap_mutex
 static bool fm_web_running = false;
 static bool fm_upstream_ota = false;   // upstream 'start ota' ran (own AP + server on port 80)
 static char fm_web_ssid[33] = "";
@@ -367,6 +368,14 @@ static void fmWebSetupRoutes() {
       uint32_t t = strtoul(request->getParam("t", true)->value().c_str(), NULL, 10);
       if (t > 0) fm_pending_time = t;   // checked and applied in loop()
     }
+    if (request->hasParam("z", true)) {   // POSIX rule derived by the page from the browser
+      const String& z = request->getParam("z", true)->value();
+      if (z.length() > 0 && z.length() < FM_TZ_LEN && fm_snap_mutex &&
+          xSemaphoreTake(fm_snap_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
+        StrHelper::strncpy(fm_pending_tz, z.c_str(), sizeof(fm_pending_tz));   // checked in loop()
+        xSemaphoreGive(fm_snap_mutex);
+      }
+    }
     request->send(204);
   });
   fm_server->onNotFound([](AsyncWebServerRequest* request) {   // unknown paths: the dashboard
@@ -566,6 +575,8 @@ void MyMesh::fmWebBuildSetup(FmJson& j) {
   j.raw(",\"wxd\":");
   fmWxText(wx, sizeof(wx), false);
   j.str(wx);
+  j.raw(",\"tz\":");
+  j.str(_fm.tz);
   j.raw(",\"ch\":[");
   for (int i = 0; i < _fm_num_channels; i++) {
     if (i) j.raw(",");
@@ -711,6 +722,15 @@ void MyMesh::fmWebLoop() {
     if (t > now + FM_WEB_CLOCK_MIN_STEP && t - now < FM_WEB_CLOCK_MAX_STEP) {
       getRTCClock()->setCurrentTime(t);
     }
+  }
+
+  // phone time zone: every phone may set it (only stored when valid and changed)
+  if (fm_pending_tz[0] && xSemaphoreTake(fm_snap_mutex, 0) == pdTRUE) {
+    char tz[FM_TZ_LEN];
+    StrHelper::strncpy(tz, fm_pending_tz, sizeof(tz));
+    fm_pending_tz[0] = 0;
+    xSemaphoreGive(fm_snap_mutex);
+    fmTzStore(tz);
   }
 
   // post from the WiFi page -> room board, as "Name (WiFi): text" by the room itself

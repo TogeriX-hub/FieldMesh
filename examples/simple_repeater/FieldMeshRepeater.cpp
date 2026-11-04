@@ -302,6 +302,7 @@ bool MyMesh::fmHandleCommand(uint32_t sender_timestamp, const char* command, cha
   if (fmChannelsHandleCommand(command, reply)) return true;   // channel.add / channel.del / get channels / get sos
   if (fmStatsHandleCommand(command, reply)) return true;      // team.add / team.del / get team / get nodes
   if (fmWxHandleCommand(command, reply)) return true;         // set weather.loc / get weather
+  if (fmSunHandleCommand(command, reply)) return true;        // set tz / get tz
 
   if (strcmp(command, "set wifi on") == 0) {
     fmSetWifi(true, reply);
