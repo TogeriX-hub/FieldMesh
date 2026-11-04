@@ -104,12 +104,19 @@ jobs:
           merge-multiple: true
           path: out
 
+      # Release titles are "FieldMesh X.Y.Z" without the "v" of the tag
+      - name: Release title
+        id: title
+        env:
+          VERSION: ${{ inputs.version }}
+        run: echo "name=FieldMesh ${VERSION#v}" >> "$GITHUB_OUTPUT"
+
       - name: Create draft release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.version }}
           target_commitish: ${{ github.sha }}
-          name: FieldMesh ${{ inputs.version }}
+          name: ${{ steps.title.outputs.name }}
           body: "Paste the release notes here."
           draft: true
           files: out/*
