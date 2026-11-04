@@ -1,0 +1,44 @@
+{
+ "2026-11-04": [
+  {
+   "count": 43,
+   "referrer": "github.com",
+   "uniques": 14
+  },
+  {
+   "count": 17,
+   "referrer": "reddit.com",
+   "uniques": 11
+  },
+  {
+   "count": 11,
+   "referrer": "com.reddit.frontpage",
+   "uniques": 8
+  },
+  {
+   "count": 8,
+   "referrer": "Google",
+   "uniques": 4
+  },
+  {
+   "count": 5,
+   "referrer": "aocr.org",
+   "uniques": 5
+  },
+  {
+   "count": 2,
+   "referrer": "togerix-hub.github.io",
+   "uniques": 2
+  },
+  {
+   "count": 2,
+   "referrer": "org.telegram.messenger",
+   "uniques": 1
+  },
+  {
+   "count": 1,
+   "referrer": "DuckDuckGo",
+   "uniques": 1
+  }
+ ]
+}
