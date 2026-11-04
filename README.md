@@ -608,19 +608,15 @@ FieldMesh is my project: I decide what it does, design the interface, test on my
 
 ## Contributing
 
-This is a personal project that grew out of wanting a more field-ready node. Feedback of any kind is welcome:
-
-- **Questions and help with setup** → [Discussions → Q&A](../../discussions/categories/q-a)
-- **Tested it on other hardware**, or want to know if a device could work → [Discussions → Hardware](../../discussions/categories/hardware)
-- **Feature ideas** for the trackers or the repeater → [Discussions → Ideas](../../discussions/categories/ideas)
-- **Found a bug** → [open an issue](../../issues/new/choose)
-- **Code**, e.g. Off-Grid defaults for another region → pull request
-
-The more platforms this works on, the better.
+Questions, test reports from other hardware, ideas and code are all welcome — where each goes and how to contribute code: [CONTRIBUTING.md](.github/CONTRIBUTING.md). The more platforms this works on, the better.
 
 ## Relationship to MeshCore
 
 FieldMesh is a fork of [MeshCore](https://github.com/meshcore-dev/MeshCore). It is not affiliated with or endorsed by the MeshCore project. The goal is to stay close to upstream and periodically merge new releases — FieldMesh logic lives in its own files where possible, and upstream files only carry small, marked hooks. Semantic compatibility after upstream changes still requires manual review. Every touchpoint and the sync procedure are listed in [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md).
+
+## License
+
+MIT, like MeshCore ([license.txt](license.txt)). The firmware files also contain third-party libraries under their own licenses — the ThinkNode M1 files include GxEPD2 (GPL-3.0). Details: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 <p align="center">
   <picture>

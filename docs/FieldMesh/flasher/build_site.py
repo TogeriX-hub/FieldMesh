@@ -77,6 +77,8 @@ def main():
     libs = Path(a.libs)
     shutil.copy2(libs / "esptool-js/package/bundle.js", out / "lib/esptool.js")
     shutil.copy2(libs / "esptool-js/package/LICENSE", out / "lib/esptool.LICENSE.txt")
+    # pako + atob-lite are bundled inside esptool-js bundle.js; their license texts
+    shutil.copy2(HERE / "esptool.bundled.LICENSE.txt", out / "lib/esptool.bundled.LICENSE.txt")
     shutil.copy2(libs / "zipjs/package/dist/zip.min.js", out / "lib/zip.min.js")
     shutil.copy2(libs / "zipjs/package/LICENSE", out / "lib/zip.LICENSE.txt")
 

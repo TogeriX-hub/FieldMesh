@@ -39,8 +39,10 @@ git diff <upstream-tag> HEAD --stat -- src variants examples platformio.ini
 `ChannelText.h`, `IdentityBackup.h`, `GpsLog.h`, `FloodPolicy.h`, `FloodLog.h` ·
 `examples/simple_repeater/`: `FieldMesh*.cpp`, `FieldMesh*.h`, `web/` (dashboard page, font, contour lines, `fm_web_assets.py`) ·
 `variants/station_g2/partitions_fieldmesh.csv` · `test/test_fieldmesh_*` ·
-`.github/workflows/fieldmesh-*.yml` · `.github/ISSUE_TEMPLATE/` · `docs/FieldMesh/` (images, web flasher) · `README.md`, `RELEASE.md`,
-`UPSTREAM_SYNC.md`.
+`.github/workflows/fieldmesh-*.yml` · `.github/ISSUE_TEMPLATE/` · `.github/CONTRIBUTING.md`, `.github/SECURITY.md` · `docs/FieldMesh/` (images, web flasher) · `README.md`, `RELEASE.md`,
+`UPSTREAM_SYNC.md`, `THIRD_PARTY_NOTICES.md`.
+
+`CONTRIBUTING.md` and `SECURITY.md` in the repository root are upstream's and stay unchanged; GitHub shows the files in `.github/` first, so the FieldMesh versions win.
 
 If upstream renames or changes an API these files use, the build check shows it.
 
