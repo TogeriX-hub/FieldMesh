@@ -293,3 +293,8 @@ TEST(FieldMeshFlood, TimeoutExtraCoversTwoWorstCaseRelays) {
   EXPECT_EQ(2u * 272u * 81u, fmFloodTimeoutExtraMs(SLOT_SF11));   // 44 s at SF11/125
   EXPECT_GE(fmFloodTimeoutExtraMs(SLOT_SF11), 2 * fmFloodRelayDelay(40.0f, SLOT_SF11, 0xFFFF));
 }
+
+int main(int argc, char** argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

@@ -54,3 +54,8 @@ TEST(FieldMeshVersion, DevDefault) {
   EXPECT_STREQ("dev", FIELDMESH_VERSION);
   EXPECT_EQ("v1.18.0-fmdev", app("v1.18.0", FIELDMESH_VERSION));
 }
+
+int main(int argc, char** argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}
