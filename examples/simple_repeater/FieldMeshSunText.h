@@ -1,5 +1,6 @@
 #pragma once
-// FieldMesh repeater: sun times for the room command '!sun' / '!sonne' (after Tobias' SunCast).
+// FieldMesh repeater: sun times for the room command '!sun' / '!sonne' (after Tobias' SunCast):
+// sunrise, sunset and "daylight until", for today or tomorrow.
 // Plain C++ without Arduino/MeshCore, so the maths can be tested on a PC
 // (test/test_fieldmesh_sun). Everything is computed offline from the box position and the
 // date - no internet needed, which is the point for an off-grid box.
@@ -10,10 +11,14 @@
 //   Sunrise/sunset: centre of the sun at -0.833 deg (34' refraction + 16' semi-diameter).
 //   "Daylight until": end of civil twilight, centre at -6 deg (enough light outdoors).
 //
-// All times are unix seconds UTC. Local time is the caller's job.
+// All times are unix seconds UTC; the room answer (fmSunText) shows them in the box's local
+// time from its time zone rule (FieldMeshTimeZone.h), or in UTC when none is known.
 
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <strings.h>
 
 #include "FieldMeshTimeZone.h"   // calendar helpers
 
@@ -106,4 +111,94 @@ static inline int fmSunEvent(double lat, double lon, uint32_t day0, double alt,
   rise = (uint32_t)lround(ev[0]);
   set = (uint32_t)lround(ev[1]);
   return FM_SUN_NORMAL;
+}
+
+// ---- room command '!sonne' / '!sun' (German / English answer) ----
+
+#define FM_SUN_CLOCK_MIN   1700000000UL   // below: box clock not set (same rule as the dashboard)
+
+// '!sonne', '!sonne morgen', '!sun', '!sun tomorrow' (any case, extra spaces allowed).
+// Anything else after the command -> false (stays a normal post).
+static inline bool fmSunParseCmd(const char* text, bool& en, bool& tomorrow) {
+  while (*text == ' ') text++;
+  const char* rest;
+  if (strncasecmp(text, "!sonne", 6) == 0)    { en = false; rest = text + 6; }
+  else if (strncasecmp(text, "!sun", 4) == 0) { en = true;  rest = text + 4; }
+  else return false;
+  if (*rest != 0 && *rest != ' ') return false;      // e.g. "!sunny", "!sonnenbrand"
+  while (*rest == ' ') rest++;
+  tomorrow = false;
+  if (*rest == 0) return true;
+  const char* word = en ? "tomorrow" : "morgen";
+  const size_t n = strlen(word);
+  if (strncasecmp(rest, word, n) != 0) return false;
+  rest += n;
+  while (*rest == ' ') rest++;
+  if (*rest != 0) return false;
+  tomorrow = true;
+  return true;
+}
+
+// "07:21" for a unix time, shown in the offset valid at that moment (rounded to the minute)
+static inline void fmSunHm(char* out, size_t sz, const FmTz* tz, uint32_t t) {
+  const int64_t local = tz ? fmTzLocal(*tz, t) : (int64_t)t;
+  const int64_t m = fmFloorDiv(local + 30, 60);
+  const unsigned mod = (unsigned)(m - (int64_t)fmFloorDiv(m, 1440) * 1440);   // 0..1439
+  snprintf(out, sz, "%02u:%02u", (mod / 60) % 24, mod % 60);
+}
+
+// The answer for the room, one line. 'tz' NULL = no time zone known -> times in UTC, marked.
+// 'has_pos' false = the box has no position. 'now' = box clock (unix UTC).
+static inline void fmSunText(char* out, size_t sz, bool en, bool tomorrow, bool has_pos,
+                             double lat, double lon, uint32_t now, const FmTz* tz) {
+  if (now < FM_SUN_CLOCK_MIN) {
+    snprintf(out, sz, "%s", en ? "Sun: the box clock is not set yet. It is set by any phone that opens the dashboard"
+                               : "Sonne: Uhr der Box noch nicht gestellt. Ein Handy, das das Dashboard öffnet, stellt sie");
+    return;
+  }
+  if (!has_pos) {
+    snprintf(out, sz, "%s", en ? "Sun: the box has no position. Admin: set it in the dashboard (Setup)"
+                               : "Sonne: Box hat keine Position. Admin: im Dashboard unter Setup setzen");
+    return;
+  }
+  // local calendar day (today or tomorrow) -> its 00:00 as if UTC, the day the sun maths uses
+  const int64_t local_now = tz ? fmTzLocal(*tz, now) : (int64_t)now;
+  const int32_t days = fmFloorDiv(local_now, 86400) + (tomorrow ? 1 : 0);
+  const uint32_t day0 = (uint32_t)days * 86400UL;
+  int32_t y, m, d;
+  fmCivilFromDays(days, y, m, d);
+
+  static const char* const MON[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+  char head[32];
+  if (en) snprintf(head, sizeof(head), "Sun %s %d%s", MON[m - 1], (int)d, tz ? "" : " (UTC)");
+  else    snprintf(head, sizeof(head), "Sonne %02d.%02d.%s", (int)d, (int)m, tz ? "" : " (UTC)");
+
+  uint32_t rise = 0, set = 0, dawn = 0, dusk = 0;
+  const int st = fmSunEvent(lat, lon, day0, FM_SUN_ALT_RISESET, rise, set);
+  const int cst = fmSunEvent(lat, lon, day0, FM_SUN_ALT_CIVIL, dawn, dusk);
+  char a[8], b[8], c[8];
+
+  if (st == FM_SUN_ALWAYS_UP) {
+    snprintf(out, sz, "%s: %s", head, en ? "the sun does not set (midnight sun)" : "die Sonne geht nicht unter (Mitternachtssonne)");
+  } else if (st == FM_SUN_ALWAYS_DOWN) {
+    if (cst == FM_SUN_NORMAL) {
+      fmSunHm(a, sizeof(a), tz, dawn);
+      fmSunHm(b, sizeof(b), tz, dusk);
+      snprintf(out, sz, "%s: %s %s-%s", head, en ? "the sun does not rise (polar night), daylight" : "die Sonne geht nicht auf (Polarnacht), Tageslicht", a, b);
+    } else {
+      snprintf(out, sz, "%s: %s", head, en ? "the sun does not rise (polar night), dark all day" : "die Sonne geht nicht auf (Polarnacht), ganztags dunkel");
+    }
+  } else {
+    fmSunHm(a, sizeof(a), tz, rise);
+    fmSunHm(b, sizeof(b), tz, set);
+    if (cst == FM_SUN_NORMAL) {
+      fmSunHm(c, sizeof(c), tz, dusk);
+      if (en) snprintf(out, sz, "%s: sunrise %s, sunset %s, daylight until %s", head, a, b, c);
+      else    snprintf(out, sz, "%s: Aufgang %s, Untergang %s, Tageslicht bis %s", head, a, b, c);
+    } else {   // white nights: it never gets darker than civil twilight
+      if (en) snprintf(out, sz, "%s: sunrise %s, sunset %s, light all night", head, a, b);
+      else    snprintf(out, sz, "%s: Aufgang %s, Untergang %s, hell die ganze Nacht", head, a, b);
+    }
+  }
 }

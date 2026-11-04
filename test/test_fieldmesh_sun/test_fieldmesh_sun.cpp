@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+#include <string>
+
 #include "../../examples/simple_repeater/FieldMeshSunText.h"
 
 namespace {
@@ -246,4 +248,102 @@ TEST(FieldMeshSun, EventsStayOnTheirDay) {
       EXPECT_NEAR((double)noon, d0 + 43200.0 - lon * 240.0, 17 * 60);   // equation of time <= 16.5 min
     }
   }
+}
+
+// ---- room answer '!sonne' / '!sun' ----
+// Expected times checked against the PyEphem values above (Stuttgart, Tromsoe) and the
+// published tables for Stuttgart and Trondheim.
+
+namespace {
+
+FmTz tzOf(const char* rule) { FmTz tz; EXPECT_TRUE(fmTzParse(rule, tz)); return tz; }
+std::string sun(bool en, bool tomorrow, double lat, double lon, uint32_t now, const FmTz* tz, bool has_pos = true) {
+  char out[160];
+  fmSunText(out, sizeof(out), en, tomorrow, has_pos, lat, lon, now, tz);
+  return out;
+}
+constexpr uint32_t NOV4_1022 = 1793787720u;   // 2026-11-04 10:22 UTC
+constexpr double STG_LAT = 48.78, STG_LON = 9.18;
+
+}  // namespace
+
+TEST(FieldMeshSunText, GermanAndEnglish) {
+  const FmTz cet = tzOf("CET-1CEST,M3.5.0,M10.5.0/3");
+  EXPECT_EQ(sun(false, false, STG_LAT, STG_LON, NOV4_1022, &cet),
+            "Sonne 04.11.: Aufgang 07:15, Untergang 16:58, Tageslicht bis 17:32");
+  EXPECT_EQ(sun(true, false, STG_LAT, STG_LON, NOV4_1022, &cet),
+            "Sun Nov 4: sunrise 07:15, sunset 16:58, daylight until 17:32");
+  EXPECT_EQ(sun(false, true, STG_LAT, STG_LON, NOV4_1022, &cet),
+            "Sonne 05.11.: Aufgang 07:16, Untergang 16:57, Tageslicht bis 17:30");
+}
+
+TEST(FieldMeshSunText, BrowserRuleGivesTheSameAnswer) {
+  const FmTz cet = tzOf("CET-1CEST,M3.5.0,M10.5.0/3");
+  const FmTz web = tzOf("<+01>-1<+02>,M3.5.0,M10.5.0/3");
+  EXPECT_EQ(sun(true, false, STG_LAT, STG_LON, NOV4_1022, &cet), sun(true, false, STG_LAT, STG_LON, NOV4_1022, &web));
+}
+
+TEST(FieldMeshSunText, WithoutTimeZoneInUtc) {
+  EXPECT_EQ(sun(true, false, STG_LAT, STG_LON, NOV4_1022, nullptr),
+            "Sun Nov 4 (UTC): sunrise 06:15, sunset 15:58, daylight until 16:32");
+  EXPECT_EQ(sun(false, false, STG_LAT, STG_LON, NOV4_1022, nullptr),
+            "Sonne 04.11. (UTC): Aufgang 06:15, Untergang 15:58, Tageslicht bis 16:32");
+}
+
+TEST(FieldMeshSunText, LocalDateDecidesTheDay) {
+  // 23:30 local is still the 4th, 00:30 local already the 5th (UTC: both on the 4th)
+  const FmTz cet = tzOf("CET-1CEST,M3.5.0,M10.5.0/3");
+  EXPECT_EQ(sun(false, false, STG_LAT, STG_LON, 1793831400u, &cet).substr(0, 13), "Sonne 04.11.:");
+  EXPECT_EQ(sun(false, false, STG_LAT, STG_LON, 1793835000u, &cet).substr(0, 13), "Sonne 05.11.:");
+}
+
+TEST(FieldMeshSunText, DaylightSavingDayUsesSummerTime) {
+  // 2026-03-29, the change at 02:00: sunrise (after the change) in CEST
+  const FmTz cet = tzOf("CET-1CEST,M3.5.0,M10.5.0/3");
+  EXPECT_EQ(sun(false, false, STG_LAT, STG_LON, 1774778400u, &cet),
+            "Sonne 29.03.: Aufgang 07:08, Untergang 19:49, Tageslicht bis 20:21");
+}
+
+TEST(FieldMeshSunText, PolarDayNightAndWhiteNights) {
+  const FmTz no = tzOf("<+01>-1<+02>,M3.5.0,M10.5.0/3");
+  EXPECT_EQ(sun(true, false, 69.65, 18.96, 1782043200u, &no), "Sun Jun 21: the sun does not set (midnight sun)");
+  EXPECT_EQ(sun(false, false, 69.65, 18.96, 1782043200u, &no), "Sonne 21.06.: die Sonne geht nicht unter (Mitternachtssonne)");
+  EXPECT_EQ(sun(false, false, 69.65, 18.96, 1797854400u, &no),
+            "Sonne 21.12.: die Sonne geht nicht auf (Polarnacht), Tageslicht 09:31-13:53");
+  EXPECT_EQ(sun(true, false, 69.65, 18.96, 1797854400u, &no),
+            "Sun Dec 21: the sun does not rise (polar night), daylight 09:31-13:53");
+  // Trondheim at midsummer: the sun sets, but it never gets darker than civil twilight
+  EXPECT_EQ(sun(true, false, 63.43, 10.39, 1782043200u, &no), "Sun Jun 21: sunrise 03:02, sunset 23:38, light all night");
+  // far north in polar night: not even civil twilight
+  const std::string dark = sun(true, false, 85.0, 0.0, 1797854400u, nullptr);
+  EXPECT_NE(dark.find("dark all day"), std::string::npos) << dark;
+}
+
+TEST(FieldMeshSunText, NoClockNoPosition) {
+  const FmTz cet = tzOf("CET-1CEST,M3.5.0,M10.5.0/3");
+  EXPECT_EQ(sun(true, false, STG_LAT, STG_LON, 1000u, &cet).rfind("Sun: the box clock is not set", 0), 0u);
+  EXPECT_EQ(sun(false, false, STG_LAT, STG_LON, 1000u, &cet).rfind("Sonne: Uhr der Box noch nicht gestellt", 0), 0u);
+  EXPECT_EQ(sun(true, false, 0, 0, NOV4_1022, &cet, false), "Sun: the box has no position. Admin: set it in the dashboard (Setup)");
+  EXPECT_EQ(sun(false, false, 0, 0, NOV4_1022, &cet, false), "Sonne: Box hat keine Position. Admin: im Dashboard unter Setup setzen");
+}
+
+TEST(FieldMeshSunText, FitsOneRoomPost) {
+  // FM_ROOM_POST_TEXT_LEN = 151; the longest answer is a polar night or the clock hint
+  const FmTz cet = tzOf("CET-1CEST,M3.5.0,M10.5.0/3");
+  EXPECT_LT(sun(false, false, 69.65, 18.96, 1797854400u, nullptr).size(), 151u);
+  EXPECT_LT(sun(false, false, STG_LAT, STG_LON, 1000u, &cet).size(), 151u);
+  char small[24];   // a short buffer is cut, never overrun
+  fmSunText(small, sizeof(small), false, false, true, STG_LAT, STG_LON, NOV4_1022, &cet);
+  EXPECT_EQ(strlen(small), sizeof(small) - 1);
+}
+
+TEST(FieldMeshSunText, ParseCommand) {
+  bool en = false, tm = true;
+  EXPECT_TRUE(fmSunParseCmd("!sonne", en, tm));          EXPECT_FALSE(en); EXPECT_FALSE(tm);
+  EXPECT_TRUE(fmSunParseCmd("  !SUN  ", en, tm));        EXPECT_TRUE(en);  EXPECT_FALSE(tm);
+  EXPECT_TRUE(fmSunParseCmd("!sonne morgen", en, tm));   EXPECT_FALSE(en); EXPECT_TRUE(tm);
+  EXPECT_TRUE(fmSunParseCmd("!Sun   Tomorrow ", en, tm)); EXPECT_TRUE(en); EXPECT_TRUE(tm);
+  const char* no[] = { "!sunny", "!sonnenbrand", "!sun morgen", "!sonne tomorrow", "!sun today",
+                       "!sun tomorrow please", "sun", "! sun", "", "!so" };
+  for (const char* t : no) EXPECT_FALSE(fmSunParseCmd(t, en, tm)) << "'" << t << "'";
 }

@@ -227,6 +227,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   bool fmTzGet(FmTz& tz);                            // false = no (valid) time zone set
   bool fmTzStore(const char* rule);                  // from a phone / setup page; false = invalid
   bool fmSunHandleCommand(const char* command, char* reply);
+  void fmSunAnswer(char* out, size_t sz, bool en, bool tomorrow);   // '!sun' (en) / '!sonne' answer
 
   bool fmRoomActive() const { return _fm.room_enabled && _room_id_loaded; }
   bool fmRoomLoadIdentity(bool create);

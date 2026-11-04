@@ -108,6 +108,7 @@ struct FmFeedEntry {
 // position. Local time from the POSIX rule in "tz", set by every phone that opens the
 // dashboard (derived from the browser) or on the setup page.
 #include "FieldMeshTimeZone.h"               // FmTz, FM_TZ_LEN, fmTzParse()
+#include "FieldMeshSunText.h"                // fmSunText(), fmSunParseCmd()
 
 #define FM_ROOM_POSTS_FILE      "/fm_room_posts"     // board survives a reboot
 #define FM_ROOM_CLIENTS_FILE    "/fm_room_clients"   // logged-in users survive a reboot

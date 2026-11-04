@@ -719,8 +719,10 @@ bool MyMesh::fmRoomBot(mesh::Packet* pkt, ClientInfo* client, uint32_t sender_ti
   bool is_help = fmIsCmd(text, "!help");
   bool is_wx_de = fmIsCmd(text, "!wetter");   // German answer
   bool is_wx = is_wx_de || fmIsCmd(text, "!weather");
+  bool sun_en = false, sun_tomorrow = false;
+  bool is_sun = fmSunParseCmd(text, sun_en, sun_tomorrow);   // !sonne / !sun [morgen|tomorrow]
   bool is_cmds = strncasecmp(text, "!commands", 9) == 0 && (text[9] == 0 || text[9] == ' ');   // !commands [topic]
-  if (!is_cli && !is_ping && !is_status && !is_help && !is_wx && !is_cmds) return false;   // normal post (also other '!' texts, e.g. a manual !SOS)
+  if (!is_cli && !is_ping && !is_status && !is_help && !is_wx && !is_sun && !is_cmds) return false;   // normal post (also other '!' texts, e.g. a manual !SOS)
 
   // Admin = this key is a known admin of the REPEATER (same device key for all contacts).
   // The room itself has no admin login.
@@ -754,11 +756,16 @@ bool MyMesh::fmRoomBot(mesh::Packet* pkt, ClientInfo* client, uint32_t sender_ti
     return true;
   }
   if (is_help) {   // users: one message
-    fmRoomQueuePrivate(client, "!weather = weather to all (!wetter in German), !ping = signal check, !status = box status. Admins: !commands");
+    fmRoomQueuePrivate(client, "!weather = weather to all (!wetter in German), !sun = sun times (!sonne; + tomorrow), !ping = signal check, !status = box status. Admins: !commands");
     return true;
   }
   if (is_wx) {   // answer to everyone: a post on the board
     fmWxText(msg, sizeof(msg), !is_wx_de);
+    fmRoomStorePost(_room_id, msg);
+    return true;
+  }
+  if (is_sun) {   // like the weather: a post on the board for everyone
+    fmSunAnswer(msg, sizeof(msg), sun_en, sun_tomorrow);
     fmRoomStorePost(_room_id, msg);
     return true;
   }
@@ -782,8 +789,10 @@ bool MyMesh::fmRoomBot(mesh::Packet* pkt, ClientInfo* client, uint32_t sender_ti
       m = "/team.add <name>, /team.del <name>, /get team, /get nodes";
     } else if (strcasecmp(topic, "weather") == 0) {
       m = "/set weather.loc <lat>,<lon> or box, /get weather. Data comes from phones with internet in the box WiFi";
+    } else if (strcasecmp(topic, "sun") == 0) {
+      m = "/set tz <POSIX rule>|none, /get tz. Phones that open the dashboard set the time zone, else Setup > Box";
     } else {
-      m = "!commands room|radio|wifi|sos|team|weather - any repeater command: /<command>, e.g. /get radio. Full list: README";
+      m = "!commands room|radio|wifi|sos|team|weather|sun - any repeater command: /<command>, e.g. /get radio. Full list: README";
     }
     fmRoomQueuePrivate(client, m);
     return true;

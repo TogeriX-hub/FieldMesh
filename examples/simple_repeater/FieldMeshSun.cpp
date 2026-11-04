@@ -1,5 +1,5 @@
-// FieldMesh repeater: time zone of the box (and, from step 3, the sun times for '!sonne' /
-// '!sun'). Only compiled in with -D FIELDMESH_REPEATER=1.
+// FieldMesh repeater: sun times for '!sonne' / '!sun' in the room and the time zone of the
+// box. Only compiled in with -D FIELDMESH_REPEATER=1.
 //
 // The G2 has no GPS and no internet: the clock and the time zone come from the phones that
 // open the dashboard (FieldMeshWeb.cpp). The whole POSIX rule is kept (FieldMeshTimeZone.h),
@@ -32,6 +32,16 @@ static void fmTzOffsetText(char* out, size_t sz, int32_t off) {
   const int h = off / 3600, m = (off % 3600) / 60;
   if (m) snprintf(out, sz, "UTC%c%d:%02d", sign, h, m);
   else   snprintf(out, sz, "UTC%c%d", sign, h);
+}
+
+void MyMesh::fmSunAnswer(char* out, size_t sz, bool en, bool tomorrow) {
+  // box position, as in the adverts / dashboard (not the weather's own place)
+  const float lat = _prefs.advert_loc_policy == ADVERT_LOC_SHARE ? sensors.node_lat : _prefs.node_lat;
+  const float lon = _prefs.advert_loc_policy == ADVERT_LOC_SHARE ? sensors.node_lon : _prefs.node_lon;
+  FmTz tz;
+  const bool has_tz = fmTzGet(tz);
+  fmSunText(out, sz, en, tomorrow, lat != 0.0f || lon != 0.0f, lat, lon,
+            getRTCClock()->getCurrentTime(), has_tz ? &tz : NULL);
 }
 
 bool MyMesh::fmSunHandleCommand(const char* command, char* reply) {
