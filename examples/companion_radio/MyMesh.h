@@ -27,6 +27,7 @@
 #include "GpsCycle.h"   // FieldMesh v2.1
 #include "TrackScheduler.h"   // FieldMesh v2.1
 #include "FloodLog.h"   // FieldMesh v2.2 diagnostics (only with -D FM_FLOOD_LOG=1)
+#include "FieldMeshVersion.h"   // FieldMesh v2.2 (#17): FIELDMESH_VERSION, fmAppVersion()
 
 #include <RTClib.h>
 #include <helpers/ArduinoHelpers.h>

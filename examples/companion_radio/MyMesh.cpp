@@ -1078,7 +1078,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     i += 12;
     StrHelper::strzcpy((char *)&out_frame[i], board.getManufacturerName(), 40);
     i += 40;
-    StrHelper::strzcpy((char *)&out_frame[i], FIRMWARE_VERSION, 20);
+    StrHelper::strzcpy((char *)&out_frame[i], fmAppVersion(FIRMWARE_VERSION), 20);   // FieldMesh #17: "v1.18.0-fm2.2.0"
     i += 20;
     out_frame[i++] = _prefs.isRepeatEn() ? 1 : 0;   // v9+
     out_frame[i++] = _prefs.path_hash_mode;  // v10+
@@ -2201,7 +2201,7 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
   }
 
   if (strcmp(command, "ver") == 0) {
-    sprintf(reply, "%s (Build: %s)", FIRMWARE_VERSION, FIRMWARE_BUILD_DATE);
+    sprintf(reply, "%s (Build: %s)", fmAppVersion(FIRMWARE_VERSION), FIRMWARE_BUILD_DATE);   // FieldMesh #17
     return true;
   }
 
