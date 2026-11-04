@@ -32,7 +32,7 @@ main{flex-grow:1;padding:16px 16px 24px}
 .col{display:flex;flex-direction:column;gap:8px}
 .list{display:flex;flex-direction:column;gap:8px}
 label{font-size:13px;color:var(--muted)}
-input{width:100%;min-width:0;height:44px;padding:0 12px;border-radius:8px;border:1px solid var(--border2);background:var(--bg);color:var(--text);font-size:16px;font-family:inherit}
+input,select{width:100%;min-width:0;height:44px;padding:0 12px;border-radius:8px;border:1px solid var(--border2);background:var(--bg);color:var(--text);font-size:16px;font-family:inherit}
 input::placeholder{color:var(--stale)}
 .btn{height:44px;padding:0 18px;border-radius:8px;border:0;background:var(--accent);color:var(--on-accent);font-size:16px;font-weight:700;cursor:pointer;font-family:inherit}
 .btn.ghost{background:transparent;border:1px solid var(--accent);color:var(--accent-text)}
@@ -281,6 +281,9 @@ main{padding-bottom:110px}
 <section class="card col" style="padding:14px;gap:10px"><h2>Team</h2><span class="hint" style="font-size:14px" id="s-team"></span></section>
 
 <section class="card col" style="padding:14px;gap:10px"><h2>Box</h2><span class="hint" style="font-size:14px" id="s-clock"></span><span class="hint" style="font-size:14px" id="s-fw"></span>
+<label for="s-tz">Time zone for "!sun" / "!sonne"</label><select id="s-tz"></select>
+<span class="small">Every phone that opens this page sets it automatically, with daylight saving time. Choose here only if no phone can.</span>
+<p id="s-tzm" class="msg" hidden></p>
 <a class="btn plain" href="/update" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Firmware update</a>
 <button type="button" class="btn plain" id="s-wifi" data-act="wifi">Turn WiFi off…</button>
 <button type="button" class="btn grey" data-act="logout">Log out</button>
@@ -562,6 +565,18 @@ $('s-wxin').addEventListener('input',e=>{
  res.className='msg'+(wxIn.err?' err':'');setT(res,wxIn.err||('Recognised: '+wxIn.la.toFixed(5)+', '+wxIn.lo.toFixed(5)));show(res,true);});
 
 // ---- setup ----
+const TZS=[['Central Europe (Berlin, Paris, Rome)','CET-1CEST,M3.5.0,M10.5.0/3'],['UK, Ireland, Portugal','GMT0BST,M3.5.0/1,M10.5.0'],
+ ['Eastern Europe (Helsinki, Athens)','EET-2EEST,M3.5.0/3,M10.5.0/4'],['US Eastern','EST5EDT,M3.2.0,M11.1.0'],['US Central','CST6CDT,M3.2.0,M11.1.0'],
+ ['US Mountain','MST7MDT,M3.2.0,M11.1.0'],['US Arizona','MST7'],['US Pacific','PST8PDT,M3.2.0,M11.1.0'],['Alaska','AKST9AKDT,M3.2.0,M11.1.0'],
+ ['Hawaii','HST10'],['Australia East (Sydney, Melbourne)','AEST-10AEDT,M10.1.0,M4.1.0/3'],['New Zealand','NZST-12NZDT,M9.5.0,M4.1.0/3'],['UTC','UTC0']];
+const tzKey=r=>r.replace(/<[^>]*>|[A-Za-z]{3,}/g,'#');   // same rule, other names (phone vs list)
+function renderTz(){
+ const cur=SET.tz||'',hit=TZS.find(z=>tzKey(z[1])===tzKey(cur)),sel=$('s-tz');
+ if(document.activeElement===sel)return;
+ const opts=[['','Not set (sun times in UTC)']].concat(cur&&!hit?[[cur,'From a phone: '+cur]]:[],TZS.map(z=>[z[1],z[0]]));
+ const k=opts.map(o=>o[0]).join('|');
+ if(sel._k!==k){sel.innerHTML=opts.map(o=>'<option value="'+esc(o[0])+'">'+esc(o[1])+'</option>').join('');sel._k=k;}
+ sel.value=hit?hit[1]:cur;}
 function fill(id,v){const e=$(id);if(document.activeElement!==e&&!e._dirty&&e.value!==v)e.value=v;}
 ['s-rn','s-rp','s-chn','s-chk'].forEach(id=>$(id).addEventListener('input',e=>{e.target._dirty=true;}));
 function renderSetup(){
@@ -573,6 +588,7 @@ function renderSetup(){
   setT('s-fw',S.fw?'Firmware: FieldMesh '+S.fw+' · MeshCore '+S.mc+' · built '+S.bd+'.':'');
   setT('s-clock',okClock(S.time)?'Box clock: '+new Date(boxNow()*1000).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})+'. Phones that open this page set it (forward only).':'Box clock not set yet.');}
  if(!SET)return;
+ renderTz();
  const og=$('s-og');setT(og,SET.og?'On':'Off');og.setAttribute('aria-pressed',!!SET.og);
  if(S&&S.wx){setT('s-wxl',(SET.wxo?'Other place ':'Box position ')+S.wx.la.toFixed(4)+', '+S.wx.lo.toFixed(4));
   setT('s-wxa',S.wx.age<0?'no forecast yet':'forecast loaded '+ago(S.wx.age));}
@@ -616,7 +632,31 @@ function poll(){
  if(tick%3===1){getStatus();getBoard();}
  if(st.tab==='mesh'&&tick%5===1){getNodes();if(st.sub==='network')getNet();}
  render();}
-function sendTime(){post('/api/time',{t:Math.floor(Date.now()/1000)}).catch(()=>{});}
+// ---- time zone: POSIX rule of this phone, derived from the browser's offsets this year ----
+// e.g. "<+01>-1<+02>,M3.5.0,M10.5.0/3"; the box keeps the whole rule (FieldMeshTimeZone.h)
+function tzRule(){
+ try{
+  const D=86400e3,y=new Date().getFullYear(),off=t=>-new Date(t).getTimezoneOffset()*60;   // s east of UTC
+  const ch=[];let a=Date.UTC(y,0,1),oa=off(a);
+  for(let b=a+D;b<=Date.UTC(y+1,0,1);a=b,b+=D){const ob=off(b);if(ob===oa)continue;
+   let lo=a,hi=b;while(hi-lo>1000){const m=Math.floor((lo+hi)/2000)*1000;if(off(m)===oa)lo=m;else hi=m;}
+   ch.push({t:hi,o:oa,n:ob});oa=ob;}
+  const p2=n=>String(n).padStart(2,'0');
+  const hms=v=>{const x=Math.abs(v),h=Math.floor(x/3600),m=Math.floor(x%3600/60),sc=x%60;return h+(m||sc?':'+p2(m):'')+(sc?':'+p2(sc):'');};
+  const nm=v=>'<'+(v<0?'-':'+')+p2(Math.floor(Math.abs(v)/3600))+(Math.abs(v)%3600?p2(Math.floor(Math.abs(v)%3600/60)):'')+'>';
+  const pos=v=>(v>0?'-':'')+hms(v);   // POSIX counts hours west of UTC
+  if(!ch.length){const v=off(Date.now());return nm(v)+pos(v);}
+  if(ch.length!==2)return '';
+  const st=Math.min(ch[0].o,ch[0].n),ds=Math.max(ch[0].o,ch[0].n),on=ch.find(c=>c.n===ds),back=ch.find(c=>c.n===st);
+  if(!on||!back||on===back)return '';
+  const tr=c=>{let w=new Date(c.t+c.o*1000),sec=w.getUTCHours()*3600+w.getUTCMinutes()*60+w.getUTCSeconds();   // local time before the change
+   if(sec===0){w=new Date(w.getTime()-D);sec=86400;}   // at midnight: previous day "/24" keeps the weekday rule
+   const d=w.getUTCDate(),dim=new Date(Date.UTC(w.getUTCFullYear(),w.getUTCMonth()+1,0)).getUTCDate();
+   return 'M'+(w.getUTCMonth()+1)+'.'+(d>dim-7?5:Math.ceil(d/7))+'.'+w.getUTCDay()+(sec===7200?'':'/'+hms(sec));};
+  return nm(st)+pos(st)+nm(ds)+(ds===st+3600?'':pos(ds))+','+tr(on)+','+tr(back);
+ }catch(e){return '';}}
+const TZ=tzRule();
+function sendTime(){post('/api/time',TZ?{t:Math.floor(Date.now()/1000),z:TZ}:{t:Math.floor(Date.now()/1000)}).catch(()=>{});}
 let moved=false;
 function toLocal(host){
  // The fixed address (QR code: 192.168.4.1) moves on to http://<name>.local, but only when this
@@ -729,6 +769,7 @@ $('lform').addEventListener('submit',e=>{
   msg('lmsg',r.status===429?'Wait 2 seconds and try again.':'Wrong password.',true);})
  .catch(()=>msg('lmsg','No connection to the box.',true));});
 
+$('s-tz').addEventListener('change',e=>{const v=e.target.value;run('s-tzm',['set tz '+(v||'none')],v?'Time zone saved.':'Time zone cleared, sun times in UTC.');});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){sendTime();tick=0;poll();}});
 sendTime();poll();setInterval(poll,1000);
 </script></body></html>
