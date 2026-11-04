@@ -157,6 +157,9 @@
     <p id="downloads"></p>
     <p><a href="https://github.com/fieldmesh-radio/FieldMesh">FieldMesh on GitHub</a> ·
       <a href="https://github.com/fieldmesh-radio/FieldMesh/discussions">Discussions</a></p>
+    <p id="privacy" class="hidden">This page counts visits and flash results (device, version, success)
+      with <a href="https://www.goatcounter.com">GoatCounter</a>: no cookies, nothing stored on your computer,
+      no personal data. Your device and its data are never read. Browsers set to "Do Not Track" are not counted.</p>
     <p>Uses <a href="https://github.com/espressif/esptool-js">esptool-js</a> (Apache-2.0),
       <a href="https://github.com/gildas-lormeau/zip.js">zip.js</a> (BSD-3-Clause), the nRF52 DFU flasher by
       Liam Cottle from <a href="https://github.com/liamcottle/rnode-flasher">rnode-flasher</a> (MIT) and
@@ -198,6 +201,20 @@ function setBusy(b) {
 }
 function isCancel(e) { return e && e.name === "NotFoundError"; }
 
+// Usage counter: GoatCounter's count endpoint, called directly (no script from outside).
+// Only active when the site was built with a GoatCounter code (firmware.json "counter").
+// Events: select/<device>, flash-start|flash-ok|flash-fail/<device>/<version>, download/...
+function track(path, event = true) {
+  try {
+    if (!firmware || !firmware.counter || navigator.doNotTrack === "1") return;
+    const q = new URLSearchParams({ p: path, t: document.title, r: event ? "" : document.referrer,
+      s: screen.width + "," + screen.height + "," + (window.devicePixelRatio || 1), rnd: Math.random().toString(36).slice(2) });
+    if (event) q.set("e", "true");
+    new Image().src = firmware.counter + "?" + q.toString();
+  } catch (e) { /* counting must never break flashing */ }
+}
+const evName = (what) => what + "/" + device.id + "/" + firmware.version;
+
 async function fetchFirmware() {
   const res = await fetch(device.file);
   if (!res.ok) throw new Error(`Download failed (${res.status})`);
@@ -206,6 +223,7 @@ async function fetchFirmware() {
 
 function selectDevice(d) {
   device = d;
+  track("select/" + d.id);
   $("flashCard").classList.remove("hidden");
   $("espSteps").classList.toggle("hidden", d.platform !== "esp32");
   $("nrfSteps").classList.toggle("hidden", d.platform !== "nrf52");
@@ -221,6 +239,7 @@ async function init() {
     $("version").textContent = "Could not load the firmware list."; $("badge").classList.add("hidden");
     return;
   }
+  if (firmware.counter) { $("privacy").classList.remove("hidden"); track("/flasher", false); }
   const date = firmware.published ? new Date(firmware.published).toLocaleDateString() : "";
   $("badge").textContent = "V" + firmware.version;
   $("version").innerHTML = "";
@@ -249,6 +268,7 @@ async function init() {
 
     const link = document.createElement("a");
     link.href = d.file; link.textContent = d.name; link.download = "";
+    link.addEventListener("click", () => track("download/" + d.id + "/" + firmware.version));
     if (i) dl.append(" · ");
     dl.append(link);
   });
@@ -270,6 +290,7 @@ $("espFlash").addEventListener("click", async () => {
   setProgress(0);
   const transport = new Transport(port, false);
   try {
+    track(evName("flash-start"));
     setStatus("Downloading firmware...");
     const data = new Uint8Array(await (await fetchFirmware()).arrayBuffer());
     setStatus("Connecting...");
@@ -290,8 +311,10 @@ $("espFlash").addEventListener("click", async () => {
     await loader.after("hard_reset");
     setProgress(100);
     setStatus("Done - the device restarts with FieldMesh " + firmware.version + ".", "ok");
+    track(evName("flash-ok"));
   } catch (e) {
     log(String(e && e.stack || e));
+    track(evName("flash-fail"));
     let msg = "Flashing failed: " + (e.message || e);
     if (device.bootHint) msg += " " + device.bootHint;
     setStatus(msg, "err");
@@ -337,14 +360,17 @@ $("nrfFlash").addEventListener("click", async () => {
   setBusy(true);
   setProgress(0);
   try {
+    track(evName("flash-start"));
     setStatus("Downloading firmware...");
     const blob = await (await fetchFirmware()).blob();
     setStatus("Flashing - do not unplug...");
     await new Nrf52DfuFlasher(port).flash(blob, (pct) => setProgress(pct));
     setProgress(100);
     setStatus("Done - the device restarts with FieldMesh " + firmware.version + ".", "ok");
+    track(evName("flash-ok"));
   } catch (e) {
     log(String(e && e.stack || e));
+    track(evName("flash-fail"));
     setStatus("Flashing failed: " + (e.message || e) + " Is the device in update mode?", "err");
   } finally {
     try { await port.close(); } catch (e) { /* already closed */ }

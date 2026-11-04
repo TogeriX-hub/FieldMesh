@@ -53,6 +53,8 @@ jobs:
           tar xzf zip.js-zip.js-2.8.11.tgz -C zipjs
 
       - name: Build site
+        env:
+          GOATCOUNTER_CODE: ${{ vars.GOATCOUNTER_CODE }}   # usage counter, optional (repo variable)
         run: python3 docs/FieldMesh/flasher/build_site.py --release release.json --assets assets --libs libs --out site
 
       - name: Upload site

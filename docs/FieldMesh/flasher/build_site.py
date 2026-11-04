@@ -7,9 +7,13 @@ Used by .github/workflows/fieldmesh-flasher.yml:
 release.json  output of `gh release view <tag> --json tagName,publishedAt,url`
 assets/       the release files (DFU zips, *_full.bin)
 libs/         unpacked npm packages: libs/esptool-js/package, libs/zipjs/package
+
+Environment: GOATCOUNTER_CODE (optional) turns on the usage counter of the page.
 """
 import argparse
 import json
+import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -49,13 +53,20 @@ def main():
     if not devices:
         sys.exit(f"ERROR: no device files found in release {tag}")
 
-    (out / "firmware" / "firmware.json").write_text(json.dumps({
+    info = {
         "tag": tag,
         "version": tag[1:] if tag.startswith("v") else tag,
         "published": rel.get("publishedAt", ""),
         "releaseUrl": rel.get("url", ""),
         "devices": devices,
-    }, indent=2))
+    }
+    # usage counter (repo variable GOATCOUNTER_CODE); without it the page counts nothing
+    code = os.environ.get("GOATCOUNTER_CODE", "").strip().lower()
+    if code:
+        if not re.fullmatch(r"[a-z0-9-]{2,50}", code):
+            sys.exit(f"ERROR: GOATCOUNTER_CODE '{code}' is not a GoatCounter code")
+        info["counter"] = f"https://{code}.goatcounter.com/count"
+    (out / "firmware" / "firmware.json").write_text(json.dumps(info, indent=2))
 
     for f in ("index.html", "nrf52_dfu_flasher.js", "nrf52_dfu_flasher.LICENSE.txt"):
         shutil.copy2(HERE / f, out / f)
