@@ -40,6 +40,11 @@ jobs:
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
 
+      # FieldMesh version "dev-<commit>" and today's date (#17), also for the test files below
+      - name: Version flags
+        run: |
+          echo "PLATFORMIO_BUILD_FLAGS=-DFIELDMESH_VERSION='\"dev-${GITHUB_SHA::7}\"' -DFIRMWARE_BUILD_DATE='\"$(LC_ALL=C date -u '+%d %b %Y')\"'" >> "$GITHUB_ENV"
+
       - name: Build ${{ matrix.environment }}
         run: pio run -e ${{ matrix.environment }}
 

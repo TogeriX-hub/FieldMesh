@@ -6,6 +6,7 @@
 # DRAFT release with tag <version> on that commit. Paste the release notes into the
 # draft and publish it - the tag is created on publish.
 # With "create_release" unticked it only builds; the files are under the run's artifacts.
+# The firmware shows the entered version (FIELDMESH_VERSION, see FieldMeshVersion.h).
 #
 # Only devices tested on hardware get prebuilt files (see README).
 name: FieldMesh Release
@@ -54,8 +55,18 @@ jobs:
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
 
+      # FieldMesh version and today's date go into the firmware (#17); every later pio step
+      # sees the same flags, so mergebin does not rebuild without them
+      - name: Version flags
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          echo "PLATFORMIO_BUILD_FLAGS=-DFIELDMESH_VERSION='\"${VERSION}\"' -DFIRMWARE_BUILD_DATE='\"$(LC_ALL=C date -u '+%d %b %Y')\"'" >> "$GITHUB_ENV"
+
       - name: Build ${{ matrix.environment }}
-        run: pio run -e ${{ matrix.environment }}
+        run: |
+          echo "Build flags: $PLATFORMIO_BUILD_FLAGS"
+          pio run -e ${{ matrix.environment }}
 
       - name: Collect files
         env:
