@@ -451,3 +451,8 @@ TEST(FieldMeshTimeZone, CalendarHelpers) {
   EXPECT_EQ(fmFloorDiv(-1, 86400), -1);
   EXPECT_EQ(fmFloorDiv(86399, 86400), 0);
 }
+
+int main(int argc, char** argv) {
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}
