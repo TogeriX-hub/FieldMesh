@@ -9,15 +9,9 @@
 
 #include "MyMesh.h"
 #include "FieldMeshFs.h"
+#include "../companion_radio/ChannelText.h"   // fmIsSosChannelName(): same SOS rule as the companion
 
 #ifdef FIELDMESH_REPEATER
-
-static bool fmIsSosChannelName(const char* name) {   // case-insensitive "sos" anywhere (companion rule)
-  for (const char* p = name; p[0] && p[1] && p[2]; p++) {
-    if (tolower(p[0]) == 's' && tolower(p[1]) == 'o' && tolower(p[2]) == 's') return true;
-  }
-  return false;
-}
 
 static void fmChannelCalcHash(FmChannel& ch) {
   // same as BaseChatMesh::addChannel(): hash = sha256 over the 16-byte secret

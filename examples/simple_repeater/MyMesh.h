@@ -118,7 +118,17 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
 #ifdef FIELDMESH_REPEATER
   FieldMeshRepeaterPrefs _fm;
   bool _fm_advert_after_radio;   // send a zero-hop advert right after the pending radio params are applied
+  FmFloodLateSet _fm_late;       // relays already moved to the late window (Off-Grid flooding)
+#ifdef FM_FLOOD_LOG
+  FloodLog _fm_flog;             // FloodLog.h, diagnostic builds only
+#endif
+  uint32_t _fm_relay_late;       // relays moved to the late window because another node relayed first
+  uint32_t fmRelayDelay(const mesh::Packet* packet);   // getRetransmitDelay() in Off-Grid, 0 = not handled
+  void fmOnNetworkChange();      // Off-Grid switch applied: drop queued relays
+  void fmOffGridRegion(const mesh::Packet* pkt);                 // onRecvPacket(): Off-Grid floods count as allowed
+  bool fmOffGridIgnoresHopPolicy(const mesh::Packet* pkt) const;  // allowPacketForward(): Off-Grid hop limits
 
+  void fmInitMembers();   // constructor: initial values of the FieldMesh members
   void fmBegin();
   bool fmSavePrefs();
   uint32_t _fm_clock_saved;
@@ -192,7 +202,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks
   FmRoomPrivate _room_private[FM_ROOM_MAX_PRIVATE];   // bot replies, only for the asker
   int _room_next_private_idx;
   unsigned long _room_posts_dirty_at, _room_clients_dirty_at;   // lazy saving
-  RateLimiter _room_bot_limiter;
+  RateLimiter _room_bot_limiter{6, 60};   // room bot: max 6 replies per minute in total
 
   // channels the box listens to + last SOS (FieldMeshChannels.cpp)
   FmChannel _fm_channels[FM_MAX_CHANNELS];
@@ -303,6 +313,9 @@ protected:
   void onAckRecv(mesh::Packet* packet, uint32_t ack_crc) override;   // ACKs for room post pushes
   int searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel channels[], int max_matches) override;   // channel list of the box
   void onGroupDataRecv(mesh::Packet* packet, uint8_t type, const mesh::GroupChannel& channel, uint8_t* data, size_t len) override;   // SOS -> board
+  // Off-Grid managed flooding (v2.2, FieldMeshRepeater.cpp)
+  uint32_t getCADFailMaxDuration() const override;          // wait for a free channel instead of forcing after 4 s
+  bool filterRecvFloodPacket(mesh::Packet* packet) override;   // late window (Meshtastic ROUTER_LATE)
 #endif
 
   void sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
@@ -312,7 +325,11 @@ public:
 
   void begin(FILESYSTEM* fs);
   void sendNodeDiscoverReq();
+#ifdef FIELDMESH_REPEATER
+  const char* getFirmwareVer() override { return fmAppVersion(FIRMWARE_VERSION); }   // FieldMesh #17: "v1.18.0-fm2.2.0"
+#else
   const char* getFirmwareVer() override { return FIRMWARE_VERSION; }
+#endif
   const char* getBuildDate() override { return FIRMWARE_BUILD_DATE; }
   const char* getRole() override { return FIRMWARE_ROLE; }
   const char* getNodeName() { return _prefs.node_name; }

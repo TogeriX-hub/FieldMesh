@@ -75,11 +75,11 @@ void GxEPDDisplay::turnOn() {
   }
 }
 
-void GxEPDDisplay::powerOff() {
+void GxEPDDisplay::powerOff() {   // FieldMesh: hibernate split off from turnOff()
   display.hibernate();
 }
 
-void GxEPDDisplay::turnOff() { // Only stops refresh
+void GxEPDDisplay::turnOff() { // Only stops refresh   (FieldMesh)
 #if defined(DISP_BACKLIGHT) && !defined(BACKLIGHT_BTN)
   digitalWrite(DISP_BACKLIGHT, LOW);
 #elif defined(EXP_PIN_BACKLIGHT) && !defined(BACKLIGHT_BTN)
@@ -89,7 +89,7 @@ void GxEPDDisplay::turnOff() { // Only stops refresh
   last_display_crc_value=0;
 }
 
-void GxEPDDisplay::blankScreen() {
+void GxEPDDisplay::blankScreen() {   // FieldMesh: split off from turnOff()
   // do full refresh before powering off to clear screen
   // no full refresh needed at wakeup
   display.clearScreen(0xFF); // Clears microcontroller side RAM

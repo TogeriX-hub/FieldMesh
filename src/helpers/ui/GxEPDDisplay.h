@@ -60,8 +60,8 @@ public:
   void resetPartialRefreshCounter() { _cycles_before_full_refresh = max_partial_refresh; };
   void turnOn() override;
   void turnOff() override;
-  void blankScreen() override;
-  void powerOff() override;
+  void blankScreen() override;   // FieldMesh
+  void powerOff() override;      // FieldMesh
   void clear() override;
   void startFrame(ColorVal bkg = UIColor::window_bkg) override;
   void setTextSize(int sz) override;

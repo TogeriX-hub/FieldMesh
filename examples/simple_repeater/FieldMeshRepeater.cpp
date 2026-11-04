@@ -6,9 +6,51 @@
 
 #ifdef FIELDMESH_REPEATER
 
+// Constructor part of the FieldMesh members (called from MyMesh::MyMesh)
+void MyMesh::fmInitMembers() {
+  _fm_advert_after_radio = false;
+  _fm_late = FmFloodLateSet();
+  _fm_relay_late = 0;
+  _room_id_loaded = false;
+  memset(_room_posts, 0, sizeof(_room_posts));
+  _room_next_post_idx = _room_next_client_idx = 0;
+  _room_next_push = 0;
+  _room_num_posted = _room_num_pushes = 0;
+  memset(_room_private, 0, sizeof(_room_private));
+  _room_next_private_idx = 0;
+  _room_posts_dirty_at = _room_clients_dirty_at = 0;
+  memset(_fm_channels, 0, sizeof(_fm_channels));
+  _fm_num_channels = 0;
+  _fm_clock_saved = 0;
+  _fm_clock_next_save = 0;
+  _fm_nodes = NULL;
+  _fm_max_nodes = 0;
+  _fm_num_team = 0;
+  memset(_fm_act, 0, sizeof(_fm_act));
+  _fm_team_dirty = false;
+  _fm_team_next_save = 0;
+  _fm_act_idx = 0;
+  _fm_act_next = 0;
+  _fm_act_air_mark = 0;
+  memset(_fm_type_counts, 0, sizeof(_fm_type_counts));
+  memset(_fm_feed, 0, sizeof(_fm_feed));
+  _fm_feed_next = 0;
+  _fm_env_temp = _fm_env_hum = 0;
+  _fm_env_flags = 0;
+  _fm_env_next = 0;
+  _fm_boot_reason = NULL;
+  memset(_fm_sos, 0, sizeof(_fm_sos));
+  memset(&_fm_wx, 0, sizeof(_fm_wx));
+  _fm_sos_next = 0;
+}
+
 void MyMesh::fmBegin() {
   fmClockRestore();   // before anything gets a timestamp
   _fm_boot_reason = board.getResetReasonString(board.getResetReason());   // for the dashboard
+  fmDiagLogCleanup(_fs);   // log files of diagnostic builds not in this one
+#ifdef FM_FLOOD_LOG
+  _fm_flog.begin(_fs, false);   // diagnostic builds only (FloodLog.h), always
+#endif
 
   if (fmFsExists(_fs, FM_REPEATER_PREFS_FILE)) {
     File file = fmFsOpenRead(_fs, FM_REPEATER_PREFS_FILE);
@@ -19,6 +61,7 @@ void MyMesh::fmBegin() {
   }
   // The radio params themselves are part of the upstream prefs (/prefs.json),
   // so an active Off-Grid mode survives a reboot without extra work here.
+  FM_FLOOD_LOG_MODE(_fm.offgrid != 0, _prefs.freq, _prefs.bw, _prefs.sf);
 
   if (_fm.room_enabled && !fmRoomLoadIdentity(false)) {
     _fm.room_enabled = 0;   // identity file missing (e.g. erased): room stays off until 'set roomserver'
@@ -77,6 +120,67 @@ void MyMesh::fmClockSaveLoop() {
   if (ok && fmFsCommit(_fs, FM_CLOCK_FILE)) _fm_clock_saved = now;
 }
 
+// ── Off-Grid managed flooding (v2.2, FloodPolicy.h) ──────────────────────────
+// Only while Off-Grid; normal operation keeps the upstream behaviour.
+// The box always relays (never cancels) but behaves like Meshtastic ROUTER_LATE: it starts with
+// the same SNR-weighted delay as the companions and, if another node relays first, moves its
+// relay once to the late window - it then fills gaps after the clients instead of talking over
+// them. A badly placed box (car in the valley) therefore does not harm the mesh.
+
+// Wait up to 30 s for a free channel instead of transmitting over others after 4 s.
+uint32_t MyMesh::getCADFailMaxDuration() const {
+  return _fm.offgrid ? FM_FLOOD_CAD_MAX_MS : mesh::Mesh::getCADFailMaxDuration();
+}
+
+// Relay delay like a Meshtastic client. Only for flood relays (path > 0): own packets that use
+// getRetransmitDelay() (e.g. discover responses) keep the upstream delay.
+uint32_t MyMesh::fmRelayDelay(const mesh::Packet* packet) {
+  if (!_fm.offgrid || !fmFloodIsQueuedRelay(packet)) return 0;
+  uint32_t d = fmFloodRelayDelay(packet->getSNR(), fmFloodSlotMs(_prefs.sf, _prefs.bw), getRNG()->nextInt(0, 0x10000));
+  FM_FLOOD_LOG_EV(Q, packet, d);
+  return d;
+}
+
+bool MyMesh::filterRecvFloodPacket(mesh::Packet* packet) {
+  if (!_fm.offgrid) return false;
+  uint8_t hash[MAX_HASH_SIZE];
+  packet->calculatePacketHash(hash);
+  if (_fm_late.contains(hash)) return false;   // moved once already
+  int i = fmFloodFindQueuedRelay(*_mgr, hash);
+  if (i >= 0) {
+    mesh::Packet* q = _mgr->removeOutboundByIdx(i);
+    uint32_t d = fmFloodLateDelay(q->getSNR(), fmFloodSlotMs(_prefs.sf, _prefs.bw));
+    _mgr->queueOutbound(q, q->getPathHashCount(), futureMillis(d));   // same priority as Mesh::routeRecvPacket
+    _fm_late.add(hash);
+    _fm_relay_late++;
+    FM_FLOOD_LOG_EV(LATE, q, d);
+  }
+  return false;   // never drop: the normal duplicate check follows
+}
+
+// Off-Grid switch applied (new radio params live): relays can wait up to ~22 s (+ busy channel);
+// nothing heard in one network may be sent into the other one. Own packets (path 0) stay.
+void MyMesh::fmOnNetworkChange() {
+  int n = fmFloodDropQueuedRelays(*_mgr);
+  if (n > 0) MESH_DEBUG_PRINTLN("FieldMesh: network change, %d queued relays dropped", n);
+  FM_FLOOD_LOG_EV(NET, NULL, n);
+  FM_FLOOD_LOG_MODE(_fm.offgrid != 0, _prefs.freq, _prefs.bw, _prefs.sf);
+}
+
+// Off-Grid: the box relays every flood. The region / scope rules of normal operation (unknown
+// scope, flooding without scope denied for the wildcard) and the hop limits for un-scoped packets
+// and adverts (flood.max.unscoped, flood.max.advert) are local network policy - in Off-Grid all
+// FieldMesh companions send without scope (#25), so these rules would make the box silent.
+// Still applied: 'set repeat off' (disable_fwd), the general flood.max limit and loop detection.
+void MyMesh::fmOffGridRegion(const mesh::Packet* pkt) {
+  if (_fm.offgrid && pkt->isRouteFlood()) recv_pkt_region = &region_map.getWildcard();
+}
+
+// true: the hop limit that was hit is only a policy limit (un-scoped / advert) - ignore it Off-Grid
+bool MyMesh::fmOffGridIgnoresHopPolicy(const mesh::Packet* pkt) const {
+  return _fm.offgrid && pkt->getPathHashCount() < _prefs.flood_max;
+}
+
 void MyMesh::fmSetOffGrid(bool on, char* reply) {
   char tmp[64];
 
@@ -125,6 +229,14 @@ void MyMesh::fmSetOffGrid(bool on, char* reply) {
 bool MyMesh::fmHandleCommand(uint32_t sender_timestamp, const char* command, char* reply) {
   (void)sender_timestamp;   // allowed locally (serial) and remotely (admin login)
 
+#ifdef FM_FLOOD_LOG
+  // diagnostic builds: "floodlog" / "floodlog clear", output straight to USB serial
+  if (sender_timestamp == 0 && _fm_flog.handleCommand(command, _prefs.node_name)) {
+    reply[0] = 0;
+    return true;
+  }
+#endif
+
   if (strcmp(command, "set offgrid on") == 0) {
     fmSetOffGrid(true, reply);
     return true;
@@ -138,7 +250,7 @@ bool MyMesh::fmHandleCommand(uint32_t sender_timestamp, const char* command, cha
     return true;
   }
   if (strcmp(command, "get offgrid") == 0) {
-    sprintf(reply, "> %s (%.4f MHz)", _fm.offgrid ? "on" : "off", _prefs.freq);
+    sprintf(reply, "> %s (%.4f MHz, late relays %lu)", _fm.offgrid ? "on" : "off", _prefs.freq, (unsigned long)_fm_relay_late);
     return true;
   }
 

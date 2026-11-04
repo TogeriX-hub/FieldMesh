@@ -120,22 +120,40 @@ In the message history a short press shows the next message, a long press clears
 | Button | Action |
 |---|---|
 | 1× | Acknowledge an SOS alarm |
+| 1× + hold 5 s | Send SOS (v2.2, see below) |
 | 2× | Send an advert now |
 | 3× | Buzzer on/off |
-| 4× | GPS on/off (saved, survives a restart) |
+| 4× | GPS and tracking (GPS-Share) on/off together (v2.2, saved, survives a restart) |
 | 5× | Off-Grid on/off (saved, survives a restart) |
 | Long press | Power off (within the first 8 s after power-on: CLI rescue mode) |
 
-GPS-Share (tracking) is switched in the MeshCore app (location sharing in the advert settings). Sending an SOS needs a display for the two-step confirmation — the T1000-E receives SOS alarms only.
+**Sending SOS (v2.2):** press once, then press again within half a second and **hold**. The buzzer beeps faster and faster and the LED blinks along. After 5 seconds the SOS is sent (one long tone). Release earlier to cancel (short descending tone) — nothing is sent. Three short low tones mean no SOS channel was found. A normal long press without a click before still powers off.
+
+**4×** switches GPS and tracking together: if both are on, both go off; otherwise both go on. GPS without tracking can still be set in the MeshCore app.
 
 Every action answers with a tone, even when the buzzer is muted:
 
 | Tone | Meaning |
 |---|---|
-| Ascending (c → e) | Turned on (GPS, buzzer, Off-Grid) |
-| Descending (e → c) | Turned off |
+| Ascending (c → e) | Turned on (GPS + tracking, buzzer, Off-Grid) |
+| Descending (e → c) | Turned off / SOS countdown cancelled |
 | Double beep | Advert sent |
+| Faster and faster beeps | SOS countdown (click + hold) |
+| Long tone | SOS sent |
+| Three short low tones | SOS not sent — no SOS channel |
 | Continuous siren | SOS alarm received — press once to acknowledge |
+
+**Status LED (v2.2):**
+
+| LED | Meaning |
+|---|---|
+| On for 2 s | Starting |
+| Short flash every 4 s | Normal |
+| Soft pulse every 4 s | Tracking on (GPS + GPS-Share) |
+| Blinking faster and faster | SOS countdown |
+| Fast blinking | SOS alarm received |
+
+Off-Grid, charging and low battery are not shown on the LED.
 
 To check the Off-Grid state: press 5× and listen (ascending = was off, now on; descending = was on, now off), then press 5× again to return to the original state.
 
@@ -182,18 +200,38 @@ FieldMesh also corrects the Client Repeat frequency ranges of upstream MeshCore 
 > [!WARNING]
 > Off-Grid has no frequency for other regions (e.g. India, Japan, Korea). Do not use Off-Grid there.
 
+#### Smarter relaying in Off-Grid (v2.2)
+
+In Off-Grid every FieldMesh device relays. With many devices close together (festival, camp, ski area) that used to mean every packet was sent again by everyone at once — packets collided and the channel filled up. Since v2.2 FieldMesh uses the **managed flooding of Meshtastic**, a method proven in the field. Our simulations: 20 devices get about the delivery that 10 devices had before (adverts and messages ~92 % instead of ~65 %), with half the airtime.
+
+- **Wait for a free channel:** a device waits up to 30 s for a free channel instead of sending over others after 4 s.
+- **Far devices relay first:** the relay delay depends on how well the packet was heard. A device that hears the sender weakly (probably further away) relays early, devices close to the sender wait longer.
+- **No duplicate adverts:** if a device hears that another one already relayed an advert, it drops its own relay. **Messages and SOS are always relayed**, exactly as before.
+- **FieldMesh Repeater (Station G2) relays last:** it always relays, but if another device relayed first, it waits until the companions had their turn (Meshtastic `ROUTER_LATE`). A badly placed box (in the car, in the valley) fills gaps instead of talking over the group.
+- Switching Off-Grid on or off drops all relays still waiting, so nothing heard in one network is sent into the other.
+- **The repeater relays everything in Off-Grid:** region / scope rules and the hop limits for un-scoped packets and adverts (`flood.max.unscoped`, `flood.max.advert`) only apply in normal operation, and its own packets go out without scope, like those of the companions. Still applied in Off-Grid: `set repeat off`, the general `flood.max` limit and loop detection.
+
+What you notice:
+
+- Messages take a few seconds longer per hop (about 1–22 s at SF11 instead of 0–4 s). Direct messages get 44 s more time for the delivery confirmation, so they are not shown as failed while the reply is on its way. If the repeater is the only link between two groups, it can take ~15 s longer.
+- In thin networks without a repeater (one device as the only link between two groups) a few more adverts (positions) can get lost; messages arrive more reliably than before. A FieldMesh Repeater at that spot fixes it.
+- If you set an interference threshold (`int.thresh`) and there is constant noise, a device in Off-Grid sends only after 30 s instead of 4 s.
+- Counters (Off-Grid only): RADIO page of the ThinkNode M1 shows `Flood TX` and `Relay skip` (adverts not relayed because another device did), the Wio Tracker L1 shows `Skip` next to the TX power. Repeater: dashboard → Network → *Relays sent late*, CLI `get offgrid`.
+
+Normal operation (Off-Grid off) is unchanged. Devices with v2.1 or stock MeshCore in the same Off-Grid network keep working; they relay as before.
+
 ### SOS
 
-On the SOS page, a long press opens a two-step confirmation screen (protection against accidental triggering). FieldMesh sends to the channel whose name contains "sos" (case-insensitive, e.g. `#sos`) — set one up in the MeshCore app first. The message carries your position and battery level:
+On the SOS page, a long press opens a two-step confirmation screen (protection against accidental triggering). On the T1000-E: click once, then press again and hold for 5 seconds (v2.2, see [T1000-E](#t1000-e-no-display)). FieldMesh sends to the channel whose name contains "sos" (case-insensitive, e.g. `#sos`) — set one up in the MeshCore app first. The message carries your position and battery level:
 
 ```
 !SOS 48.7636,9.1621 bat78%
 !SOS no GPS bat78%
 ```
 
-The position is used if the last fix is at most 2 minutes old. After sending, the GPS stays on for 10 minutes; if the first SOS went out without a position, it is sent once more as soon as a fix is available. A GPS that you switched off is not switched on for an SOS.
+The position is used if the last fix is at most 2 minutes old. Sending an SOS switches the GPS on if it was off, and it stays on afterwards (v2.2). For 10 minutes after sending, the GPS runs without pause; if the first SOS went out without a position, it is sent once more as soon as a fix is available. ThinkNode M1: if the hardware GPS switch is off, the display shows "GPS switch is off!" — turn it on within the 10 minutes and the SOS is still resent with position. Switching Off-Grid on or off (or changing the radio settings) drops a pending resend, so it never goes out into a network that did not get the first SOS.
 
-**Receiving:** an `!SOS` message **in an SOS channel** triggers a buzzer alarm that overrides quiet mode and loops until you acknowledge it. The alert screen shows the sender's name; normal messages are held back while the alarm is active. `!SOS` in any other channel (e.g. Public) is shown as a normal message — no alarm.
+**Receiving:** an `!SOS` message **in an SOS channel** triggers a buzzer alarm that overrides quiet mode and loops until you acknowledge it. The alert screen shows the sender's name (the T1000-E LED blinks fast); normal messages are held back while the alarm is active. `!SOS` in any other channel (e.g. Public) is shown as a normal message — no alarm.
 
 ### Messages without a phone
 
@@ -321,7 +359,7 @@ All MeshCore repeater commands work as usual. FieldMesh adds:
 
 | Command | What it does |
 |---|---|
-| `set offgrid on` / `off` · `get offgrid` | Off-Grid on/off (frequency from the normal frequency: EU 869.4625 / US 916.4625 MHz); normal settings are restored |
+| `set offgrid on` / `off` · `get offgrid` | Off-Grid on/off (frequency from the normal frequency: EU 869.4625 / US 916.4625 MHz); normal settings are restored. `get offgrid` also shows the relays sent late (v2.2) |
 | `set roomserver <name>` | Board on with this name |
 | `set roomserver on` / `off` · `get roomserver` | Board on (last name, else the repeater name) / off |
 | `set room.pass <pw>` · `get room.pass` | Room password; `set room.pass` without a password = open. Logs everybody out |
@@ -352,6 +390,8 @@ FieldMesh builds the same way as MeshCore, with [PlatformIO](https://platformio.
 | Wio Tracker L1 | `WioTrackerL1_companion_radio_ble` |
 | T1000-E | `t1000e_companion_radio_ble` |
 | Station G2 (FieldMesh Repeater) | `Station_G2_fieldmesh_repeater` |
+| Station G3 ESP32 (FieldMesh Repeater, untested) | `Station_G3_ESP32_fieldmesh_repeater` |
+| Heltec V4 OLED (FieldMesh Repeater, untested) | `heltec_v4_fieldmesh_repeater` |
 
 `…_companion_radio_usb` environments connect to the app over USB instead of BLE.
 
@@ -361,7 +401,15 @@ pio run -e Station_G2_fieldmesh_repeater                 # firmware.bin = update
 pio run -e Station_G2_fieldmesh_repeater -t mergebin     # firmware-merged.bin = full image (0x0)
 ```
 
-**Untested devices** (build from source only, no prebuilt firmware): Heltec Mesh Node T1, SenseCAP MeshTracker X1, Wio Tracker L1 E-Ink, Wio Tracker L1 1W. Other single-button devices without a display (e.g. RAK WisMesh Tag) could work like the T1000-E — contributions welcome.
+Your own builds show the FieldMesh version **dev**. To put a version on them, set it as a build flag (the release workflow does the same):
+
+```
+PLATFORMIO_BUILD_FLAGS="-DFIELDMESH_VERSION='\"v2.2.0-mybuild\"'" pio run -e ThinkNode_M1_companion_radio_ble
+```
+
+**Which version is on my device?** The splash screen shows it (M1, L1, Station G2). In the app the firmware version reads like `v1.18.0-fm2.2.0` (MeshCore 1.18.0, FieldMesh 2.2.0) – also on the T1000-E; on the repeater also via `ver` and on the dashboard (Network).
+
+**Untested devices** (build from source only, no prebuilt firmware): Heltec Mesh Node T1, SenseCAP MeshTracker X1, Wio Tracker L1 E-Ink, Wio Tracker L1 1W, and as FieldMesh Repeater the Heltec V4 and the Station G3 ESP32. Other single-button devices without a display (e.g. RAK WisMesh Tag) could work like the T1000-E — contributions welcome.
 
 The code is written to be portable: hardware-specific pins are in `variant.h`, the layout uses runtime display size checks, and joystick-specific UI behaviour is guarded by `#if UI_HAS_JOYSTICK`. If you test FieldMesh on another device, please share your findings in [Discussions → Hardware](../../discussions/categories/hardware).
 
@@ -370,7 +418,6 @@ The code is written to be portable: hardware-specific pins are in `variant.h`, t
 - Tested on ThinkNode M1, Wio Tracker L1, T1000-E and Station G2 only
 - Off-Grid knows EU/UK and US/AU frequencies only — do not use it in other regions (e.g. India, Japan, Korea)
 - SOS needs a channel whose name contains "sos" — for sending and for the alarm
-- The T1000-E can receive SOS but not send it
 - The Tracking page shows at most 3 contacts (favourites in the MeshCore app)
 - The message history is RAM-only — it is empty after a restart (on purpose)
 - Writing messages on the device: Wio Tracker L1 only, channels only (no direct messages)
@@ -434,7 +481,7 @@ It shows at most 3 nodes, so the display stays readable in the field; newer adve
 <details>
 <summary><strong>Why is my own position not shown or sent?</strong></summary>
 
-Your device needs a GPS fix. Check that GPS is on (long press on the GPS page, 4× press on the T1000-E, and the hardware switch on the ThinkNode M1) and that the GPS page does not show "NO FIX". For tracking, GPS-Share must be on too (Tracking page → *Outdoor Settings*, or location sharing in the MeshCore app).
+Your device needs a GPS fix. Check that GPS is on (long press on the GPS page, 4× press on the T1000-E — switches tracking on too — and the hardware switch on the ThinkNode M1) and that the GPS page does not show "NO FIX". For tracking, GPS-Share must be on too (Tracking page → *Outdoor Settings*, or location sharing in the MeshCore app).
 
 </details>
 
@@ -494,14 +541,14 @@ It is picked automatically from your normal frequency: below 900 MHz the EU freq
 <details>
 <summary><strong>How do I send an SOS?</strong></summary>
 
-First create a channel whose name contains "sos" (e.g. `#sos`) in the MeshCore app — on your device and on your group's devices. Then: SOS page → long press → confirm in two steps. The message `!SOS` goes to that channel with your position (if the last fix is at most 2 minutes old, otherwise "no GPS") and your battery level. The GPS then stays on for 10 minutes and sends the position once more if the first SOS had none. The T1000-E cannot send an SOS.
+First create a channel whose name contains "sos" (e.g. `#sos`) in the MeshCore app — on your device and on your group's devices. Then: SOS page → long press → confirm in two steps. On the T1000-E: click once, then press again and hold for 5 seconds. The message `!SOS` goes to that channel with your position (if the last fix is at most 2 minutes old, otherwise "no GPS") and your battery level. The GPS is switched on if it was off and stays on; for 10 minutes it runs without pause and sends the position once more if the first SOS had none — unless you switch Off-Grid or change the radio settings in the meantime.
 
 </details>
 
 <details>
 <summary><strong>What happens when an SOS is received?</strong></summary>
 
-When `!SOS` arrives in an SOS channel, an alert screen opens with the sender's name and the buzzer sounds — even in quiet mode — until you acknowledge it (long press; one press on the T1000-E). `!SOS` in other channels (e.g. Public) does not trigger the alarm. A FieldMesh Repeater shows it on its board and in the dashboard.
+When `!SOS` arrives in an SOS channel, an alert screen opens with the sender's name (the T1000-E LED blinks fast) and the buzzer sounds — even in quiet mode — until you acknowledge it (long press; one press on the T1000-E). `!SOS` in other channels (e.g. Public) does not trigger the alarm. A FieldMesh Repeater shows it on its board and in the dashboard.
 
 </details>
 
@@ -543,18 +590,19 @@ FieldMesh is my project: I decide what it does, design the interface, test on my
 
 ## Contributing
 
-This is a personal project that grew out of wanting a more field-ready node. If you:
+This is a personal project that grew out of wanting a more field-ready node. Feedback of any kind is welcome:
 
-- test it on other hardware and want to share results
-- find a bug
-- have a feature idea that fits the outdoor/off-grid use case
-- want to adapt the Off-Grid defaults for another region
+- **Questions and help with setup** → [Discussions → Q&A](../../discussions/categories/q-a)
+- **Tested it on other hardware**, or want to know if a device could work → [Discussions → Hardware](../../discussions/categories/hardware)
+- **Feature ideas** for the trackers or the repeater → [Discussions → Ideas](../../discussions/categories/ideas)
+- **Found a bug** → [open an issue](../../issues/new/choose)
+- **Code**, e.g. Off-Grid defaults for another region → pull request
 
-…feel free to open an issue or pull request. The more platforms this works on, the better.
+The more platforms this works on, the better.
 
 ## Relationship to MeshCore
 
-FieldMesh is a fork of [MeshCore](https://github.com/meshcore-dev/MeshCore). It is not affiliated with or endorsed by the MeshCore project. The goal is to stay close to upstream and periodically merge new releases — FieldMesh logic lives in its own files where possible, and upstream files only carry small, marked hooks. Semantic compatibility after upstream changes still requires manual review.
+FieldMesh is a fork of [MeshCore](https://github.com/meshcore-dev/MeshCore). It is not affiliated with or endorsed by the MeshCore project. The goal is to stay close to upstream and periodically merge new releases — FieldMesh logic lives in its own files where possible, and upstream files only carry small, marked hooks. Semantic compatibility after upstream changes still requires manual review. Every touchpoint and the sync procedure are listed in [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md).
 
 <p align="center">
   <picture>

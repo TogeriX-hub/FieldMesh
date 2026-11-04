@@ -1,13 +1,4 @@
-#pragma once
-// FieldMesh repeater: the WiFi dashboard page (P5e), served as one string from flash.
-// Plain HTML/CSS/JS, no libraries (works without internet). The page never reloads itself:
-// it polls the JSON snapshots and only replaces the parts whose data changed, so open rows,
-// the radar zoom and half-typed text stay as they are.
-//
-// APIs (FieldMeshWeb.cpp): /api/status, /api/board, /api/nodes, /api/network (GET),
-// /api/post, /api/time, /api/login, /api/logout, /api/admin (POST), /api/admin?id= (GET).
-
-static const char FM_PAGE[] PROGMEM = R"HTML(<!doctype html>
+<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
@@ -126,10 +117,46 @@ nav button{position:relative;height:60px;display:flex;flex-direction:column;alig
 nav button[aria-current=page]{color:var(--accent-text);font-weight:700}
 nav .bdg{position:absolute;top:6px;right:calc(50% - 20px);width:8px;height:8px;border-radius:4px;background:var(--sos-dot)}
 .toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);max-width:calc(100% - 32px);padding:10px 14px;border-radius:10px;background:var(--text);color:var(--bg);font-size:14px;z-index:5}
-</style></head><body><div class="app">
-<header><div class="hl"><span class="kick">FieldMesh</span><h1 id="hname">FieldMesh</h1></div>
+/* FieldMesh CI (box label): logo, condensed face, stripes, contour lines. Files come from the box (/fm/...). */
+@font-face{font-family:"Barlow Semi Condensed";font-weight:700;font-display:swap;src:url(/fm/barlow-700.woff2?v=__V__) format("woff2")}
+:root{--cond:"Barlow Semi Condensed","Arial Narrow",system-ui,sans-serif;--logo-fg:#FFFFFF;--topo-line:#46564E}
+@media (prefers-color-scheme:light){:root:not([data-theme=dark]){--logo-fg:#16201A;--topo-line:#BCC6BF}}
+:root[data-theme=light]{--logo-fg:#16201A;--topo-line:#BCC6BF}
+header{border-bottom:0;align-items:flex-end;padding:20px 16px 14px}
+.hl{gap:8px}
+.logo{display:block;width:min(196px,42vw);height:auto}.logo .m{fill:#F2B544}.logo .w{fill:var(--logo-fg)}
+h1.kick{font-family:var(--cond);font-weight:700;font-size:15px;letter-spacing:.28em;text-transform:uppercase;color:var(--text)}
+.stripes{display:flex;align-items:center;gap:5px;padding:0 16px}
+.stripes span{width:12px;height:5px;background:var(--accent);transform:skewX(-30deg)}
+.stripes i{flex:1;height:1px;background:var(--border);margin-left:6px}
+.badge{font-family:var(--cond);font-weight:700;font-size:14px;letter-spacing:.12em;border-radius:4px;padding:2px 8px}
+h2{font-family:var(--cond);font-weight:700;font-size:14px!important;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+.card{border-radius:10px}
+.card:not(.post.sos){background:color-mix(in srgb,var(--surface) 84%,transparent)}
+.btn{font-family:var(--cond);font-size:17px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-radius:6px}
+.btn.plain,.btn.grey{font-weight:700}
+.seg button,.tgl{font-family:var(--cond);font-weight:700;font-size:15px;letter-spacing:.08em;text-transform:uppercase}
+.stat .l{font-family:var(--cond);font-weight:700;font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+.stat .v{font-family:var(--cond);font-weight:700;font-size:28px;letter-spacing:.02em}
+.sosban b,.soscard .sh b{font-family:var(--cond);font-weight:700;font-size:18px;letter-spacing:.08em;text-transform:uppercase}
+.sosmap,.maplink{font-family:var(--cond);letter-spacing:.08em;text-transform:uppercase}
+nav button{font-family:var(--cond);font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase}
+.app{position:relative}
+.topo{position:absolute;left:0;right:0;bottom:60px;height:312px;overflow:hidden;pointer-events:none;z-index:0}
+.topo i{position:absolute;left:50%;bottom:0;width:720px;height:312px;margin-left:-360px;
+ -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-size:100% 100%;mask-size:100% 100%}
+.topo .t1{background:var(--topo-line);-webkit-mask-image:url(/fm/topo-line.svg?v=__V__);mask-image:url(/fm/topo-line.svg?v=__V__)}
+.topo .t2{background:var(--logo-fg);-webkit-mask-image:url(/fm/topo-fg.svg?v=__V__);mask-image:url(/fm/topo-fg.svg?v=__V__)}
+.topo .t3{background:var(--accent);-webkit-mask-image:url(/fm/topo-orange.svg?v=__V__);mask-image:url(/fm/topo-orange.svg?v=__V__)}
+.no-topo .topo{display:none}
+header,.stripes,.offline,main{position:relative;z-index:1}
+nav{z-index:2}
+main{padding-bottom:110px}
+</style></head><body><div class="app"><div class="topo" aria-hidden="true"><i class="t1"></i><i class="t2"></i><i class="t3"></i></div>
+<header><div class="hl"><svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 629.98 94.6" role="img" aria-label="FieldMesh"><polygon class="m" points="75.66 29.2 59.8 47.88 40.74 69.91 34.32 62.8 36.85 59.82 40.65 55.35 35.39 50.34 30.72 55.8 25.9 61.43 22.54 65.39 13.94 75.56 0 75.47 4.32 70.13 11.19 62.03 34.88 34.38 39.62 39.27 46.61 46.36 59.92 30.9 65.26 24.66 82.13 5.07 101.97 27.86 106.33 32.97 111.52 38.96 131.33 61.99 136.8 68.43 142.64 75.54 89.74 75.5 83.83 69.36 66.34 50.19 73.37 41.96 82.97 52.48 94.21 64.53 118.95 64.49 108.52 52.36 103.19 46.2 98.51 40.76 90.83 31.7 82.09 21.67 75.66 29.2"/><g class="w"><path transform="translate(162.95 74.5) scale(1.1502)" d="M 20.578125 -45.078125 L 18.734375 -31.984375 L 38.859375 -31.984375 L 37.453125 -22.203125 L 17.390625 -22.203125 L 14.28125 0 L 1.484375 0 L 9.25 -55.53125 L 46.046875 -55.53125 L 44.78125 -45.078125 Z M 20.578125 -45.078125"/><path transform="translate(209.69 74.5) scale(1.1502)" d="M 10 -55.53125 L 23.09375 -55.53125 L 15.328125 0 L 2.21875 0 Z M 10 -55.53125"/><path transform="translate(234.73 74.5) scale(1.1502)" d="M 41.09375 -10.0625 L 39.390625 0 L 1.484375 0 L 9.25 -55.53125 L 46.125 -55.53125 L 44.9375 -45.3125 L 20.65625 -45.3125 L 18.875 -33.171875 L 39.234375 -33.171875 L 37.984375 -23.984375 L 17.625 -23.984375 L 15.6875 -10.0625 Z M 41.09375 -10.0625"/><path transform="translate(283.77 74.5) scale(1.1502)" d="M 38.421875 -10.359375 L 36.71875 0 L 1.484375 0 L 9.25 -55.53125 L 22.140625 -55.53125 L 15.765625 -10.359375 Z M 38.421875 -10.359375"/><path transform="translate(330.68 74.5) scale(1.1502)" d="M 30.125 -55.53125 C 37.675781 -55.53125 43.191406 -53.960938 46.671875 -50.828125 C 50.148438 -47.691406 51.890625 -42.691406 51.890625 -35.828125 C 51.890625 -34.640625 51.835938 -33.390625 51.734375 -32.078125 C 51.640625 -30.773438 51.492188 -29.410156 51.296875 -27.984375 C 50.609375 -22.953125 49.488281 -18.671875 47.9375 -15.140625 C 46.382812 -11.609375 44.410156 -8.71875 42.015625 -6.46875 C 39.617188 -4.226562 36.800781 -2.585938 33.5625 -1.546875 C 30.332031 -0.515625 26.671875 0 22.578125 0 L 1.484375 0 L 9.25 -55.53125 Z M 15.6875 -10.4375 L 23.6875 -10.4375 C 25.8125 -10.4375 27.648438 -10.65625 29.203125 -11.09375 C 30.753906 -11.539062 32.085938 -12.40625 33.203125 -13.6875 C 34.316406 -14.976562 35.242188 -16.769531 35.984375 -19.0625 C 36.722656 -21.351562 37.363281 -24.351562 37.90625 -28.0625 C 38.101562 -29.488281 38.25 -30.804688 38.34375 -32.015625 C 38.445312 -33.222656 38.5 -34.320312 38.5 -35.3125 C 38.5 -37.238281 38.300781 -38.828125 37.90625 -40.078125 C 37.507812 -41.335938 36.90625 -42.335938 36.09375 -43.078125 C 35.28125 -43.828125 34.253906 -44.347656 33.015625 -44.640625 C 31.785156 -44.929688 30.304688 -45.078125 28.578125 -45.078125 L 20.578125 -45.078125 Z M 15.6875 -10.4375"/><path transform="translate(391.65 74.5) scale(1.1502)" d="M 23.390625 -55.53125 L 32.125 -20.359375 C 32.226562 -19.867188 32.335938 -19.363281 32.453125 -18.84375 C 32.578125 -18.320312 32.691406 -17.835938 32.796875 -17.390625 L 32.9375 -17.390625 C 33.132812 -17.835938 33.34375 -18.28125 33.5625 -18.71875 C 33.789062 -19.164062 34.03125 -19.613281 34.28125 -20.0625 L 53.234375 -55.53125 L 67.296875 -55.53125 L 59.515625 0 L 47.828125 0 L 52.125 -30.9375 C 52.21875 -31.4375 52.3125 -32.03125 52.40625 -32.71875 C 52.507812 -33.414062 52.632812 -34.007812 52.78125 -34.5 L 52.640625 -34.578125 L 34.5 0 L 25.984375 0 L 17.625 -34.5 L 17.46875 -34.5 C 17.414062 -34.007812 17.363281 -33.40625 17.3125 -32.6875 C 17.269531 -31.96875 17.195312 -31.363281 17.09375 -30.875 L 12.8125 0 L 1.484375 0 L 9.25 -55.53125 Z M 23.390625 -55.53125"/><path transform="translate(468.36 74.5) scale(1.1502)" d="M 41.09375 -10.0625 L 39.390625 0 L 1.484375 0 L 9.25 -55.53125 L 46.125 -55.53125 L 44.9375 -45.3125 L 20.65625 -45.3125 L 18.875 -33.171875 L 39.234375 -33.171875 L 37.984375 -23.984375 L 17.625 -23.984375 L 15.6875 -10.0625 Z M 41.09375 -10.0625"/><path transform="translate(519.11 74.5) scale(1.1502)" d="M 27.46875 -56.484375 C 30.226562 -56.484375 32.941406 -56.222656 35.609375 -55.703125 C 38.273438 -55.191406 40.644531 -54.488281 42.71875 -53.59375 L 39.90625 -43.75 C 37.632812 -44.488281 35.410156 -45.066406 33.234375 -45.484375 C 31.066406 -45.910156 28.921875 -46.125 26.796875 -46.125 C 25.023438 -46.125 23.53125 -45.945312 22.3125 -45.59375 C 21.101562 -45.25 20.117188 -44.78125 19.359375 -44.1875 C 18.597656 -43.601562 18.054688 -42.925781 17.734375 -42.15625 C 17.410156 -41.394531 17.25 -40.570312 17.25 -39.6875 C 17.25 -38.394531 17.800781 -37.34375 18.90625 -36.53125 C 20.019531 -35.71875 21.40625 -34.976562 23.0625 -34.3125 C 24.71875 -33.644531 26.503906 -32.953125 28.421875 -32.234375 C 30.347656 -31.523438 32.140625 -30.625 33.796875 -29.53125 C 35.453125 -28.445312 36.832031 -27.078125 37.9375 -25.421875 C 39.050781 -23.773438 39.609375 -21.664062 39.609375 -19.09375 C 39.609375 -16.039062 39.023438 -13.265625 37.859375 -10.765625 C 36.703125 -8.273438 35.085938 -6.15625 33.015625 -4.40625 C 30.941406 -2.65625 28.472656 -1.3125 25.609375 -0.375 C 22.753906 0.5625 19.625 1.03125 16.21875 1.03125 C 12.957031 1.03125 9.921875 0.660156 7.109375 -0.078125 C 4.296875 -0.816406 1.78125 -1.828125 -0.4375 -3.109375 L 2.671875 -13.25 C 4.890625 -11.96875 7.207031 -10.96875 9.625 -10.25 C 12.039062 -9.539062 14.65625 -9.1875 17.46875 -9.1875 C 20.476562 -9.1875 22.820312 -9.800781 24.5 -11.03125 C 26.175781 -12.257812 27.015625 -14.035156 27.015625 -16.359375 C 27.015625 -17.742188 26.457031 -18.851562 25.34375 -19.6875 C 24.238281 -20.53125 22.867188 -21.296875 21.234375 -21.984375 C 19.609375 -22.679688 17.820312 -23.375 15.875 -24.0625 C 13.925781 -24.75 12.132812 -25.632812 10.5 -26.71875 C 8.875 -27.8125 7.503906 -29.171875 6.390625 -30.796875 C 5.285156 -32.421875 4.734375 -34.519531 4.734375 -37.09375 C 4.734375 -39.707031 5.203125 -42.1875 6.140625 -44.53125 C 7.078125 -46.875 8.484375 -48.929688 10.359375 -50.703125 C 12.234375 -52.484375 14.601562 -53.890625 17.46875 -54.921875 C 20.332031 -55.960938 23.664062 -56.484375 27.46875 -56.484375 Z M 27.46875 -56.484375"/><path transform="translate(566.79 74.5) scale(1.1502)" d="M 33.234375 0 L 36.5 -23.25 L 17.546875 -23.25 L 14.28125 0 L 1.484375 0 L 9.25 -55.53125 L 22.0625 -55.53125 L 18.953125 -33.53125 L 37.90625 -33.53125 L 41.015625 -55.53125 L 53.828125 -55.53125 L 46.046875 0 Z M 33.234375 0"/></g></svg><h1 id="hname" class="kick">FieldMesh</h1></div>
 <div class="hr"><span id="mode" class="badge">-</span><span id="freq" class="mono small">-</span>
 <span id="live" class="live"><i aria-hidden="true"></i><span id="livet">connecting</span></span></div></header>
+<div class="stripes" aria-hidden="true"><span></span><span></span><span></span><i></i></div>
 <div id="offline" class="offline" role="status" hidden></div>
 <main>
 
@@ -253,7 +280,7 @@ nav .bdg{position:absolute;top:6px;right:calc(50% - 20px);width:8px;height:8px;b
 
 <section class="card col" style="padding:14px;gap:10px"><h2>Team</h2><span class="hint" style="font-size:14px" id="s-team"></span></section>
 
-<section class="card col" style="padding:14px;gap:10px"><h2>Box</h2><span class="hint" style="font-size:14px" id="s-clock"></span>
+<section class="card col" style="padding:14px;gap:10px"><h2>Box</h2><span class="hint" style="font-size:14px" id="s-clock"></span><span class="hint" style="font-size:14px" id="s-fw"></span>
 <a class="btn plain" href="/update" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Firmware update</a>
 <button type="button" class="btn plain" id="s-wifi" data-act="wifi">Turn WiFi off…</button>
 <button type="button" class="btn grey" data-act="logout">Log out</button>
@@ -373,18 +400,19 @@ function renderBoard(){
 
 // ---- mesh: nodes ----
 function nodeTeam(x){return x.k in pend?pend[x.k]:!!x.tm;}
-function renderNodes(){
+function renderMeshStats(){
  if(!S)return;
- // stat cards (status data)
  const duty=S.duty_ms/36000,eu=S.freq>=869.4&&S.freq<=869.65;
  setT('m-duty',duty.toFixed(1)+' %');$('m-dutyb').style.width=Math.min(100,eu?duty*10:duty)+'%';
  setT('m-dutyl',eu?'last hour · limit 10 %':'last hour');
  setT('m-noise',S.noise+' dBm');
  setT('m-env',S.temp!=null?S.temp+' °C'+(S.hum!=null?' · '+S.hum+' %':''):S.mcu!=null?'chip '+S.mcu+' °C':' ');
  if(!N)return;
+ const n=nowOf(N,tN),nodes=N.nodes||[],team=nodes.filter(nodeTeam);
+ setT('m-team',team.filter(x=>n-x.a<900).length+' of '+team.length);setT('m-nodes',String(nodes.length));}
+function renderNodes(){
+ if(!S||!N)return;
  const n=nowOf(N,tN),nodes=N.nodes||[];
- const team=nodes.filter(nodeTeam);
- setT('m-team',team.filter(x=>n-x.a<900).length+' of '+team.length);setT('m-nodes',String(nodes.length));
  const rows=nodes.map(x=>{const g=x.la!=null?geo(x.la,x.lo):null;return{x:x,g:g,tm:nodeTeam(x)};});
  const ord=(a,b)=>st.sort==='dist'?((a.g?a.g.d:1e12)-(b.g?b.g.d:1e12))||(b.x.a-a.x.a):(b.x.a-a.x.a);
  const tm=rows.filter(r=>r.tm).sort(ord);
@@ -440,7 +468,9 @@ function renderNet(){
  setH('n-box','<span>Running for<b>'+dur(S.uptime)+'</b></span>'
   +'<span>Last start<b>'+(okClock(S.time)?hm(S.time-S.uptime):'-')+esc(reason)+'</b></span>'
   +'<span>Clock<b>'+(okClock(S.time)?hm(boxNow()):'not set')+'</b></span>'
-  +'<span>Board<b>'+(S.room?S.posts+' posts · '+S.users+' users':'room off')+'</b></span>');
+  +'<span>Board<b>'+(S.room?S.posts+' posts · '+S.users+' users':'room off')+'</b></span>'
+  +'<span>FieldMesh<b>'+esc(S.fw||'-')+'</b></span>'
+  +'<span>MeshCore<b>'+esc(S.mc||'-')+'</b></span>');
  setT('n-radioh','Radio since start ('+dur(S.uptime)+')');
  if(!W)return;
  const act=W.act||[],peak=Math.max(8,...act.map(b=>b[0]+b[1]));
@@ -449,7 +479,8 @@ function renderNet(){
  setH('n-radio','<span>Received<b>'+t.rx+'</b></span><span>Sent<b>'+t.tx+'</b></span>'
   +'<span>Flood / direct in<b>'+t.rf+' / '+t.rd+'</b></span><span>Duplicates dropped<b>'+((t.df||0)+(t.dd||0))+'</b></span>'
   +'<span>TX airtime<b>'+sec(t.txair||0)+'</b></span><span>RX airtime<b>'+sec(t.rxair||0)+'</b></span>'
-  +'<span>Last packet<b>SNR '+(t.snr!=null?t.snr.toFixed(1):'-')+' · '+t.rssi+' dBm</b></span><span>Receive errors<b>'+t.err+'</b></span>');
+  +'<span>Last packet<b>SNR '+(t.snr!=null?t.snr.toFixed(1):'-')+' · '+t.rssi+' dBm</b></span><span>Receive errors<b>'+t.err+'</b></span>'
+  +'<span>Flood / direct out<b>'+t.sf+' / '+t.sd+'</b></span><span>Relays sent late (Off-Grid)<b>'+(t.rl||0)+'</b></span>');
  const c=W.types||[],sum=c.reduce((a,b)=>a+b,0)||1,grp=[['Adverts',[4]],['Messages',[2]],['Channel msgs',[5,6]],['ACKs',[3]],['Paths',[8]],['Requests',[0,1,7]],['Other',[9,10,11,12,13,14,15]]];
  setH('n-types',grp.map(g=>{const p=Math.round(g[1].reduce((a,i)=>a+(c[i]||0),0)/sum*100);
   return'<div class="ptrow"><span>'+g[0]+'</span><div class="hbar"><i style="width:'+p+'%"></i></div><span class="mono" style="text-align:right">'+p+' %</span></div>';}).join(''));
@@ -539,6 +570,7 @@ function renderSetup(){
  if(S){setT('s-team',S.team?S.team+(S.team===1?' team member.':' team members.')+' Tap the star next to a node in Mesh to add or remove it.':'No team members yet. Tap the star next to a node in Mesh to add it.');
   const hasPos=S.lat!=null;setT('s-pos',hasPos?S.lat.toFixed(5)+', '+S.lon.toFixed(5):'No position set');
   show('s-posmap',hasPos);if(hasPos)$('s-posmap').href=mapUrl(S.lat,S.lon,S.name);
+  setT('s-fw',S.fw?'Firmware: FieldMesh '+S.fw+' · MeshCore '+S.mc+' · built '+S.bd+'.':'');
   setT('s-clock',okClock(S.time)?'Box clock: '+new Date(boxNow()*1000).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})+'. Phones that open this page set it (forward only).':'Box clock not set yet.');}
  if(!SET)return;
  const og=$('s-og');setT(og,SET.og?'On':'Off');og.setAttribute('aria-pressed',!!SET.og);
@@ -563,7 +595,8 @@ function render(){
  for(const g of document.querySelectorAll('[data-seg]'))for(const b of g.querySelectorAll('button')){const on=String(st[g.dataset.seg])===b.dataset.v;if(b.getAttribute('aria-pressed')!==String(on))b.setAttribute('aria-pressed',on);}
  show('v-nodes',st.sub==='nodes');show('v-net',st.sub==='network');show('v-list',st.view==='list');show('v-radar',st.view==='radar');
  renderBoard();
- if(st.tab==='mesh'){if(st.sub==='nodes')renderNodes();else renderNet();}
+ if(st.tab==='mesh'){renderMeshStats();if(st.sub==='nodes')renderNodes();else renderNet();}
+ document.body.classList.toggle('no-topo',st.tab==='mesh'&&st.sub==='nodes'&&st.view==='radar');   // lines would run into the radar labels
  if(st.tab==='setup')renderSetup();}
 
 // ---- data ----
@@ -698,4 +731,4 @@ $('lform').addEventListener('submit',e=>{
 
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){sendTime();tick=0;poll();}});
 sendTime();poll();setInterval(poll,1000);
-</script></body></html>)HTML";
+</script></body></html>

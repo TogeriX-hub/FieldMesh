@@ -1,6 +1,6 @@
 #pragma once
 
-// FieldMesh v6.1 diagnostics: log of the GPS duty cycle on the secondary file system.
+// FieldMesh v2.1 diagnostics: log of the GPS duty cycle on the secondary file system.
 // Only compiled with -D FM_GPS_LOG=1 (local diagnostic builds, never in releases).
 //
 // One record per cycle event, only while GPS is enabled:

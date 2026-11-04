@@ -38,6 +38,10 @@ class UITask : public AbstractUITask {
   bool _displayWasOn = false;  // Track display state before button press
   bool _sos_active = false;            // V5: SOS alarm active (siren loops until short press)
   bool _buzzer_restore_quiet = false;  // V5: restore quiet state after forced tone playback
+  bool _sos_holding = false;           // v2.2: click + hold SOS countdown running
+  unsigned long _sos_hold_start = 0;   // v2.2: countdown start
+  unsigned long _sos_last_beep = 0;    // v2.2: last countdown beep (LED blinks with it)
+  unsigned long _sos_next_beep = 0;    // v2.2: next countdown beep
   unsigned long ui_started_at;
 
   // Button handlers
@@ -60,6 +64,10 @@ class UITask : public AbstractUITask {
   void handleButtonQuadruplePress();
   void handleButtonQuintuplePress();  // V2.02: Off-Grid Toggle
   void handleButtonLongPress();
+  void handleButtonClickHoldStart();  // v2.2: click + hold = SOS countdown
+  void handleButtonClickHoldEnd();    // v2.2: released before the end = cancel
+  void sosCountdownLoop();            // v2.2
+  void playForced(const char* melody);  // v2.2: tone even while the buzzer is quiet
 
  
 public:

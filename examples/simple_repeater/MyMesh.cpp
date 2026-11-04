@@ -370,7 +370,7 @@ int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, uint8_t
       return reply_offset;
     }
   } else if (payload[0] == REQ_TYPE_GET_OWNER_INFO) {
-    sprintf((char *) &reply_data[4], "%s\n%s\n%s", FIRMWARE_VERSION, _prefs.node_name, _prefs.owner_info);
+    sprintf((char *) &reply_data[4], "%s\n%s\n%s", getFirmwareVer(), _prefs.node_name, _prefs.owner_info);   // FieldMesh #17 (stock: same text)
     return 4 + strlen((char *) &reply_data[4]);
   }
   return 0; // unknown command
@@ -434,7 +434,11 @@ void MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, ui
 bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   if (_prefs.disable_fwd) return false;
   if (packet->isRouteFlood()
-      && mesh::isFloodHopLimitExceeded(packet, _prefs.flood_max, _prefs.flood_max_unscoped, _prefs.flood_max_advert)) {
+      && mesh::isFloodHopLimitExceeded(packet, _prefs.flood_max, _prefs.flood_max_unscoped, _prefs.flood_max_advert)
+#ifdef FIELDMESH_REPEATER
+      && !fmOffGridIgnoresHopPolicy(packet)   // Off-Grid: only the general flood.max limit (FieldMeshRepeater.cpp)
+#endif
+      ) {
     return false;
   }
   if (packet->isRouteFlood() && recv_pkt_region == NULL) {
@@ -551,6 +555,10 @@ int MyMesh::calcRxDelay(float score, uint32_t air_time) const {
 }
 
 uint32_t MyMesh::getRetransmitDelay(const mesh::Packet *packet) {
+#ifdef FIELDMESH_REPEATER
+  uint32_t fm_delay = fmRelayDelay(packet);   // Off-Grid managed flooding (0 = not Off-Grid / not a relay)
+  if (fm_delay) return fm_delay;
+#endif
   uint32_t t = (_radio->getEstAirtimeFor(packet->getPathByteLen() + packet->payload_len + 2) * _prefs.tx_delay_factor);
   return getRNG()->nextInt(0, 5*t + 1);
 }
@@ -572,6 +580,7 @@ mesh::DispatcherAction MyMesh::onRecvPacket(mesh::Packet* pkt) {
     recv_pkt_region = NULL;
   }
 #ifdef FIELDMESH_REPEATER
+  fmOffGridRegion(pkt);   // Off-Grid: every flood is relayed, whatever its scope (FieldMeshRepeater.cpp)
   if (fmRoomRecv(pkt)) return ACTION_RELEASE;   // packet for the room identity (FieldMeshRoom.cpp)
 #endif
   return Mesh::onRecvPacket(pkt);
@@ -885,9 +894,6 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
       telemetry(MAX_PACKET_PAYLOAD - 4),
       discover_limiter(4, 120),  // max 4 every 2 minutes
       anon_limiter(4, 180)   // max 4 every 3 minutes
-#ifdef FIELDMESH_REPEATER
-      , _room_bot_limiter(6, 60)   // room bot: max 6 replies per minute in total
-#endif
 #if defined(WITH_RS232_BRIDGE)
       , bridge(&_prefs, WITH_RS232_BRIDGE, _mgr, &rtc)
 #endif
@@ -901,38 +907,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   dirty_contacts_expiry = 0;
   set_radio_at = revert_radio_at = 0;
 #ifdef FIELDMESH_REPEATER
-  _fm_advert_after_radio = false;
-  _room_id_loaded = false;
-  memset(_room_posts, 0, sizeof(_room_posts));
-  _room_next_post_idx = _room_next_client_idx = 0;
-  _room_next_push = 0;
-  _room_num_posted = _room_num_pushes = 0;
-  memset(_room_private, 0, sizeof(_room_private));
-  _room_next_private_idx = 0;
-  _room_posts_dirty_at = _room_clients_dirty_at = 0;
-  memset(_fm_channels, 0, sizeof(_fm_channels));
-  _fm_num_channels = 0;
-  _fm_clock_saved = 0;
-  _fm_clock_next_save = 0;
-  _fm_nodes = NULL;
-  _fm_max_nodes = 0;
-  _fm_num_team = 0;
-  memset(_fm_act, 0, sizeof(_fm_act));
-  _fm_team_dirty = false;
-  _fm_team_next_save = 0;
-  _fm_act_idx = 0;
-  _fm_act_next = 0;
-  _fm_act_air_mark = 0;
-  memset(_fm_type_counts, 0, sizeof(_fm_type_counts));
-  memset(_fm_feed, 0, sizeof(_fm_feed));
-  _fm_feed_next = 0;
-  _fm_env_temp = _fm_env_hum = 0;
-  _fm_env_flags = 0;
-  _fm_env_next = 0;
-  _fm_boot_reason = NULL;
-  memset(_fm_sos, 0, sizeof(_fm_sos));
-  memset(&_fm_wx, 0, sizeof(_fm_wx));
-  _fm_sos_next = 0;
+  fmInitMembers();   // FieldMeshRepeater.cpp
 #endif
   _logging = false;
   region_load_active = false;
@@ -1055,6 +1030,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
 }
 
 void MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis, uint8_t path_hash_size) {
+#ifdef FIELDMESH_REPEATER
+  if (_fm.offgrid) { sendFlood(pkt, delay_millis, path_hash_size); return; }   // Off-Grid: own floods un-scoped (as companions, #25)
+#endif
   if (scope.isNull()) {
     sendFlood(pkt, delay_millis, path_hash_size);
   } else {
@@ -1385,6 +1363,7 @@ void MyMesh::loop() {
 #ifdef FIELDMESH_REPEATER
     if (_fm_advert_after_radio) {   // Off-Grid switch: normal TX->RX cycle on the new params
       _fm_advert_after_radio = false;
+      fmOnNetworkChange();   // nothing heard in one network is relayed into the other
       sendSelfAdvertisement(500, false);
     }
 #endif
