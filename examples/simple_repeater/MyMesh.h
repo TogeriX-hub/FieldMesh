@@ -325,7 +325,11 @@ public:
 
   void begin(FILESYSTEM* fs);
   void sendNodeDiscoverReq();
+#ifdef FIELDMESH_REPEATER
+  const char* getFirmwareVer() override { return fmAppVersion(FIRMWARE_VERSION); }   // FieldMesh #17: "v1.18.0-fm2.2.0"
+#else
   const char* getFirmwareVer() override { return FIRMWARE_VERSION; }
+#endif
   const char* getBuildDate() override { return FIRMWARE_BUILD_DATE; }
   const char* getRole() override { return FIRMWARE_ROLE; }
   const char* getNodeName() { return _prefs.node_name; }

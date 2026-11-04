@@ -29,6 +29,20 @@ void UITask::fmDrawHeader(const char* title) {
   _display->setColor(UIColor::primary_txt);
 }
 
+// Boot screen below the meshcore logo (#17): "FieldMesh v2.2.0", the MeshCore version with
+// build date ("v1.18.0 (04 Nov 2026)", from begin()) and the node type. 21 characters fit 128 px;
+// a longer test/dev name is shortened to "FM <version>".
+void UITask::fmRenderBoot() {
+  char line[40];
+  _display->setColor(UIColor::primary_txt);
+  _display->setTextSize(1);
+  snprintf(line, sizeof(line), "FieldMesh %s", FIELDMESH_VERSION);
+  if (_display->getTextWidth(line) > _display->width()) snprintf(line, sizeof(line), "FM %s", FIELDMESH_VERSION);
+  _display->drawTextCentered(_display->width() / 2, 22, line);
+  _display->drawTextCentered(_display->width() / 2, 35, _version_info);
+  _display->drawTextCentered(_display->width() / 2, 48, "Repeater");
+}
+
 void UITask::fmRenderPage() {
   char tmp[40];
   bool offgrid = _fm_host && _fm_host->fmIsOffGrid();

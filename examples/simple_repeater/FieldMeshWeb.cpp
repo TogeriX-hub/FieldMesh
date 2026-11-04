@@ -844,6 +844,15 @@ void MyMesh::fmWebLoop() {
       }
       dp += snprintf(dp, end - dp, ",\"wx\":{\"la\":%.5f,\"lo\":%.5f,\"age\":%ld,\"max\":%d}", wlat, wlon, age, FM_WX_REFRESH_S);
     }
+    // firmware (#17): FieldMesh version, MeshCore version (without commit), build date
+    char mc[16];
+    fmMeshCoreVersion(mc, sizeof(mc), FIRMWARE_VERSION);
+    dp += snprintf(dp, end - dp, ",\"fw\":");
+    fmJsonStr(dp, end, FIELDMESH_VERSION);
+    dp += snprintf(dp, end - dp, ",\"mc\":");
+    fmJsonStr(dp, end, mc);
+    dp += snprintf(dp, end - dp, ",\"bd\":");
+    fmJsonStr(dp, end, FIRMWARE_BUILD_DATE);
     dp += snprintf(dp, end - dp, ",\"duty_ms\":%lu,\"team\":%d,\"boot\":", (unsigned long)fmDutyMillisLastHour(), _fm_num_team);
     fmJsonStr(dp, end, _fm_boot_reason ? _fm_boot_reason : "");
     if (dp < end) *dp++ = '}';

@@ -22,6 +22,7 @@ class UITask {
   unsigned long _fm_msg_until = 0;
   unsigned long _fm_confirm_until = 0;   // second long press confirms a reset
 
+  void fmRenderBoot();   // boot screen text below the logo (#17)
   void fmRenderPage();
   void fmDrawHeader(const char* title);
   void fmOnClick();

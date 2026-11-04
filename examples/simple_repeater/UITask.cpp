@@ -61,6 +61,9 @@ void UITask::renderCurrScreen() {
     int logoWidth = 128;
     _display->drawXbm((_display->width() - logoWidth) / 2, 3, meshcore_logo, logoWidth, 13);
 
+#ifdef FIELDMESH_REPEATER
+    fmRenderBoot();   // FieldMesh version, MeshCore version, node type (FieldMeshUI.cpp)
+#else
     // meshcore website
     const char* website = "https://meshcore.io";
     _display->setColor(UIColor::primary_txt);
@@ -72,12 +75,9 @@ void UITask::renderCurrScreen() {
     _display->drawTextCentered(_display->width() / 2, 35, _version_info);
 
     // node type
-#ifdef FIELDMESH_REPEATER
-    const char* node_type = "FieldMesh Repeater";   // 18 chars, fits 128 px
-#else
     const char* node_type = "< Repeater >";
-#endif
     _display->drawTextCentered(_display->width() / 2, 48, node_type);
+#endif
   } else if (_powering_off_at > 0) {
     // meshcore logo
     _display->setColor(UIColor::corp_blue);
