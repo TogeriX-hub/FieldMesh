@@ -18,6 +18,56 @@ In November 2026 all FieldMesh releases were renumbered to semantic versioning (
 
 ---
 
+## [2.2.0] — Smarter Off-Grid Relaying, T1000-E SOS & Web Flasher
+
+*November 2026*
+
+Still based on MeshCore v1.18.0. One firmware file per device for all regions.
+
+### New Features
+
+- **Smarter relaying in Off-Grid** — FieldMesh now uses the managed flooding of Meshtastic when Off-Grid is on. In our simulations 20 devices get about the delivery that 10 devices had before (adverts and messages ~92 % instead of ~65 %), with half the airtime:
+  - **Wait for a free channel** — up to 30 s instead of sending over others after 4 s
+  - **Far devices relay first** — the relay delay depends on how well a packet was heard; devices close to the sender wait longer
+  - **No duplicate adverts** — a device drops its advert relay when it hears that another one already relayed it. Messages and SOS are always relayed
+  - **FieldMesh Repeater relays last** — it always relays, but waits for the companions when another device was first (Meshtastic `ROUTER_LATE`)
+  - **Counters** — ThinkNode M1 RADIO page (`Flood TX`, `Relay skip`), Wio Tracker L1 (`Skip`), repeater dashboard (*Relays sent late*) and `get offgrid`
+  - Messages take a few seconds longer per hop; direct messages get 44 s more time for the delivery confirmation. Normal operation is unchanged, and devices with 2.1.0 or stock MeshCore in the same Off-Grid network keep working
+- **SOS on the T1000-E by click + hold** — click once, then press again and hold: 5 s countdown with faster and faster beeps and LED blinking, then the SOS is sent (long tone). Releasing earlier cancels; three low tones mean no SOS channel was found
+- **T1000-E buttons** — 4× switches GPS and tracking (GPS-Share) on or off together, 3× is buzzer only (also on the MeshTracker X1)
+- **T1000-E status LED** — on for 2 s at start, a short flash every 4 s, a soft pulse every 4 s while tracking (played by the PWM hardware), blinking during the SOS countdown and fast blinking on a received SOS alarm
+- **SOS switches the GPS on** — sending an SOS turns the GPS on if it was off (it stays on). For 10 minutes the GPS runs without pause, and an SOS sent without a position is sent once more as soon as there is a fix. ThinkNode M1 with the hardware GPS switch off: "GPS switch is off!" — switch it on within the 10 minutes and the SOS is still resent with position
+- **FieldMesh version everywhere** — splash/boot screen (M1, L1, Station G2), the MeshCore app and the CLI `ver` (e.g. `v1.18.0-fm2.2.0`), the repeater dashboard. Release builds show the release number, own builds "dev"
+- **FieldMesh Repeater: relays everything in Off-Grid** — region/scope rules and the hop limits for un-scoped packets and adverts only apply in normal operation; its own packets go out without scope, like those of the companions. `set repeat off`, `flood.max` and loop detection still apply
+- **FieldMesh Repeater: dashboard in the FieldMesh look** — logo, condensed headings and contour lines (all stored on the box, nothing from the internet). The page is now sent compressed (~19 KB instead of ~59 KB each time it opens), logo and font are cached by the phone
+- **Web flasher** — [fieldmesh-radio.github.io/FieldMesh](https://fieldmesh-radio.github.io/FieldMesh/): install or update from Chrome or Edge on a computer, for the first installation and every update. It never erases the device
+- **FieldMesh Repeater builds for the Heltec V4 and the Station G3 (ESP32)** — build from source, not tested on hardware yet, no release files
+
+### Changes
+
+- **New version numbers** — all releases were renumbered to semantic versioning (see [Version numbers](#version-numbers))
+- **New home** — the repository moved to the [fieldmesh-radio](https://github.com/fieldmesh-radio) organization; old links are redirected (the old web address of the flasher is not)
+- README restructured: one place for install and update, device usage up front, FAQ by topic
+- Issue templates (bug report, hardware test report, feature idea); ideas and hardware reports go to [Discussions](https://github.com/fieldmesh-radio/FieldMesh/discussions)
+- Leftover diagnostic log files (e.g. old GPS log segments on the T1000-E and Wio Tracker L1) are deleted at start, which frees their flash space
+
+### Bug Fixes
+
+- **No SOS resend into another network** — switching Off-Grid on or off, or changing the radio settings, drops a pending SOS resend
+- **Repeater dashboard** — the Mesh cards (team, nodes, airtime, noise) stayed "-" when the dashboard was opened on the Network view
+
+### Under the hood
+
+- Build check for all FieldMesh devices on every change, release files built by a workflow, unit tests for the FieldMesh logic (prefs, Off-Grid region, tracking cadence, SOS channel rule, relaying, version)
+- FieldMesh code moved out of the upstream files into its own files; `UPSTREAM_SYNC.md` lists every remaining touchpoint, so upstream releases can be merged faster
+
+### Updating from 2.1.0
+
+- Settings, contacts, channels and the identity are kept
+- Station G2: update from the dashboard (*Setup → Firmware update*, `_update.bin`) or with the web flasher (`_full.bin`)
+
+---
+
 ## [2.1.0] — GPS Duty Cycle, Smarter Tracking & FieldMesh Repeater
 
 *27 October 2026 · formerly V6.1*
