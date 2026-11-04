@@ -26,7 +26,7 @@ MeshCore is a great platform, but some things that matter in the field require m
 - **Off-Grid mode** — one press switches your group to its own frequency (picked automatically for your region) where every node relays
 - **SOS** — send and receive emergency alerts with a buzzer alarm, even if your phone isn't connected
 - **Messages without a phone** — read received messages on the device; write channel messages on the Wio Tracker L1
-- **FieldMesh Repeater** — turns a Station G2 into a base station for your camp: repeater, message board, SOS display, weather and a WiFi dashboard for phones
+- **FieldMesh Repeater** — turns a Station G2 into a base station for your camp: repeater, message board, SOS display, weather, sun times and a WiFi dashboard for phones
 
 The goal is a node you can put in your backpack, forget about, and trust that it's doing its job. More about the motivation in my [blog post](https://www.tobiasguertler.de/blog/en/fieldmesh).
 
@@ -266,17 +266,18 @@ The FieldMesh Repeater turns a **Station G2** into a base station for a camp, a 
 
 - **Off-Grid** — switch the whole repeater to the Off-Grid frequency of your FieldMesh nodes and back, from the menu, the CLI or the dashboard
 - **Message board** — a room server as a **second identity** next to the repeater (own name and key, e.g. "BaseCamp"); the repeater keeps repeating
-- **Room commands** — `!weather`, `!ping`, `!status` for everyone, `!commands` and `/<CLI command>` for the repeater admin, right from the room chat
+- **Room commands** — `!weather`, `!sun`, `!ping`, `!status` for everyone, `!commands` and `/<CLI command>` for the repeater admin, right from the room chat
 - **SOS on the board** — SOS messages heard in your SOS channels appear on the board and in the dashboard
 - **WiFi dashboard** — an open WiFi for phones with board, SOS, nodes (list and radar), network statistics and setup
 - **Weather** — phones in the WiFi that have mobile data load a 48 h forecast for the box; `!weather` (or `!wetter` in German) answers in the room even when nobody has internet out in the field
+- **Sun times** (v2.3) — `!sun` (or `!sonne` in German) gives sunrise, sunset and how long there is light outside, computed on the box from its position, completely offline
 
 FieldMesh never changes the transmit power — keep the manufacturer's recommended setting for the Station G2.
 
 ### Getting started
 
 1. **Install** the FieldMesh Repeater — see [Install & update](#install--update). Coming from a stock MeshCore repeater: back up the key first.
-2. **Set the repeater up as usual** (name, admin password, radio preset, location) with the MeshCore app or the CLI. Set the box position with `set lat` / `set lon` or later in the dashboard — it is needed for distances, the radar and the weather.
+2. **Set the repeater up as usual** (name, admin password, radio preset, location) with the MeshCore app or the CLI. Set the box position with `set lat` / `set lon` or later in the dashboard — it is needed for distances, the radar, the weather and the sun times.
 3. **Turn on the board:** `set roomserver BaseCamp` (or *Room* in the G2 menu). Optional password: `set room.pass <pw>`.
 4. **Turn on the WiFi dashboard:** `set wifi on` (or *WiFi* in the G2 menu). The WiFi is named after the room (or after the repeater while the room is off).
 5. **Stick a QR code on the box** pointing to `http://192.168.4.1`. Phones join the WiFi, open the address and are moved on to `http://<room name>.local` where supported (e.g. "BaseCamp" → `http://basecamp.local`).
@@ -307,9 +308,10 @@ The box posts on its own: a short note when it starts ("Box started (…)") and 
 |---|---|---|
 | `!help` | everyone | The user commands (one message, only to you) |
 | `!weather` / `!wetter` | everyone | Weather for the box location, **to everyone** on the board — in English (`!weather`) or German (`!wetter`) |
+| `!sun` / `!sonne` | everyone | Sunrise, sunset and daylight for the box location, **to everyone** on the board; `!sun tomorrow` / `!sonne morgen` for the next day (v2.3) |
 | `!ping` | everyone | Signal check: SNR, RSSI and hops (only to you) |
 | `!status` | everyone | Uptime, mode, frequency, users, posts, box temperature (only to you) |
-| `!commands [topic]` | repeater admin | CLI commands by topic: `room`, `radio`, `wifi`, `sos`, `team`, `weather` |
+| `!commands [topic]` | repeater admin | CLI commands by topic: `room`, `radio`, `wifi`, `sos`, `team`, `weather`, `sun` |
 | `/<CLI command>` | repeater admin | Runs any repeater CLI command remotely, e.g. `/get radio`, `/set offgrid on` |
 
 "Repeater admin" means: your device is logged in to the **repeater** as admin. The room itself has no admin login. Commands are not posted on the board.
@@ -324,9 +326,9 @@ The dashboard is an open WiFi on the box (up to 10 phones) and a web page that w
 | **SOS** | SOS messages heard by the box with position, distance and direction from the box, battery, "Open in map app" |
 | **Mesh → Nodes** | Your team first ("Show all" for everyone), sorted by last heard or distance; list or radar (250 m – 10 km); team members not heard for 30 min are dimmed. "Last heard" counts adverts and also logins, posts and keep-alives to the room or the repeater |
 | **Mesh → Network** | Box status, activity of the last hour, airtime, packet types, neighbour repeaters, hash collisions, live packets |
-| **Setup** | Theme; after login with the repeater admin password: Off-Grid, room (name, password, clean up), SOS channels, box position, weather, firmware update, WiFi off |
+| **Setup** | Theme; after login with the repeater admin password: Off-Grid, room (name, password, clean up), SOS channels, box position, weather, time zone, firmware update, WiFi off |
 
-There is **no captive portal**: the WiFi tells phones that it has no internet (like a printer), so phones keep using mobile data for everything else and people who only see the WiFi name are not led to the dashboard. Phones that open the page set the box clock (the G2 has no battery-backed clock; it only ever moves forward).
+There is **no captive portal**: the WiFi tells phones that it has no internet (like a printer), so phones keep using mobile data for everything else and people who only see the WiFi name are not led to the dashboard. Phones that open the page set the box clock (the G2 has no battery-backed clock; it only ever moves forward) and its time zone.
 
 **Box position:** in *Setup* paste coordinates or a map link — e.g. from Apple Maps (blue dot → share or copy the coordinates) or Google Maps. Decimal degrees with point or comma, degrees/minutes/seconds and N/S/E/W (or German O for east) are understood; short links (`maps.app.goo.gl`) are not.
 
@@ -344,11 +346,25 @@ Wetter: 16°, meist sonnig. Regen ab 17 Uhr (80 %). Nacht 8°, morgen 8–16°.
 
 The answer gives the weather now, the most important event of the next 12 hours (thunderstorm, rain or snow, "possible" from 30 %, otherwise how long it stays dry), gusts above 50 km/h, the night low and tomorrow's range, and the age of the data when it is older than 6 hours. The weather location is the box position, or other coordinates set in *Setup* or with `set weather.loc`.
 
+### Sun times (v2.3)
+
+`!sun` (English) and `!sonne` (German) answer on the board with sunrise, sunset and **daylight until** — the end of civil twilight, when it gets too dark outside without a lamp. Add `tomorrow` / `morgen` for the next day:
+
+```
+Sun Nov 4: sunrise 07:15, sunset 16:58, daylight until 17:32
+Sonne 05.11.: Aufgang 07:16, Untergang 16:57, Tageslicht bis 17:30
+Sun Jun 21: sunrise 03:02, sunset 23:38, light all night
+```
+
+Everything is computed on the box from the box position and its clock — no internet, no phone with mobile data. Midnight sun and polar night are answered as such. The times are within about a minute of astronomical tables; real sunrise behind mountains or trees is of course later.
+
+**Time zone:** every phone that opens the dashboard hands over its time zone together with the clock, including the daylight saving rule, so the times stay right after a change even without a phone. Without a phone choose it in *Setup → Box* or with `set tz`. As long as the box knows no time zone, the answer is in UTC and says so.
+
 ### What survives a restart
 
 | Kept | Lost (RAM only) |
 |---|---|
-| Repeater settings, Off-Grid state, room (name, password, posts, users), WiFi on/off, SOS channels, team with last known data, weather forecast, clock (as a high-water mark, saved every 5 min) | Other heard nodes, SOS list in the dashboard (the SOS posts on the board stay), statistics |
+| Repeater settings, Off-Grid state, room (name, password, posts, users), WiFi on/off, SOS channels, team with last known data, weather forecast, time zone, clock (as a high-water mark, saved every 5 min) | Other heard nodes, SOS list in the dashboard (the SOS posts on the board stay), statistics |
 
 ### CLI reference
 
@@ -374,6 +390,7 @@ All MeshCore repeater commands work as usual. FieldMesh adds:
 | `set wifi on` / `off` · `get wifi` | WiFi dashboard on/off (saved) |
 | `set weather.loc <lat>,<lon>` / `box` · `get weather` | Weather location: other coordinates / box position; status of the data |
 | `set weather.units metric` / `imperial` | `!weather` in °C and km/h (default) or °F and mph; `!wetter` is always metric |
+| `set tz <rule>` / `none` · `get tz` | Time zone for `!sun` as a POSIX rule, e.g. `set tz CET-1CEST,M3.5.0,M10.5.0/3`; `none` = UTC. Usually set by the phones in the dashboard (v2.3) |
 | `start ota` | With the dashboard on: points to *Setup → Firmware update*; otherwise the upstream OTA |
 
 A channel whose name contains "sos" is an SOS channel: `!SOS` messages there go to the board and the SOS tab. Up to 8 channels.
@@ -424,6 +441,7 @@ The code is written to be portable: hardware-specific pins are in `variant.h`, t
 - Repeater: switching from a stock repeater changes the partition table — back up the key first (see [Install & update](#install--update))
 - Repeater: the dashboard WiFi is open (no password) — anyone in range can read the board and see node positions; setup actions need the admin password
 - Repeater: weather only arrives when a phone with mobile data opens the dashboard; some Android phones keep all traffic on the box WiFi and cannot load it
+- Repeater: sun times use the box clock — after a power cut it continues from the last saved time and stays behind until a phone opens the dashboard (no GPS, no battery-backed clock)
 
 ## FAQ
 
