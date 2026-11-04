@@ -604,6 +604,10 @@ The more platforms this works on, the better.
 
 FieldMesh is a fork of [MeshCore](https://github.com/meshcore-dev/MeshCore). It is not affiliated with or endorsed by the MeshCore project. The goal is to stay close to upstream and periodically merge new releases — FieldMesh logic lives in its own files where possible, and upstream files only carry small, marked hooks. Semantic compatibility after upstream changes still requires manual review. Every touchpoint and the sync procedure are listed in [UPSTREAM_SYNC.md](UPSTREAM_SYNC.md).
 
+## License
+
+MIT, like MeshCore ([license.txt](license.txt)). The firmware files also contain third-party libraries under their own licenses — the ThinkNode M1 files include GxEPD2 (GPL-3.0). Details: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/FieldMesh/brand/topo-dark.svg">
