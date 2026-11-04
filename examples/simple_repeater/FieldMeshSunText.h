@@ -15,6 +15,8 @@
 #include <math.h>
 #include <stdint.h>
 
+#include "FieldMeshTimeZone.h"   // calendar helpers
+
 #define FM_SUN_ALT_RISESET   (-0.833)     // deg, sunrise / sunset
 #define FM_SUN_ALT_CIVIL     (-6.0)       // deg, civil dawn / dusk
 
@@ -26,30 +28,6 @@ static const double FM_PI  = 3.14159265358979323846;
 static inline double fmRad(double d) { return d * FM_PI / 180.0; }
 static inline double fmDeg(double r) { return r * 180.0 / FM_PI; }
 static inline double fmNorm360(double a) { a = fmod(a, 360.0); return a < 0 ? a + 360.0 : a; }
-
-// ---- calendar (proleptic Gregorian, no time zones) ----
-
-// days since 1970-01-01 for a civil date (H. Hinnant's algorithm, valid for all our dates)
-static inline int32_t fmDaysFromCivil(int32_t y, int32_t m, int32_t d) {
-  y -= m <= 2;
-  const int32_t era = (y >= 0 ? y : y - 399) / 400;
-  const int32_t yoe = y - era * 400;
-  const int32_t doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
-  const int32_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-  return era * 146097 + doe - 719468;
-}
-
-static inline void fmCivilFromDays(int32_t z, int32_t& y, int32_t& m, int32_t& d) {
-  z += 719468;
-  const int32_t era = (z >= 0 ? z : z - 146096) / 146097;
-  const int32_t doe = z - era * 146097;
-  const int32_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-  const int32_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-  const int32_t mp = (5 * doy + 2) / 153;
-  d = doy - (153 * mp + 2) / 5 + 1;
-  m = mp + (mp < 10 ? 3 : -9);
-  y = yoe + era * 400 + (m <= 2);
-}
 
 // ---- sun ----
 
