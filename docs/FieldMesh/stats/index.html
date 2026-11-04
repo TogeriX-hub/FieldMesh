@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>FieldMesh Stats</title>
+<link rel="icon" href="../img/icon.svg" type="image/svg+xml">
+<style>
+  /* Same look as the web flasher. Data is read live from the 'stats' branch (raw.githubusercontent.com),
+     so the page never needs a rebuild; see docs/FieldMesh/stats/collect_stats.py for the files. */
+  @font-face { font-family: "Barlow Semi Condensed"; font-weight: 700; font-display: swap;
+    src: url(../fonts/barlow-semi-condensed-latin-700-normal.woff2) format("woff2"); }
+  :root {
+    --bg: #0F1412; --surface: #171E1A; --border: #243029; --border2: #33413A;
+    --text: #E6EBE6; --muted: #9AA59C; --text2: #C9D2CB;
+    --accent: #F2B544; --accent-text: #F2B544; --accent-soft: #F2B5442E; --second: #BCC6BF;
+    --topo: url(../img/topo-dark.svg);
+    --cond: "Barlow Semi Condensed", "Arial Narrow", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #F3F5F2; --surface: #FFFFFF; --border: #D9E0DA; --border2: #BCC6BF;
+      --text: #16201A; --muted: #56625A; --text2: #34413A;
+      --accent: #C98A12; --accent-text: #8A5A00; --accent-soft: #F2B54438; --second: #46564E;
+      --topo: url(../img/topo-light.svg);
+      color-scheme: light;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
+  body { min-height: 100vh; background: var(--bg) var(--topo) no-repeat center bottom / 1280px auto; padding-bottom: 360px; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+  .top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding-top: 28px; }
+  .brand { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .logo { display: block; width: 280px; max-width: 62vw; height: auto; }
+  .kicker { font-family: var(--cond); font-weight: 700; font-size: 15px; letter-spacing: .28em; }
+  .meta { text-align: right; font-size: 14px; color: var(--muted); }
+  .stripes { display: flex; align-items: center; gap: 6px; padding-top: 16px; }
+  .stripes span { width: 14px; height: 6px; background: var(--accent); transform: skewX(-30deg); }
+  .stripes i { flex: 1; height: 1px; background: var(--border); margin-left: 8px; }
+  main.wrap { display: flex; flex-direction: column; gap: 20px; padding-top: 28px; padding-bottom: 32px; }
+  #flasher { display: flex; flex-direction: column; gap: 16px; }
+  .label { font-family: var(--cond); font-weight: 700; font-size: 14px; letter-spacing: .24em; color: var(--muted); margin: 0; text-transform: uppercase; }
+  .card { padding: 16px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border);
+          display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .muted { color: var(--muted); font-size: 13px; line-height: 1.45; margin: 0; max-width: 72ch; }
+  a { color: var(--accent-text); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .tile { padding: 12px 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
+  .tile .k { font-family: var(--cond); font-weight: 700; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+  .tile .v { font-family: var(--cond); font-weight: 700; font-size: 34px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .tile .s { font-size: 12px; color: var(--muted); }
+  .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+  .chart { width: 100%; overflow-x: auto; }
+  .chart svg { display: block; width: 100%; min-width: 520px; height: auto; }
+  .chart text { fill: var(--muted); font: 11px system-ui, sans-serif; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .bars { display: flex; flex-direction: column; gap: 8px; }
+  .bar { display: grid; grid-template-columns: minmax(0, 11rem) 1fr 3.2rem; gap: 10px; align-items: center; font-size: 13px; }
+  .bar .n { overflow-wrap: anywhere; }
+  .bar .t { height: 12px; background: var(--accent-soft); border-radius: 2px; position: relative; }
+  .bar .t b { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 2px; }
+  .bar .c { text-align: right; font-variant-numeric: tabular-nums; }
+  .group { display: flex; flex-direction: column; gap: 8px; }
+  .chip { align-self: flex-start; font-family: var(--cond); font-weight: 700; font-size: 13px; letter-spacing: .08em;
+          padding: 2px 8px; border-radius: 4px; background: var(--border); color: var(--text2); }
+  .tbl { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 12px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.p { overflow-wrap: anywhere; }
+  .empty { border: 1px dashed var(--border2); border-radius: 8px; padding: 14px; color: var(--muted); font-size: 14px; }
+  #err { padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border2); color: var(--text2); font-size: 14px; }
+  footer { font-size: 12px; color: var(--muted); }
+  .hidden { display: none !important; }
+  @media (max-width: 480px) { .top { flex-direction: column; align-items: flex-start; } .meta { text-align: left; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap top">
+    <div class="brand">
+      <picture>
+        <source srcset="../img/logo-light.svg" media="(prefers-color-scheme: light)">
+        <img class="logo" src="../img/logo-dark.svg" alt="FieldMesh" width="630" height="95">
+      </picture>
+      <div class="kicker">USAGE STATISTICS</div>
+    </div>
+    <div class="meta" id="stand">Loading…</div>
+  </div>
+  <div class="wrap stripes" aria-hidden="true"><span></span><span></span><span></span><i></i></div>
+</header>
+
+<main class="wrap">
+  <div id="err" class="hidden"></div>
+
+  <section class="tiles" id="tiles" aria-label="Summary"></section>
+
+  <section class="card">
+    <h2 class="label">Repo views per day</h2>
+    <div class="legend"><span><i style="background:var(--accent)"></i>Views</span><span><i style="background:var(--second)"></i>Unique visitors</span></div>
+    <div class="chart" id="views"></div>
+    <p class="muted">All views on github.com, including the maintainer's own. GitHub keeps 14 days; older days are here because they are saved every night.</p>
+  </section>
+
+  <section class="card">
+    <h2 class="label">Web flasher</h2>
+    <div id="flasher"></div>
+    <p class="muted">Counted with GoatCounter (no cookies, no personal data). GoatCounter counts visitors per day, so one person flashing twice on a day counts once.</p>
+  </section>
+
+  <div class="two">
+    <section class="card"><h2 class="label">Where visitors come from</h2><div class="bars" id="refs"></div>
+      <p class="muted">Referrers of the last 14 days by unique visitors. "com.reddit.frontpage" is the Reddit app.</p></section>
+    <section class="card"><h2 class="label">Downloads per file</h2><div class="bars" id="dls"></div>
+      <p class="muted">Totals since each file was uploaded. Older releases show 0 because their files were uploaded again when the versions were renumbered. Installs through the web flasher are not included; every rebuild of the flasher fetches each file once and adds 1.</p></section>
+  </div>
+
+  <section class="card">
+    <h2 class="label">Most visited pages</h2>
+    <div class="tbl"><table><thead><tr><th>Page</th><th class="num">Views</th><th class="num">Visitors</th></tr></thead><tbody id="paths"></tbody></table></div>
+    <p class="muted">Top 10 of the last 14 days. "(old)" = the address before the move to the fieldmesh-radio organization.</p>
+  </section>
+
+  <footer>Data: GitHub API (traffic, releases, repo) and GoatCounter, saved every night to the <a href="https://github.com/fieldmesh-radio/FieldMesh/tree/stats">stats branch</a>.</footer>
+</main>
+
+<script>
+const RAW = "https://raw.githubusercontent.com/fieldmesh-radio/FieldMesh/stats/data/";
+const FILES = ["downloads", "traffic", "referrers", "paths", "repo", "flasher"];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmtDay = (s, long) => new Date(s + "T12:00:00Z").toLocaleDateString("en-GB", long ? { day: "numeric", month: "long", year: "numeric" } : { day: "numeric", month: "short" });
+const last = (o) => { const k = Object.keys(o || {}).sort(); return k.length ? [k[k.length - 1], o[k[k.length - 1]]] : [null, null]; };
+const DEV = { m1: "ThinkNode M1", l1: "Wio Tracker L1", t1000e: "T1000-E", g2: "Station G2", g3: "Station G3", v4: "Heltec V4" };
+
+function barList(el, rows) {
+  const max = Math.max(...rows.map((r) => r[1]), 1);
+  $(el).innerHTML = rows.length
+    ? rows.map(([n, v, tip]) => `<div class="bar" title="${esc(tip || "")}"><span class="n">${esc(n)}</span><span class="t"><b style="width:${(v / max * 100).toFixed(1)}%"></b></span><span class="c">${v}</span></div>`).join("")
+    : '<div class="empty">No data yet.</div>';
+}
+
+function render(D) {
+  const [repoDay, repo] = last(D.repo);
+  const views = (D.traffic || {}).views || {};
+  const vdays = Object.keys(views).sort();
+  const [, dl] = last((D.downloads || {}).daily);
+  const dlTotal = Object.values(dl || {}).reduce((a, b) => a + b, 0);
+  const sum14 = vdays.slice(-14).reduce((a, k) => a + views[k].count, 0);
+  const fl = D.flasher || { paths: {} };
+  const flTotal = (p) => Object.values(fl.paths[p] || {}).reduce((a, b) => a + b, 0);
+  const flashes = Object.keys(fl.paths).filter((p) => p.startsWith("flash-ok/")).reduce((a, p) => a + flTotal(p), 0);
+
+  $("stand").textContent = repoDay ? "As of " + fmtDay(repoDay, true) + " · " + vdays.length + " days saved" : "No data yet";
+  $("tiles").innerHTML = [
+    ["Views, 14 days", sum14, "on github.com"],
+    ["Downloads", dlTotal, "all release files"],
+    ["Flasher installs", flashes, "successful, all time"],
+    ["Stars", repo ? repo.stars : "-", (repo ? repo.forks : "-") + " forks"],
+  ].map(([k, v, s]) => `<div class="tile"><span class="k">${esc(k)}</span><span class="v">${esc(v)}</span><span class="s">${esc(s)}</span></div>`).join("");
+
+  // views per day: bars = views, line = unique visitors, one shared scale
+  (function () {
+    const n = vdays.length;
+    if (!n) { $("views").innerHTML = '<div class="empty">No data yet.</div>'; return; }
+    const W = 760, H = 230, l = 34, r = 10, t = 12, b = 28;
+    const max = Math.max(...vdays.map((k) => views[k].count), 1);
+    const step = Math.pow(10, Math.floor(Math.log10(max)));
+    const top = Math.ceil(max / step) * step;
+    const y = (v) => t + (H - t - b) * (1 - v / top);
+    const bw = (W - l - r) / n;
+    let g = "", bars = "";
+    const pts = [];
+    for (let i = 0; i <= 4; i++) {
+      const v = Math.round(top * i / 4);
+      g += `<line x1="${l}" x2="${W - r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)" stroke-width="1"/><text x="${l - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`;
+    }
+    const every = Math.ceil(n / 14);
+    vdays.forEach((k, i) => {
+      const x = l + i * bw, v = views[k];
+      bars += `<rect x="${x + bw * 0.15}" y="${y(v.count)}" width="${bw * 0.7}" height="${y(0) - y(v.count)}" fill="var(--accent)" rx="1"><title>${fmtDay(k)}: ${v.count} views, ${v.uniques} visitors</title></rect>`;
+      pts.push([x + bw / 2, y(v.uniques)]);
+      if (i % every === 0) bars += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle">${fmtDay(k)}</text>`;
+    });
+    const line = `<polyline points="${pts.map((p) => p.join(",")).join(" ")}" fill="none" stroke="var(--second)" stroke-width="2"/>` +
+      pts.map((p) => `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="var(--second)"/>`).join("");
+    $("views").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Repo views per day">${g}${bars}${line}</svg>`;
+  })();
+
+  // web flasher: page visits, chosen devices, flash results, manual downloads
+  (function () {
+    const groups = {};
+    for (const p of Object.keys(fl.paths || {})) {
+      if (p === "/flasher") { (groups[p] = groups[p] || []).push(["Flasher page", flTotal(p)]); continue; }
+      const [kind, dev, ver] = p.split("/");
+      (groups[kind] = groups[kind] || []).push([(DEV[dev] || dev || p) + (ver ? " · v" + ver : ""), flTotal(p)]);
+    }
+    const label = { "/flasher": "Visits", select: "Device chosen", "flash-start": "Flash started", "flash-ok": "Flash successful",
+                    "flash-fail": "Flash failed", download: "Manual download" };
+    const keys = Object.keys(label).filter((k) => groups[k]);
+    $("flasher").innerHTML = keys.length ? keys.map((k) => {
+      const rows = groups[k].sort((a, b) => b[1] - a[1]);
+      const m = Math.max(...rows.map((r) => r[1]), 1);
+      return `<div class="group"><span class="chip">${label[k]}</span>` + rows.map(([n, v]) =>
+        `<div class="bar"><span class="n">${esc(n)}</span><span class="t"><b style="width:${(v / m * 100).toFixed(1)}%"></b></span><span class="c">${v}</span></div>`).join("") + "</div>";
+    }).join("") : '<div class="empty">No flasher numbers yet.</div>';
+  })();
+
+  const [, refs] = last(D.referrers);
+  barList("refs", (refs || []).map((r) => [r.referrer, r.uniques, r.count + " views"]).sort((a, b) => b[1] - a[1]));
+
+  const devName = (f) => f.startsWith("Station_G2") ? "Station G2" + (f.endsWith("_full.bin") ? " (full)" : f.endsWith("_update.bin") ? " (update)" : "")
+    : f.startsWith("ThinkNode_M1") ? "ThinkNode M1" : f.startsWith("WioTrackerL1") ? "Wio Tracker L1" : f.startsWith("t1000e") ? "T1000-E" : f;
+  const assets = (D.downloads || {}).assets || {};
+  barList("dls", Object.entries(dl || {}).filter(([, v]) => v > 0)
+    .map(([f, v]) => [devName(f) + " · " + ((assets[f] || {}).tag || ""), v, f]).sort((a, b) => b[1] - a[1]));
+
+  const [, paths] = last(D.paths);
+  const pathName = (p) => {
+    const m = p.match(/^\/(TogeriX-hub|fieldmesh-radio)\/FieldMesh(.*)$/);
+    if (!m) return p;
+    return (m[1] === "TogeriX-hub" ? "(old) " : "") + (m[2] || "Start page");
+  };
+  $("paths").innerHTML = (paths || []).map((p) => `<tr><td class="p">${esc(pathName(p.path))}</td><td class="num">${p.count}</td><td class="num">${p.uniques}</td></tr>`).join("")
+    || '<tr><td colspan="3" class="muted">No data yet.</td></tr>';
+}
+
+Promise.all(FILES.map((f) => fetch(RAW + f + ".json", { cache: "no-cache" }).then((r) => r.ok ? r.json() : null).catch(() => null)))
+  .then((list) => {
+    const D = {};
+    FILES.forEach((f, i) => { D[f] = list[i]; });
+    if (list.every((x) => x === null)) {
+      $("err").textContent = "Could not load the numbers from GitHub. Try again in a minute.";
+      $("err").classList.remove("hidden");
+    }
+    render(D);
+  });
+</script>
+</body>
+</html>

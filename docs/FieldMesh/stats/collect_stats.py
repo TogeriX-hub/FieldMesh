@@ -156,8 +156,12 @@ def main():
             collect_flasher(d, gc_code, gc_token)
             print("flasher (GoatCounter): ok")
         except urllib.error.HTTPError as e:
-            print(f"flasher (GoatCounter): failed ({e.code}) - check GOATCOUNTER_CODE / GOATCOUNTER_TOKEN")
-            failed = True
+            if e.code == 404:
+                # GoatCounter answers 404 when the site has no visits in the time range
+                print("flasher (GoatCounter): no visits in the last 14 days (or wrong GOATCOUNTER_CODE)")
+            else:
+                print(f"flasher (GoatCounter): failed ({e.code}) - check GOATCOUNTER_CODE / GOATCOUNTER_TOKEN")
+                failed = True
     else:
         print("flasher (GoatCounter): skipped (no GOATCOUNTER_CODE / GOATCOUNTER_TOKEN)")
     sys.exit(1 if failed else 0)
