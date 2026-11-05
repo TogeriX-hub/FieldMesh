@@ -60,5 +60,67 @@
    "title": "/pulls",
    "uniques": 3
   }
+ ],
+ "2026-11-05": [
+  {
+   "count": 142,
+   "path": "/TogeriX-hub/FieldMesh",
+   "title": "Overview",
+   "uniques": 61
+  },
+  {
+   "count": 60,
+   "path": "/TogeriX-hub/FieldMesh/releases",
+   "title": "/releases",
+   "uniques": 4
+  },
+  {
+   "count": 48,
+   "path": "/fieldmesh-radio/FieldMesh",
+   "title": "Overview",
+   "uniques": 10
+  },
+  {
+   "count": 18,
+   "path": "/TogeriX-hub/FieldMesh/releases/tag/v6.1",
+   "title": "/releases/tag/v6.1",
+   "uniques": 12
+  },
+  {
+   "count": 18,
+   "path": "/TogeriX-hub/FieldMesh/branches",
+   "title": "/branches",
+   "uniques": 1
+  },
+  {
+   "count": 18,
+   "path": "/TogeriX-hub/FieldMesh/releases/new",
+   "title": "/releases/new",
+   "uniques": 1
+  },
+  {
+   "count": 10,
+   "path": "/TogeriX-hub/FieldMesh/releases/tag/v2.1.0",
+   "title": "/releases/tag/v2.1.0",
+   "uniques": 3
+  },
+  {
+   "count": 10,
+   "path": "/TogeriX-hub/FieldMesh/discussions/categories",
+   "title": "/discussions/categories",
+   "uniques": 1
+  },
+  {
+   "count": 9,
+   "path": "/TogeriX-hub/FieldMesh/blob/main/docs/FieldMesh/images/repeater_dashboard_board.png",
+   "title": "/blob/main/docs/FieldMesh/images/repeater_dashboard_board.png",
+   "uniques": 8
+  },
+  {
+   "count": 8,
+   "path": "/TogeriX-hub/FieldMesh/pulls",
+   "title": "/pulls",
+   "uniques": 3
+  }
  ]
 }
