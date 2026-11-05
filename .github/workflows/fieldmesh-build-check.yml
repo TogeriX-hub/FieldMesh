@@ -28,6 +28,12 @@ jobs:
           - t1000e_companion_radio_ble
           - MeshTracker_X1_companion_radio_ble
           - Heltec_t1_companion_radio_ble
+          # Companion wave 1 (2.3 #6): untested, test files for testers
+          - LilyGo_T-Echo_companion_radio_ble
+          - RAK_4631_companion_radio_ble          # also RAK WisMesh Pocket V2
+          - Heltec_t114_companion_radio_ble
+          - RAK_WisMesh_Tag_companion_radio_ble
+          - ThinkNode_M3_companion_radio_ble
           - Station_G2_fieldmesh_repeater
           - Station_G2_repeater
           - Station_G3_ESP32_fieldmesh_repeater
@@ -61,6 +67,21 @@ jobs:
 
       - name: Upload test files (FieldMesh repeaters)
         if: endsWith(matrix.environment, '_fieldmesh_repeater')
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.environment }}-test
+          path: out/*
+          retention-days: 14
+
+      # Companions (nRF52): DFU zip for the web flasher / MeshCore flasher, kept 14 days.
+      - name: Test files (companions)
+        if: endsWith(matrix.environment, '_companion_radio_ble')
+        run: |
+          mkdir -p out
+          cp ".pio/build/${{ matrix.environment }}/firmware.zip" "out/${{ matrix.environment }}_FieldMesh-test-${GITHUB_SHA::7}.zip"
+
+      - name: Upload test files (companions)
+        if: endsWith(matrix.environment, '_companion_radio_ble')
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.environment }}-test
