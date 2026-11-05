@@ -73,17 +73,19 @@ jobs:
           path: out/*
           retention-days: 14
 
-      # Companions (nRF52): DFU zip for the web flasher / MeshCore flasher, kept 14 days.
+      # Companions (nRF52): the artifact itself is the DFU zip (firmware.bin, .dat and manifest.json at
+      # its root), so the downloaded file goes straight into a flasher - no zip inside a zip. Kept 14 days.
       - name: Test files (companions)
         if: endsWith(matrix.environment, '_companion_radio_ble')
         run: |
-          mkdir -p out
-          cp ".pio/build/${{ matrix.environment }}/firmware.zip" "out/${{ matrix.environment }}_FieldMesh-test-${GITHUB_SHA::7}.zip"
+          mkdir -p dfu
+          unzip -o ".pio/build/${{ matrix.environment }}/firmware.zip" -d dfu
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
 
       - name: Upload test files (companions)
         if: endsWith(matrix.environment, '_companion_radio_ble')
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.environment }}-test
-          path: out/*
+          name: ${{ matrix.environment }}_FieldMesh-test-${{ env.SHORT_SHA }}
+          path: dfu/*
           retention-days: 14
