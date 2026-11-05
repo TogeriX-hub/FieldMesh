@@ -52,7 +52,7 @@ The prebuilt firmware files of a release are built from this repository at the r
 | [lib/ed25519](lib/ed25519) (Orson Peters) | zlib ([license.txt](lib/ed25519/license.txt)) |
 | [lib/nrf52](lib/nrf52) (Nordic SoftDevice headers) | Nordic Semiconductor license, see the file headers |
 | [arch/esp32/AsyncElegantOTA](arch/esp32/AsyncElegantOTA) (Ayush Sharma) | MIT ([LICENSE](arch/esp32/AsyncElegantOTA/LICENSE)) |
-| Barlow Semi Condensed font, repeater dashboard and web flasher | SIL Open Font License 1.1 ([OFL.txt](examples/simple_repeater/web/OFL.txt)) |
+| Barlow Semi Condensed font, repeater dashboard and web flasher | SIL Open Font License 1.1 ([OFL.txt](examples/simple_repeater/web/OFL.txt)); the repeater serves the license at `/fm/OFL.txt`, linked under Setup → Box |
 
 Other upstream MeshCore files that come from third parties carry their license in the file header.
 

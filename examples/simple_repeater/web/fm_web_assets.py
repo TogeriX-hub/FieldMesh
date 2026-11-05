@@ -11,6 +11,9 @@
 # topo-*.svg: the contour lines of docs/FieldMesh/brand/topo-*.svg split into one file per colour; the page
 # colours them with CSS masks, so one set works for light and dark.
 #
+# OFL.txt: licence of the Barlow font (SIL OFL 1.1), shipped with the font as the licence asks; linked from
+# Setup -> Box.
+#
 # Standalone (e.g. to look at the result): python3 fm_web_assets.py <out_dir>
 
 import gzip
@@ -25,6 +28,7 @@ ASSETS = [
     ("/fm/topo-line.svg", "topo-line.svg", "image/svg+xml", True, True),
     ("/fm/topo-fg.svg", "topo-fg.svg", "image/svg+xml", True, True),
     ("/fm/topo-orange.svg", "topo-orange.svg", "image/svg+xml", True, True),
+    ("/fm/OFL.txt", "OFL.txt", "text/plain; charset=utf-8", True, True),
 ]
 PAGE_VERSION_TOKEN = b"__V__"
 
