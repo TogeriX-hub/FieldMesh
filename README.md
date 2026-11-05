@@ -35,7 +35,7 @@ The goal is a node you can put in your backpack, forget about, and trust that it
 | Device | What it is | Release file |
 |---|---|---|
 | **Elecrow ThinkNode M1** | Tracker with E-Ink display, GPS switch, one button, buzzer | `ThinkNode_M1_companion_radio_ble_FieldMesh…zip` |
-| **Seeed Wio Tracker L1** | Tracker with OLED display and joystick (can write messages) | `WioTrackerL1_companion_radio_ble_FieldMesh…zip` |
+| **Seeed Wio Tracker L1 / L1 Pro** | Tracker with OLED display and joystick (can write messages); the L1 Pro is the same board with case and battery | `WioTrackerL1_companion_radio_ble_FieldMesh…zip` |
 | **Seeed T1000-E** | Card-sized tracker without display, one button, buzzer | `t1000e_companion_radio_ble_FieldMesh…zip` |
 | **Station G2** | FieldMesh Repeater — base station for a camp or a tour | `Station_G2_fieldmesh_repeater_FieldMesh…_full.bin` |
 
@@ -432,7 +432,7 @@ The code is written to be portable: hardware-specific pins are in `variant.h`, t
 
 ## Limitations & Known Issues
 
-- Tested on ThinkNode M1, Wio Tracker L1, T1000-E and Station G2 only
+- Tested on ThinkNode M1, Wio Tracker L1 Pro, T1000-E and Station G2 only
 - Off-Grid knows EU/UK and US/AU frequencies only — do not use it in other regions (e.g. India, Japan, Korea)
 - SOS needs a channel whose name contains "sos" — for sending and for the alarm
 - The Tracking page shows at most 3 contacts (favourites in the MeshCore app)
