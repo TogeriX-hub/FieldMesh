@@ -24,11 +24,23 @@
 #define LED_BREATH_PEAK         100   // peak brightness in %
 #define LED_BREATH_GAMMA       2.2f   // perceived brightness -> PWM duty (eye is not linear)
 
-#if defined(PIN_STATUS_LED_R) && defined(PIN_STATUS_LED_G) && defined(PIN_STATUS_LED_B)
+#if defined(PIN_STATUS_LED_R) && defined(PIN_STATUS_LED_G) && defined(PIN_STATUS_LED_B) && defined(NRF52_PLATFORM)
 #define STATUS_LED_RGB 1
 #ifndef LOW_BATT_MILLIVOLTS
 #define LOW_BATT_MILLIVOLTS 3500
 #endif
+// v2.3: RGB LED (X1), RECHERCHE_LED_Buzzer_Headless.md section 7, values tuned with Tobias in the
+// browser simulator (05.11.2026). Colours are 0..255 per channel.
+#define RGB_FLASH_LEVEL      153   // mode flash and red battery flash
+#define RGB_AMBER_G           89   // Off-Grid amber = red 255 + this much green
+#define RGB_BATT_GAP_MILLIS  400   // red battery flash this long after the mode flash / the breath
+#define RGB_CHARGE_MILLIS   2000   // charging: one red pulse
+#define RGB_FULL_G            41   // charge complete: dim green, steady
+#define RGB_FAIL_ON_MILLIS   150   // no SOS channel: red double blink (on, off, on)
+#endif
+
+#ifdef HAS_DRV2605
+#define SOS_VIB_REPEAT_MILLIS 5000   // v2.3: received SOS vibrates again every 5 s (X1)
 #endif
 
 #ifndef USER_BTN_PRESSED
@@ -167,10 +179,6 @@ void UITask::onMessageRecv(mesh::Packet *pkt, const ContactInfo &from, uint8_t t
   // we only want to show text messages on display, not cli data
   if (!(txt_type == TXT_TYPE_PLAIN || txt_type == TXT_TYPE_SIGNED_PLAIN)) return;
 
-#ifdef HAS_DRV2605
-  vibration.trigger();   // vibrate even while the app is connected (honors quiet + cooldown)
-#endif
-
   uint8_t path_len = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
   if (path_len == 0xFF) {
     sprintf(_origin, "(F) %s", from.name);
@@ -201,10 +209,6 @@ void UITask::onChannelMessageRecv(mesh::Packet *pkt, ChannelDetails& channel_det
     triggerSOS(channel_details.name, text);
     return;
   }
-
-#ifdef HAS_DRV2605
-  vibration.trigger();   // vibrate even while the app is connected (honors quiet + cooldown)
-#endif
 
   uint8_t path_len = pkt->isRouteFlood() ? pkt->path_len : 0xFF;
   if (path_len == 0xFF) {
@@ -348,22 +352,134 @@ void UITask::renderCurrScreen() {
 }
 
 #ifdef STATUS_LED_RGB
-static void statusLedWrite(uint8_t r, uint8_t g, uint8_t b) {
-  analogWrite(PIN_STATUS_LED_R, r);
-  analogWrite(PIN_STATUS_LED_G, g);
-  analogWrite(PIN_STATUS_LED_B, b);
+// v2.3 (X1): the RGB LED is driven like the T1000-E breath (v2.2): one PWM module plays a table
+// from RAM (EasyDMA), the CPU only starts it, and the module is handed back when the LED is
+// off (a running module keeps the 16 MHz clock on). analogWrite() is no longer used for it.
+// Three channels: R, G, B in the "individual" decoder mode (4 values per step).
+// PWM2 is never used - tone() (buzzer) owns it.
+#define LED_RGB_TOP     2000   // PWM counter top: 4 MHz / 2000 = 2 kHz
+#define LED_RGB_STEPS   (LED_BREATH_MILLIS / LED_BREATH_STEP_MILLIS)
+
+static const uint32_t LED_RGB_TOKEN = 0x6c446d46;    // PWM owner token ('FmDl')
+static uint16_t led_rgb_seq[LED_RGB_STEPS * 4];      // in RAM: EasyDMA cannot read flash
+static int led_rgb_mod = -1;                         // PWM module in use, -1 = none
+static const uint8_t LED_RGB_PINS[3] = { PIN_STATUS_LED_R, PIN_STATUS_LED_G, PIN_STATUS_LED_B };
+
+static NRF_PWM_Type* ledPwmModule(int i) {   // same order as HwPWMx[]
+  switch (i) {
+    case 0: return NRF_PWM0;
+    case 1: return NRF_PWM1;
+#ifdef NRF_PWM3
+    case 3: return NRF_PWM3;
+#endif
+    default: return NULL;   // PWM2: tone()
+  }
 }
 
-static void statusLedWheel(uint8_t pos) {   // smooth hue sweep, 0..255
-  if (pos < 85) {
-    statusLedWrite(255 - pos * 3, pos * 3, 0);
-  } else if (pos < 170) {
-    pos -= 85;
-    statusLedWrite(0, 255 - pos * 3, pos * 3);
-  } else {
-    pos -= 170;
-    statusLedWrite(pos * 3, 0, 255 - pos * 3);
+static void ledRgbStep(int i, uint8_t r, uint8_t g, uint8_t b) {
+  const uint16_t polarity = LED_STATE_ON ? 0x8000 : 0;   // bit 15 set: output ON for 'value' counts
+  uint16_t* v = &led_rgb_seq[i * 4];
+  v[0] = (uint16_t)((uint32_t)r * LED_RGB_TOP / 255) | polarity;
+  v[1] = (uint16_t)((uint32_t)g * LED_RGB_TOP / 255) | polarity;
+  v[2] = (uint16_t)((uint32_t)b * LED_RGB_TOP / 255) | polarity;
+  v[3] = polarity;   // channel 3 is not connected
+}
+
+static bool led_rgb_lit = false;   // a pin was switched on by ledRgbDigital()
+
+static void ledRgbRelease() {   // stop whatever plays, hand the module back, LED off
+  static bool pins_ready = false;
+  bool was_playing = led_rgb_mod >= 0;
+  if (was_playing) {
+    NRF_PWM_Type* p = ledPwmModule(led_rgb_mod);
+    if (!p->EVENTS_STOPPED) {
+      p->TASKS_STOP = 1;   // takes effect at the end of the current PWM period (0.5 ms)
+      uint32_t t0 = micros();
+      while (!p->EVENTS_STOPPED && micros() - t0 < 2000) {}
+    }
+    p->SHORTS = 0;
+    p->ENABLE = 0;
+    for (int k = 0; k < 4; k++) p->PSEL.OUT[k] = 0xFFFFFFFFUL;
+    HwPWMx[led_rgb_mod]->releaseOwnership(LED_RGB_TOKEN);
+    led_rgb_mod = -1;
   }
+  if (was_playing || led_rgb_lit || !pins_ready) {   // pins back to plain outputs, off
+    for (int k = 0; k < 3; k++) {
+      pinMode(LED_RGB_PINS[k], OUTPUT);
+      digitalWrite(LED_RGB_PINS[k], !LED_STATE_ON);
+    }
+    pins_ready = true;
+    led_rgb_lit = false;
+  }
+}
+
+// plays led_rgb_seq[0..steps), every value for step_ms; hold = keep the last value afterwards
+// (steady light), otherwise the module stops by itself (the last value should be off)
+static bool ledRgbPlay(int steps, uint16_t step_ms, bool hold) {
+  ledRgbRelease();
+  for (int i = 0; i < HWPWM_MODULE_NUM; i++) {
+    NRF_PWM_Type* p = ledPwmModule(i);
+    if (p == NULL || !HwPWMx[i]->takeOwnership(LED_RGB_TOKEN)) continue;
+    for (int k = 0; k < 3; k++) p->PSEL.OUT[k] = g_ADigitalPinMap[LED_RGB_PINS[k]];
+    p->PSEL.OUT[3] = 0xFFFFFFFFUL;
+    p->MODE = PWM_MODE_UPDOWN_Up;
+    p->PRESCALER = PWM_PRESCALER_PRESCALER_DIV_4;   // 4 MHz
+    p->COUNTERTOP = LED_RGB_TOP;
+    p->DECODER = (PWM_DECODER_LOAD_Individual << PWM_DECODER_LOAD_Pos) |
+                 (PWM_DECODER_MODE_RefreshCount << PWM_DECODER_MODE_Pos);
+    p->LOOP = 0;
+    p->SEQ[0].PTR = (uint32_t)led_rgb_seq;
+    p->SEQ[0].CNT = steps * 4;
+    p->SEQ[0].REFRESH = step_ms * 2 - 1;   // extra PWM periods per value (2 kHz)
+    p->SEQ[0].ENDDELAY = 0;
+    p->SEQ[1].PTR = (uint32_t)led_rgb_seq;
+    p->SEQ[1].CNT = 0;
+    p->SEQ[1].REFRESH = 0;
+    p->SEQ[1].ENDDELAY = 0;
+    p->INTENCLR = 0xFFFFFFFFUL;
+    p->SHORTS = hold ? 0 : PWM_SHORTS_SEQEND0_STOP_Msk;
+    p->EVENTS_STOPPED = 0;
+    p->EVENTS_SEQEND[0] = 0;
+    p->ENABLE = 1;
+    p->TASKS_SEQSTART[0] = 1;
+    led_rgb_mod = i;
+    return true;
+  }
+  return false;   // no free PWM module: skip
+}
+
+static bool ledRgbRunning() {   // a held (steady) colour counts as running
+  return led_rgb_mod >= 0 && !ledPwmModule(led_rgb_mod)->EVENTS_STOPPED;
+}
+
+static void ledRgbFlash(uint8_t r, uint8_t g, uint8_t b) {   // LED_ON_MILLIS, then off
+  ledRgbStep(0, r, g, b);
+  ledRgbStep(1, 0, 0, 0);
+  ledRgbPlay(2, LED_ON_MILLIS, false);
+}
+
+static void ledRgbSteady(uint8_t r, uint8_t g, uint8_t b) {
+  ledRgbStep(0, r, g, b);
+  ledRgbPlay(1, LED_BREATH_STEP_MILLIS, true);
+}
+
+// one breath (same curve as the T1000-E: eased in and out, gamma corrected) in the given colour,
+// stretched to 'millis' (4 s breath, 2 s charging pulse)
+static void ledRgbBreath(uint8_t r, uint8_t g, uint8_t b, uint16_t millis_total) {
+  for (int i = 0; i < LED_RGB_STEPS; i++) {
+    float s = (1.0f - cosf(2.0f * (float)PI * i / (LED_RGB_STEPS - 1))) * 0.5f;   // 0 -> 1 -> 0
+    float d = powf(s, LED_BREATH_GAMMA) * LED_BREATH_PEAK / 100.0f;
+    ledRgbStep(i, (uint8_t)(r * d + 0.5f), (uint8_t)(g * d + 0.5f), (uint8_t)(b * d + 0.5f));
+  }
+  ledRgbPlay(LED_RGB_STEPS, millis_total / LED_RGB_STEPS, false);
+}
+
+static void ledRgbDigital(bool r, bool g, bool b) {   // full on/off without PWM (SOS, boot)
+  if (led_rgb_mod >= 0 || !led_rgb_lit) ledRgbRelease();   // module off, pins are outputs
+  led_rgb_lit = r || g || b;
+  digitalWrite(PIN_STATUS_LED_R, r ? LED_STATE_ON : !LED_STATE_ON);
+  digitalWrite(PIN_STATUS_LED_G, g ? LED_STATE_ON : !LED_STATE_ON);
+  digitalWrite(PIN_STATUS_LED_B, b ? LED_STATE_ON : !LED_STATE_ON);
 }
 #endif
 
@@ -475,9 +591,7 @@ void UITask::userLedHandler() {
   if (_sos_holding) {
     bool on = (millis() - _sos_last_beep) < SOS_LED_ON_MILLIS;
 #ifdef STATUS_LED_RGB
-    analogWrite(PIN_STATUS_LED_R, on ? 255 : 0);
-    analogWrite(PIN_STATUS_LED_G, 0);
-    analogWrite(PIN_STATUS_LED_B, 0);
+    ledRgbDigital(on, false, false);
 #elif defined(PIN_STATUS_LED)
     ledPwmRelease();
     digitalWrite(PIN_STATUS_LED, on ? LED_STATE_ON : !LED_STATE_ON);
@@ -488,100 +602,101 @@ void UITask::userLedHandler() {
   if (countdown_led) {   // countdown over: LED off, normal pattern continues
     countdown_led = false;
 #ifdef STATUS_LED_RGB
-    analogWrite(PIN_STATUS_LED_R, 0);
-    analogWrite(PIN_STATUS_LED_G, 0);
-    analogWrite(PIN_STATUS_LED_B, 0);
+    ledRgbDigital(false, false, false);
 #elif defined(PIN_STATUS_LED)
     digitalWrite(PIN_STATUS_LED, !LED_STATE_ON);
 #endif
   }
 
 #ifdef STATUS_LED_RGB
-  static bool booted = false;
-  static bool flourish_active = false;
-  static unsigned long flourish_until = 0;
-  static int prev_msgcount = 0;
-  static int state = 0;
-  static unsigned long next_change = 0;
-  static int last_increment = 0;
-  static unsigned long next_batt_check = 0;
-  static bool low_batt = false;
+  // v2.3 (X1), RECHERCHE_LED_Buzzer_Headless.md section 7. Priority: SOS > charging/full > mode.
+  // Mode colour green (normal) or amber (Off-Grid): a short flash every 4 s, while tracking a
+  // breath in the mode colour; battery low adds a red second flash. Unread messages, the app
+  // connection and the colour sweeps of upstream are no longer shown.
+  enum { SHOW_NONE, SHOW_FLASH, SHOW_BREATH, SHOW_CHARGE, SHOW_FULL };
+  static uint8_t shown = SHOW_NONE;
+  static unsigned long next_flash = 0, red_at = 0, next_batt_check = 0;
+  static bool low_batt = false, red_pending = false;
+  unsigned long now = millis();
 
-  unsigned long cur_time = millis();
-
-  if (!booted) {   // color sweep on boot
-    booted = true;
-    flourish_until = cur_time + 1200;
-    flourish_active = true;
+  if (_sos_fail_at != 0 && now - _sos_fail_at < 3 * RGB_FAIL_ON_MILLIS) {   // no SOS channel
+    unsigned long e = now - _sos_fail_at;
+    ledRgbDigital(e < RGB_FAIL_ON_MILLIS || e >= 2 * RGB_FAIL_ON_MILLIS, false, false);
+    shown = SHOW_NONE;
+    return;
   }
-  if (_msgcount > prev_msgcount) {   // color sweep when a new message arrives
-    flourish_until = cur_time + 800;
-    flourish_active = true;
+  if (now - ui_started_at < LED_BOOT_MILLIS) {   // start: 2 s green
+    ledRgbDigital(false, true, false);
+    shown = SHOW_NONE;
+    return;
   }
-  prev_msgcount = _msgcount;
-
-  if (flourish_active) {
-    if (cur_time < flourish_until) {
-      statusLedWheel((cur_time % 1200) * 255 / 1200);
-      return;
-    }
-    statusLedWrite(0, 0, 0);
-    flourish_active = false;
-    state = 0;
-    next_change = cur_time;
+  if (_sos_active) {   // received SOS: fast red blink (siren and vibration in loop())
+    ledRgbDigital(((now / LED_SOS_BLINK_MILLIS) & 1) == 0, false, false);
+    shown = SHOW_NONE;
+    return;
   }
 
-  if (cur_time > next_batt_check) {   // battery reads are not free, keep them rare
+  if ((long)(now - next_batt_check) >= 0) {   // battery reads are not free, keep them rare
     low_batt = _board->getBattMilliVolts() < LOW_BATT_MILLIVOLTS;
-    next_batt_check = cur_time + 60000;
+    next_batt_check = now + 60000;
   }
 
 #ifdef EXT_CHRG_DETECT
-  // charge status display while docked (skipped when messages are waiting,
-  // so the unread indication is never masked)
   static unsigned long next_pwr_check = 0;
   static bool ext_powered = false, ext_charging = false;
-  if (cur_time > next_pwr_check) {
+  if ((long)(now - next_pwr_check) >= 0) {
     ext_powered = _board->isExternalPowered();
     ext_charging = ext_powered && digitalRead(EXT_CHRG_DETECT) == LOW;
-    next_pwr_check = cur_time + 1000;
+    next_pwr_check = now + 1000;
   }
-  if (ext_powered && _msgcount == 0) {
-    if (ext_charging) {
-      // amber breathing while charging
-      int ph = cur_time % 2000;
-      int v = ph < 1000 ? ph : 2000 - ph;
-      uint8_t lvl = (uint8_t)(v * 255 / 1000);
-      statusLedWrite(lvl, (uint8_t)(lvl * 35 / 100), 0);
-    } else {
-      statusLedWrite(0, 40, 0);   // dim solid green: charge complete
+  if (ext_powered) {
+    if (ext_charging) {   // charging: red pulse, one after the other
+      if (shown != SHOW_CHARGE || !ledRgbRunning()) {
+        ledRgbBreath(255, 0, 0, RGB_CHARGE_MILLIS);
+        shown = SHOW_CHARGE;
+      }
+    } else if (shown != SHOW_FULL) {   // charge complete: dim green, steady
+      ledRgbSteady(0, RGB_FULL_G, 0);
+      shown = SHOW_FULL;
     }
-    state = 0;
-    next_change = cur_time;
     return;
   }
 #endif
 
-  if (cur_time > next_change) {
-    if (state == 0) {
-      state = 1;
-      last_increment = (_msgcount > 0) ? LED_ON_MSG_MILLIS : LED_ON_MILLIS;
-      next_change = cur_time + last_increment;
-      if (low_batt) {
-        statusLedWrite(255, 0, 0);      // red: battery low
-      } else if (_msgcount > 0) {
-        statusLedWrite(255, 90, 0);     // amber: unread messages
-      } else if (hasConnection()) {
-        statusLedWrite(0, 0, 255);      // blue: app connected
-      } else {
-        statusLedWrite(0, 255, 0);      // green: heartbeat
-      }
-    } else {
-      state = 0;
-      next_change = cur_time + LED_CYCLE_MILLIS - last_increment;
-      statusLedWrite(0, 0, 0);
-    }
+  if ((shown == SHOW_FLASH || shown == SHOW_BREATH) && ledRgbRunning()) return;   // let it finish
+  if (shown != SHOW_NONE) {   // previous pattern over (or charger unplugged): LED off, module back
+    ledRgbRelease();
+    shown = SHOW_NONE;
   }
+  if (red_pending && (long)(now - red_at) >= 0) {   // red second flash: battery low
+    red_pending = false;
+    if (low_batt) {
+      ledRgbFlash(RGB_FLASH_LEVEL, 0, 0);
+      shown = SHOW_FLASH;
+    }
+    return;
+  }
+
+  bool og = the_mesh.isOffGridActive();
+  uint8_t r = og ? 255 : 0, g = og ? RGB_AMBER_G : 255;
+  // tracking = GPS-Share on and the GPS cycle running (same condition as MyMesh::loop())
+  bool tracking = the_mesh.isAutoAdvertEnabled() && the_mesh.gpsCycle().state() != GpsCycle::OFF;
+  unsigned long cycle = tracking ? LED_BREATH_MILLIS + LED_BREATH_PAUSE_MILLIS : LED_CYCLE_MILLIS;
+  if (low_batt) cycle += tracking ? RGB_BATT_GAP_MILLIS + LED_ON_MILLIS : 0;
+  // due, or stale (pattern changed, e.g. tracking switched off): start right away
+  if (red_pending || ((long)(now - next_flash) < 0 && next_flash - now <= cycle)) return;
+
+  if (tracking) {
+    ledRgbBreath(r, g, 0, LED_BREATH_MILLIS);
+    shown = SHOW_BREATH;
+    red_at = now + LED_BREATH_MILLIS + RGB_BATT_GAP_MILLIS;
+  } else {
+    ledRgbFlash((uint8_t)(r * RGB_FLASH_LEVEL / 255), (uint8_t)(g * RGB_FLASH_LEVEL / 255), 0);
+    shown = SHOW_FLASH;
+    red_at = now + LED_ON_MILLIS + RGB_BATT_GAP_MILLIS;
+  }
+  red_pending = low_batt;
+  next_flash = now + cycle;
 #elif defined(PIN_STATUS_LED)
   // v2.2 (T1000-E): boot 2 s on, received SOS fast blink, tracking breath, otherwise
   // a short flash every 4 s. Unread messages are no longer shown.
@@ -644,6 +759,8 @@ void UITask::userLedHandler() {
 void UITask::shutdown(bool restart){
 #if defined(PIN_STATUS_LED) && !defined(STATUS_LED_RGB)
   ledPwmRelease();   // v2.2: the board may drive the LED pin while powering off
+#elif defined(STATUS_LED_RGB)
+  ledRgbRelease();   // v2.3: same for the X1 (powerOff() writes the green pin)
 #endif
 
   #ifdef PIN_BUZZER
@@ -680,6 +797,9 @@ void UITask::loop() {
   #endif
   if (_sos_holding) sosCountdownLoop();   // v2.2
   userLedHandler();
+#ifdef HAS_DRV2605
+  if (_sos_active && millis() - _sos_vib_at >= SOS_VIB_REPEAT_MILLIS) vibrateForced();   // v2.3
+#endif
 
 #ifdef PIN_BUZZER
   if (buzzer.isPlaying()) {
@@ -844,6 +964,7 @@ void UITask::handleButtonQuadruplePress() {
 #endif
         }
         the_mesh.savePrefs();
+        vibrateForced();   // v2.3: X1 confirms mode changes
         break;
       }
     }
@@ -864,6 +985,7 @@ void UITask::handleButtonQuintuplePress() {
   }
   _buzzer_restore_quiet = true;  // V5: restore quiet state after playback
 #endif
+  vibrateForced();   // v2.3: X1 confirms mode changes
   _need_refresh = true;
 }
 
@@ -885,6 +1007,17 @@ void UITask::playForced(const char* melody) {
   _buzzer_restore_quiet = true;
 #else
   (void)melody;
+#endif
+}
+
+// v2.3: vibration even while it is switched off (X1: SOS and mode changes, section 7)
+void UITask::vibrateForced() {
+#ifdef HAS_DRV2605
+  bool q = vibration.isQuiet();
+  vibration.quiet(false);
+  vibration.trigger(true);
+  vibration.quiet(q);
+  _sos_vib_at = millis();
 #endif
 }
 
@@ -916,16 +1049,12 @@ void UITask::sosCountdownLoop() {
     if (the_mesh.sendSOS()) {
       MESH_DEBUG_PRINTLN("UITask: SOS sent");
       playForced("sos_sent:d=2,o=6,b=100:c");   // one long tone (1.2 s)
-#ifdef HAS_DRV2605
-      bool q = vibration.isQuiet();   // always vibrate, also when vibration is off
-      vibration.quiet(false);
-      vibration.trigger(true);
-      vibration.quiet(q);
-#endif
+      vibrateForced();
       sprintf(_alert, "SOS sent!");
     } else {
       MESH_DEBUG_PRINTLN("UITask: SOS failed (no SOS channel?)");
       playForced("sos_fail:d=16,o=4,b=140:c,p,c,p,c");   // three short low tones
+      _sos_fail_at = millis() | 1;                           // v2.3: X1 red double blink
       sprintf(_alert, "No SOS channel!");
     }
     _need_refresh = true;
@@ -946,6 +1075,7 @@ void UITask::sosCountdownLoop() {
 // Called by UITask::onChannelMessageRecv() when !SOS is detected (V6: listener)
 void UITask::triggerSOS(const char* from, const char* text) {
   _sos_active = true;
+  vibrateForced();   // v2.3: X1, repeated in loop() until acknowledged
 #ifdef PIN_BUZZER
   // override buzzer_quiet — SOS is an emergency
   buzzer.quiet(false);

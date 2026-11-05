@@ -42,6 +42,8 @@ class UITask : public AbstractUITask {
   unsigned long _sos_hold_start = 0;   // v2.2: countdown start
   unsigned long _sos_last_beep = 0;    // v2.2: last countdown beep (LED blinks with it)
   unsigned long _sos_next_beep = 0;    // v2.2: next countdown beep
+  unsigned long _sos_fail_at = 0;      // v2.3: no SOS channel - X1 red double blink from here
+  unsigned long _sos_vib_at = 0;       // v2.3: last forced vibration (received SOS repeats it)
   unsigned long ui_started_at;
 
   // Button handlers
@@ -68,6 +70,7 @@ class UITask : public AbstractUITask {
   void handleButtonClickHoldEnd();    // v2.2: released before the end = cancel
   void sosCountdownLoop();            // v2.2
   void playForced(const char* melody);  // v2.2: tone even while the buzzer is quiet
+  void vibrateForced();                 // v2.3: vibration even while it is off (no-op without motor)
 
  
 public:
