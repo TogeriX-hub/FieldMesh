@@ -9,7 +9,7 @@
   },
   {
     "id": "l1",
-    "name": "Seeed Wio Tracker L1",
+    "name": "Seeed Wio Tracker L1 / L1 Pro",
     "role": "Companion",
     "platform": "nrf52",
     "env": "WioTrackerL1_companion_radio_ble",
