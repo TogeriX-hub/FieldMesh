@@ -3,7 +3,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Reports for the untested devices (Heltec Mesh Node T1, SenseCAP MeshTracker X1, Wio Tracker L1 E-Ink, Wio Tracker L1 1W) and for new devices are very welcome.
+        Reports for the untested devices are very welcome: LilyGo T-Echo, RAK WisMesh Pocket V2 / RAK4631, Heltec T114, SenseCAP MeshTracker X1, RAK WisMesh Tag, ThinkNode M3, Heltec Mesh Node T1, Wio Tracker L1 E-Ink, Wio Tracker L1 1W - and any other device.
         Partial results help too - just tick what you tried.
         Only asking whether a device could work, or looking for testers? Fill in the device and write your question in the notes.
 
@@ -45,7 +45,10 @@ body:
         - label: Receiving SOS (alarm and buzzer)
         - label: Message history
         - label: Battery reading
+        - label: Battery lasts a full day of normal use
+        - label: LED, buzzer and vibration signals (devices without display)
         - label: Pairing with the companion app
+        - label: Update from stock MeshCore kept contacts and channels
 
   - type: textarea
     id: problems
